@@ -1,0 +1,4 @@
+# Secrets and run artifacts — never commit
+trello.autopilot.env
+logs/
+__pycache__/
