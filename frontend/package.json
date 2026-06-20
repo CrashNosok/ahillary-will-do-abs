@@ -1,0 +1,23 @@
+{
+  "name": "abs-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Личный трекер похудения и тренировок — frontend (Vite + React + TS). Vite-приложение появится в S0.8.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.3.0"
+  },
+  "prettier": {
+    "semi": true,
+    "singleQuote": true,
+    "trailingComma": "all",
+    "printWidth": 100
+  }
+}
