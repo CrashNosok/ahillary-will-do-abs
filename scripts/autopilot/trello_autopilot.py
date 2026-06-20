@@ -791,6 +791,34 @@ def post_deliverables(cfg: Config, card_id: str, final_text: str, include_scenar
         comment_card_chunked(cfg, card_id, "🧐 Заметки автопилота (отложенные баги и пр.)", notes)
 
 
+def append_report(title: str, short: str, ok: bool, res: "ClaudeResult") -> None:
+    """Append a per-card section to report.md on main and commit it — a running log of what
+    was built and how it affects the project. Best-effort: never raises, never blocks the run."""
+    try:
+        subprocess.run(["git", "checkout", "main"], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        expl = extract_block(res.final_text, "EXPLANATION") or "_(агент не вернул блок с описанием)_"
+        status = "✅ Готово" if ok else f"❌ Провал — {res.reason}"
+        lines = [f"\n## {now_stamp()} UTC · #{short} — {title}", "", f"**Статус:** {status}"]
+        if res.branch:
+            lines.append(f"**Ветка:** `{res.branch}`" + (f" · PR: {res.pr}" if res.pr else ""))
+        if res.duration_s or res.cost_usd or res.turns:
+            lines.append(f"**Прогон:** {format_metrics(res)}")
+        lines += ["", "### Что сделано и как влияет на проект", "", expl, ""]
+        path = REPO_ROOT / "report.md"
+        if not path.exists():
+            path.write_text(
+                "# Отчёт автопилота\n\nЧто сделано по каждой карточке и как это влияет на проект.\n",
+                encoding="utf-8",
+            )
+        with path.open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        subprocess.run(["git", "add", "report.md"], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        subprocess.run(["git", "commit", "-m", f"docs(report): #{short} {title}"], cwd=str(REPO_ROOT), capture_output=True, text=True)
+        print(f"    📝 report.md дополнён (#{short})")
+    except Exception as e:  # reporting must never break the pipeline
+        print(f"    ⚠ не удалось обновить report.md: {e}")
+
+
 def single_unit(card: dict) -> dict:
     """Wrap one card as a unit (the non-planned, one-card-at-a-time path)."""
     return {"cards": [card], "primary_short": str(card.get("idShort") or ""), "ui_verify_via": "", "title": card.get("name", "")}
@@ -883,6 +911,7 @@ def process_unit(unit: dict, cfg: Config, lists_by_name: dict[str, str], args) -
                 comment_card(cfg, primary["id"], f"🔀 Влито в `main` (fast-forward): `{res.branch}`. Следующие карточки строятся поверх этой работы.")
             else:
                 comment_card(cfg, primary["id"], f"⚠ Не удалось автоматически влить `{res.branch}` в `main` — влей вручную, иначе зависимые карточки не увидят эту работу.")
+        append_report(title, pshort, True, res)
         print(f"    ✅ SUCCESS -> Review. {res.pr or res.branch}")
         clear_inflight()
         return True
@@ -897,6 +926,7 @@ def process_unit(unit: dict, cfg: Config, lists_by_name: dict[str, str], args) -
             move_card(cfg, c["id"], blocked)
     print(f"    ❌ FAILED ({res.reason}){' -> Blocked' if blocked else ''}.")
     stash_and_main(f"autopilot-failed-{unit_short}-{now_stamp()}")  # leave a clean main for the next unit/run
+    append_report(title, pshort, False, res)
     clear_inflight()
     return False
 
@@ -1098,6 +1128,8 @@ def run_loop(cfg: Config, args) -> int:
     skip_ids: set[str] = set()
     processed = 0
     failures = 0
+    total = len(gather_candidates(cfg, lists_by_name))  # snapshot of cards to do, for X/N progress
+    print(f"\nК исполнению по спискам-источникам: {total} карточк(и).")
     while True:
         if args.max_tasks and processed >= args.max_tasks:
             print(f"\nReached --max-tasks={args.max_tasks}. Stopping.")
@@ -1113,6 +1145,7 @@ def run_loop(cfg: Config, args) -> int:
 
         card, source_list = picked
         skip_ids.add(card["id"])  # never reprocess the same card within this run
+        print(f"\n──► [{processed + 1}/{total}] следующая карточка (готово: {processed}, в Blocked: {failures})")
         if not args.dry_run:
             try:
                 sync_main()  # user rule: always branch each task off fresh main
