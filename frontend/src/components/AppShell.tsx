@@ -1,83 +1,83 @@
-import { useState } from 'react';
-import Dashboard from './Dashboard';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useLogout, useMe } from '../lib/auth';
 
-/** Разделы интерфейса. Роутинга пока нет (каркас) — активный раздел держим в state. */
-const SECTIONS = ['Обзор', 'Тренировки', 'Питание', 'Прогресс'] as const;
-type Section = (typeof SECTIONS)[number];
+/** Защищённые маршруты приложения. Метки — для UI, пути — для роутера. */
+const NAV = [
+  { to: '/', label: 'Дашборд', end: true },
+  { to: '/progress', label: 'Прогресс', end: false },
+  { to: '/workouts', label: 'Тренировки', end: false },
+  { to: '/recommendations', label: 'Рекомендации', end: false },
+  { to: '/goal', label: 'Цель', end: false },
+  { to: '/settings', label: 'Настройки', end: false },
+] as const;
 
 export default function AppShell() {
-  const [active, setActive] = useState<Section>('Обзор');
+  const { data: user } = useMe();
+  const logout = useLogout();
+  const navigate = useNavigate();
+
+  function onLogout() {
+    logout.mutate(undefined, { onSuccess: () => navigate('/login', { replace: true }) });
+  }
 
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-5 sm:px-8">
-      <header className="flex items-center justify-between gap-4 py-5">
-        <a href="#" className="group flex items-center gap-2.5" aria-label="ABS — на главную">
+      <header className="flex flex-wrap items-center justify-between gap-4 py-5">
+        <NavLink to="/" className="group flex items-center gap-2.5" aria-label="ABS — на дашборд">
           <span className="grid size-9 place-items-center rounded-xl bg-accent font-display text-lg font-bold text-accent-ink shadow-[0_0_24px_-6px] shadow-accent/50 transition-transform duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] group-hover:-rotate-6">
             A
           </span>
           <span className="font-display text-xl font-semibold tracking-tight">
             ABS<span className="text-muted">.трекер</span>
           </span>
-        </a>
+        </NavLink>
 
-        <nav aria-label="Основная навигация">
-          <ul className="flex items-center gap-1 rounded-full border border-line bg-surface/60 p-1 backdrop-blur">
-            {SECTIONS.map((section) => {
-              const isActive = section === active;
-              return (
-                <li key={section}>
-                  <button
-                    type="button"
-                    onClick={() => setActive(section)}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-[var(--duration-fast)] ${
+        <nav aria-label="Основная навигация" className="order-last w-full sm:order-none sm:w-auto">
+          <ul className="flex flex-wrap items-center gap-1 rounded-2xl border border-line bg-surface/60 p-1 backdrop-blur sm:rounded-full">
+            {NAV.map(({ to, label, end }) => (
+              <li key={to}>
+                <NavLink
+                  to={to}
+                  end={end}
+                  className={({ isActive }) =>
+                    `block rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-[var(--duration-fast)] ${
                       isActive
                         ? 'bg-accent text-accent-ink'
                         : 'text-muted hover:bg-panel hover:text-fg'
-                    }`}
-                  >
-                    {section}
-                  </button>
-                </li>
-              );
-            })}
+                    }`
+                  }
+                >
+                  {label}
+                </NavLink>
+              </li>
+            ))}
           </ul>
         </nav>
 
-        <div
-          className="hidden size-9 place-items-center rounded-full border border-line bg-surface font-medium text-muted sm:grid"
-          title="me@example.com"
-          aria-hidden="true"
-        >
-          МЯ
+        <div className="flex items-center gap-3">
+          {user && (
+            <span className="hidden text-sm text-muted sm:inline" title={user.email}>
+              {user.email}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onLogout}
+            disabled={logout.isPending}
+            className="rounded-full border border-line px-3.5 py-1.5 text-sm font-medium text-muted transition-colors duration-[var(--duration-fast)] hover:border-accent/50 hover:text-fg disabled:opacity-60"
+          >
+            Выйти
+          </button>
         </div>
       </header>
 
       <main className="flex-1 py-[var(--space-section)]">
-        {active === 'Обзор' ? <Dashboard /> : <SectionStub name={active} />}
+        <Outlet />
       </main>
 
       <footer className="border-t border-line py-6 text-sm text-muted">
         ABS · личный трекер веса и тренировок · v0.1
       </footer>
     </div>
-  );
-}
-
-/** Заглушка раздела вне «Обзора» — честно для каркаса спринта 0. */
-function SectionStub({ name }: { name: Section }) {
-  return (
-    <section aria-labelledby="stub-heading" className="max-w-2xl">
-      <p className="font-display text-sm font-medium uppercase tracking-[0.2em] text-accent">
-        {name}
-      </p>
-      <h1 id="stub-heading" className="mt-3 text-display">
-        Раздел в разработке
-      </h1>
-      <p className="mt-4 text-lg leading-relaxed text-muted">
-        Каркас интерфейса готов: дизайн-токены, типографика и базовый лейаут на месте. Наполнение
-        раздела «{name}» появится в следующих спринтах.
-      </p>
-    </section>
   );
 }

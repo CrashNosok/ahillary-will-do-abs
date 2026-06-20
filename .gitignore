@@ -227,3 +227,5 @@ data/
 
 # Frontend (npm)
 node_modules/
+# Python-шаблон выше игнорит `lib/` (пакеджинг) — но это и наш фронтовый src/lib/ (живой код).
+!frontend/src/lib/
