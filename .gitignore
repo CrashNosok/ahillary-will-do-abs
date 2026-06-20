@@ -219,3 +219,11 @@ __marimo__/
 
 # macOS
 .DS_Store
+
+# Project: local data, SQLite DB, env (env vars documented in backend/.env.example)
+data/
+*.db
+.env
+
+# Frontend (npm)
+node_modules/
