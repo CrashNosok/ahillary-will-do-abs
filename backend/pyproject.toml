@@ -4,12 +4,13 @@ version = "0.1.0"
 description = "Личный трекер похудения и тренировок — backend (FastAPI + SQLModel + SQLite)"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.29",
+    "sqlmodel>=0.0.21",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff", "pytest", "httpx"]
+dev = ["ruff", "pytest", "httpx2"]
 
 [build-system]
 requires = ["setuptools>=68"]
