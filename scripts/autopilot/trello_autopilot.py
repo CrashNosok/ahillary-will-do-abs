@@ -87,6 +87,10 @@ class TrelloError(RuntimeError):
     pass
 
 
+class AuthFailedError(RuntimeError):
+    pass
+
+
 # --- Config ------------------------------------------------------------------
 def parse_env_file(path: Path) -> dict[str, str]:
     """Parse a simple KEY=VALUE .env file. Ignores blanks, comments, `export `."""
@@ -401,6 +405,7 @@ class ClaudeResult:
     final_text: str = ""
     limit_reached: bool = False
     reset_at: float | None = None
+    auth_failed: bool = False
 
 
 def _fmt_int(n: int) -> str:
@@ -586,6 +591,12 @@ def run_claude(prompt: str, cfg: Config, max_turns: int, timeout_s: int, log_pat
         base.limit_reached = True
         base.reset_at = reset_at
         base.reason = "Claude usage limit reached"
+        return base
+
+    # 2b) Auth failure (403) — fatal, not a card-level fault.
+    if final and final.get("api_error_status") == 403:
+        base.auth_failed = True
+        base.reason = "Claude API 403 (authentication failed — re-run `claude` to refresh auth)"
         return base
 
     # 3) Real failure / crash / missing sentinel.
@@ -916,6 +927,10 @@ def process_unit(unit: dict, cfg: Config, lists_by_name: dict[str, str], args) -
         clear_inflight()
         return True
 
+    # Auth failure: don't punish cards — abort the whole run immediately.
+    if res.auth_failed:
+        raise AuthFailedError(res.reason)
+
     # Failure: surface description + notes (what blocked it) on the primary, route all to Blocked.
     post_deliverables(cfg, primary["id"], res.final_text, include_scenarios=False)
     metrics = f"\n{format_metrics(res)}" if (res.duration_s or res.cost_usd or res.tokens_out) else ""
@@ -1113,7 +1128,11 @@ def run_loop(cfg: Config, args) -> int:
             except GitError as e:
                 print(f"\nmain sync failed: {e}\nStopping.")
                 break
-            ok = process_unit(unit, cfg, lists_by_name, args)
+            try:
+                ok = process_unit(unit, cfg, lists_by_name, args)
+            except AuthFailedError as e:
+                print(f"\n🔐 AUTH FAILED: {e}\nFix: запусти `claude` в терминале для обновления сессии, затем повтори запуск.")
+                break
             processed += 1
             if not ok:
                 failures += 1
@@ -1152,7 +1171,11 @@ def run_loop(cfg: Config, args) -> int:
             except GitError as e:
                 print(f"\nmain sync failed: {e}\nStopping (resolve git state, then re-run).")
                 break
-        ok = process_unit(single_unit(card), cfg, lists_by_name, args)
+        try:
+            ok = process_unit(single_unit(card), cfg, lists_by_name, args)
+        except AuthFailedError as e:
+            print(f"\n🔐 AUTH FAILED: {e}\nFix: запусти `claude` в терминале для обновления сессии, затем повтори запуск.")
+            break
         processed += 1
         if not ok:
             failures += 1
@@ -1186,7 +1209,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="Resolve board + pick card and print the plan; no Claude, no moves.")
     p.add_argument("--allow-dirty", action="store_true", help="Start even if the git working tree is dirty.")
     p.add_argument("--on-fail", choices=["stop", "continue"], default="stop", help="What to do after a card fails.")
-    p.add_argument("--pw-mode", choices=["full", "light"], default="light", help="light = quality gate only (default; no live UI early in a greenfield build); full = also live Playwright once a UI exists.")
+    p.add_argument("--pw-mode", choices=["full", "light"], default="full", help="full = live Playwright verification cycle (Steps 3↔4) for UI cards; light = quality gate only.")
     p.add_argument("--done-mode", choices=["pr", "commit", "branch"], default="commit", help="commit = commit on branch only (default; repo has no remote); pr = commit+push+PR (needs a GitHub remote); branch = leave uncommitted.")
     p.add_argument("--integrate-main", dest="integrate_main", action="store_true",
                    help="After each successful card, fast-forward its branch into main so later cards build on it. Needed for a full autonomous run (commit done-mode); autopilot writes to main unattended.")
