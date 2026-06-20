@@ -9,6 +9,7 @@ dependencies = [
     "sqlmodel>=0.0.21",
     "pydantic-settings>=2.0,<3.0",
     "anthropic>=0.69,<1.0",
+    "bcrypt>=4.1,<6.0",
 ]
 
 [project.optional-dependencies]

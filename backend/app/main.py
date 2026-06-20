@@ -8,12 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import health
 from app.core.config import CORS_ORIGINS
 from app.core.db import init_db
+from app.core.seed import seed_initial_user
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # На старте: каталоги data/ и таблицы БД (data/app.db).
+    # На старте: каталоги data/ и таблицы БД (data/app.db), затем сид единственного юзера.
     init_db()
+    seed_initial_user()
     yield
 
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from sqlalchemy import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
+import app.models  # noqa: F401 — регистрирует таблицы в SQLModel.metadata до create_all
 from app.core.config import settings
 
 # backend/ — корень бэкенда (db.py лежит в backend/app/core/).
