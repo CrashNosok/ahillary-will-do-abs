@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff", "pytest", "httpx2"]
+dev = ["ruff", "pytest", "httpx"]
 
 [build-system]
 requires = ["setuptools>=68"]
