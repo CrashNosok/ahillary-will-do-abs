@@ -1,0 +1,111 @@
+@import 'tailwindcss';
+
+/*
+ * Единственный источник дизайн-токенов.
+ * Палитра, типографика, ритм, длительности — только здесь.
+ * Компоненты используют утилиты/переменные, рождённые из этих токенов,
+ * и НЕ хардкодят цвета/размеры по месту.
+ *
+ * Визуальное направление: «тренировочная консоль» —
+ * тёмные дисциплинированные поверхности, один энергичный лаймовый акцент,
+ * крупный контраст шкалы и пара дисплейного шрифта Space Grotesk × Inter.
+ */
+@theme {
+  /* — Палитра (oklch для предсказуемого контраста) — */
+  --color-ink: oklch(17% 0.013 256); /* фон приложения */
+  --color-surface: oklch(21% 0.015 256); /* базовая поверхность */
+  --color-panel: oklch(25% 0.017 256); /* приподнятая панель */
+  --color-line: oklch(33% 0.018 256); /* границы/разделители */
+  --color-fg: oklch(96% 0.005 256); /* основной текст */
+  --color-muted: oklch(72% 0.016 256); /* вторичный текст */
+  --color-accent: oklch(87% 0.19 128); /* лайм — энергия/прогресс */
+  --color-accent-ink: oklch(24% 0.05 128); /* текст на акценте */
+  --color-amber: oklch(80% 0.13 70); /* тёплый вторичный акцент */
+
+  /* — Типографика — */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+
+  --text-hero: clamp(2.5rem, 1.1rem + 5vw, 5rem);
+  --text-hero--line-height: 0.98;
+  --text-hero--letter-spacing: -0.03em;
+
+  --text-display: clamp(1.5rem, 1rem + 1.6vw, 2.25rem);
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.02em;
+
+  /* — Ритм/раскладка — */
+  --space-section: clamp(2.5rem, 1.5rem + 4vw, 5rem);
+  --radius-card: 1.25rem;
+
+  /* — Движение — */
+  --duration-fast: 150ms;
+  --duration-normal: 280ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--color-ink);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Атмосфера: мягкое лаймовое свечение сверху-справа даёт глубину без слоёв-обёрток. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        60rem 40rem at 88% -12%,
+        color-mix(in oklch, var(--color-accent) 16%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        50rem 40rem at -10% 8%,
+        color-mix(in oklch, var(--color-amber) 9%, transparent),
+        transparent 55%
+      );
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    margin: 0;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
+  }
+}

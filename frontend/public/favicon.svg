@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Бренд-метка ABS: лаймовый квадрат + дисплейная «A». Цвета статичны (ассет вне CSS-токенов). -->
+  <rect width="32" height="32" rx="8" fill="#b6e83a" />
+  <text x="16" y="23" font-family="'Space Grotesk',system-ui,sans-serif" font-size="20"
+    font-weight="700" text-anchor="middle" fill="#21280d">A</text>
+</svg>
