@@ -195,3 +195,16 @@
 
 Задача чисто бэкендовая и наблюдаемого UI не даёт: это фундамент схемы, на который в Sprint 2 лягут парсеры, расчёт дефицита и экраны. Имена таблиц заданы явно через `__tablename__` в snake_case (иначе SQLModel дал бы `foodentry` вместо `food_entry`), а `date PK` из карточки реализован как первичный ключ по дате для `activity_day` и `deficit_day` (один срез на день); таблицы без пометки PK получили суррогатный `id` и индекс по дате. Модели регистрируются в `app.models.__init__`, поэтому существующий `init_db()` поднимает их через `create_all` при старте приложения — отдельной проводки не потребовалось.
 
+
+## 20260621-002058 UTC · #72 — S1.2 Модели данных: тренировки + LLM + ачивки
+
+**Статус:** ✅ Готово
+**Ветка:** `feat/s1-2-models`
+**Прогон:** ⏱ 4.3 мин · 🔢 1 964 504 токенов (вход 44 401 / выход 17 525 / кэш 1 902 578) · 💲 $2.68 · 26 ходов
+
+### Что сделано и как влияет на проект
+
+Карточка S1.2 достраивает слой данных второго спринта: к ядру и ингесту из S1.1 добавляются остальные таблицы схемы — тренировки, сохранённые рекомендации LLM и ачивки с видео-пруфами. Экранов под них пока нет (заводим заранее, UI позже), поэтому задача чисто бэкендовая и видимого результата в браузере не даёт. Добавлено десять SQLModel-моделей в четырёх файлах: каталог `sport` + `exercise` (`app/models/sport.py`); тренировочная сессия `workout_session` и её записи `strength_set` / `cardio_log` / `skill_log` плюс персональные рекорды `personal_record` (`app/models/workout.py`); `recommendation` с полями из карточки — `created_at, model, input_snapshot_json, output_json, raw_text, goal_id` (`app/models/recommendation.py`); `achievement` и `achievement_proof` (`app/models/achievement.py`). Все модели зарегистрированы в `app/models/__init__.py`, поэтому существующий `init_db()` поднимает их через `create_all` при старте приложения без отдельной проводки.
+
+Ключевая ценность — согласованные внешние ключи, связывающие новую схему в единый граф: `exercise.sport_id → sport`, `workout_session.sport_id → sport`, записи сессии (`strength_set`/`cardio_log`/`skill_log`) ссылаются и на `workout_session` (session_id), и на `exercise` (exercise_id), `personal_record.exercise_id → exercise`, `achievement.sport_id → sport`, `achievement_proof.achievement_id → achievement`, а `recommendation.goal_id → smart_goal` (из S1.1). Гибкие поля рекомендации (`input_snapshot_json`, `output_json`) сделаны JSON-колонками, чтобы хранить меняющуюся структуру промпта/ответа без миграций. Видео и превью пруфов хранятся как пути на диск (`video_path`, `thumbnail_path`) — в БД только пути, файлы вне базы, как требует guardrail проекта. Это фундамент, на который в дальнейшем лягут парсеры, расчёты, генерация рекомендаций и экраны.
+
