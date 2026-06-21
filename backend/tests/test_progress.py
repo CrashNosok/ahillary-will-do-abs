@@ -253,3 +253,159 @@ def test_energy_start_after_end_returns_422(ctx):
 def test_energy_requires_auth():
     app.dependency_overrides.clear()
     assert TestClient(app).get("/progress/energy").status_code == 401
+
+
+# --- S2.6 Progress API: прогресс к SMART-цели --------------------------------
+
+
+def _add_inbody_fat(engine, date: str, body_fat_pct: float) -> None:
+    with Session(engine) as session:
+        session.add(InbodyMeasurement(date=dt.date.fromisoformat(date), body_fat_pct=body_fat_pct))
+        session.commit()
+
+
+def _metric(body, name):
+    return next(m for m in body["metrics"] if m["metric"] == name)
+
+
+def test_goal_no_active_goal_returns_404(ctx):
+    client, _ = ctx
+    assert client.get("/progress/goal").status_code == 404
+
+
+def test_goal_requires_auth():
+    app.dependency_overrides.clear()
+    assert TestClient(app).get("/progress/goal").status_code == 401
+
+
+def test_goal_weight_percent_and_linear_eta(ctx):
+    """Чистый линейный кейс: −10 кг за 100 дней → процент и прогноз даты предсказуемы."""
+    client, engine = ctx
+    d0 = dt.date(2026, 1, 1)
+    d1 = d0 + dt.timedelta(days=100)
+    client.post(
+        "/goals",
+        json={"target_weight_kg": 80, "start_date": d0.isoformat(), "deadline": "2026-12-31"},
+    )
+    _add_inbody(engine, d0.isoformat(), 100.0)
+    _add_inbody(engine, d1.isoformat(), 90.0)
+    resp = client.get("/progress/goal")
+    assert resp.status_code == 200
+    m = _metric(resp.json(), "weight_kg")
+    assert m["baseline"] == 100.0
+    assert m["current"] == 90.0
+    assert m["target"] == 80.0
+    assert m["percent"] == 50.0  # (90−100)/(80−100) = 50%
+    assert m["remaining"] == 10.0
+    # темп −0.1 кг/день, осталось −10 → ещё 100 дней от последнего замера
+    assert m["eta"] == (d1 + dt.timedelta(days=100)).isoformat()
+    assert m["on_track"] is True
+
+
+def test_goal_on_track_false_when_eta_after_deadline(ctx):
+    client, engine = ctx
+    d0 = dt.date(2026, 1, 1)
+    d1 = d0 + dt.timedelta(days=100)
+    client.post(
+        "/goals",
+        json={
+            "target_weight_kg": 80,
+            "start_date": d0.isoformat(),
+            "deadline": (d1 + dt.timedelta(days=10)).isoformat(),
+        },
+    )
+    _add_inbody(engine, d0.isoformat(), 100.0)
+    _add_inbody(engine, d1.isoformat(), 90.0)
+    m = _metric(client.get("/progress/goal").json(), "weight_kg")
+    assert m["on_track"] is False  # eta = d1+100 дней позже дедлайна d1+10
+
+
+def test_goal_moving_away_clamps_percent_zero_and_no_eta(ctx):
+    client, engine = ctx
+    d0 = dt.date(2026, 1, 1)
+    d1 = d0 + dt.timedelta(days=100)
+    client.post("/goals", json={"target_weight_kg": 80, "start_date": d0.isoformat()})
+    _add_inbody(engine, d0.isoformat(), 100.0)
+    _add_inbody(engine, d1.isoformat(), 105.0)  # вес растёт — движемся от цели
+    m = _metric(client.get("/progress/goal").json(), "weight_kg")
+    assert m["percent"] == 0.0
+    assert m["remaining"] == 25.0
+    assert m["eta"] is None
+    assert m["on_track"] is None
+
+
+def test_goal_overshoot_clamps_percent_100(ctx):
+    client, engine = ctx
+    d0 = dt.date(2026, 1, 1)
+    d1 = d0 + dt.timedelta(days=100)
+    client.post("/goals", json={"target_weight_kg": 80, "start_date": d0.isoformat()})
+    _add_inbody(engine, d0.isoformat(), 100.0)
+    _add_inbody(engine, d1.isoformat(), 75.0)  # уже ниже цели
+    m = _metric(client.get("/progress/goal").json(), "weight_kg")
+    assert m["percent"] == 100.0
+
+
+def test_goal_metric_without_measurements_is_null(ctx):
+    client, _ = ctx
+    client.post("/goals", json={"target_weight_kg": 80})
+    m = _metric(client.get("/progress/goal").json(), "weight_kg")
+    assert m["current"] is None
+    assert m["baseline"] is None
+    assert m["percent"] is None
+    assert m["eta"] is None
+    assert m["remaining"] is None
+
+
+def test_goal_baseline_json_used_as_start_anchor(ctx):
+    """baseline_json@start_date — ранний якорь: процент считается от 100, а не от 90."""
+    client, engine = ctx
+    d0 = dt.date(2026, 1, 1)
+    d1 = d0 + dt.timedelta(days=100)
+    client.post(
+        "/goals",
+        json={
+            "target_weight_kg": 80,
+            "start_date": d0.isoformat(),
+            "baseline_json": {"weight_kg": 100},
+        },
+    )
+    _add_inbody(engine, d1.isoformat(), 90.0)  # единственный реальный замер
+    m = _metric(client.get("/progress/goal").json(), "weight_kg")
+    assert m["baseline"] == 100.0
+    assert m["percent"] == 50.0  # без якоря база была бы 90 → 0%
+
+
+def test_goal_body_fat_metric(ctx):
+    client, engine = ctx
+    d0 = dt.date(2026, 1, 1)
+    d1 = d0 + dt.timedelta(days=100)
+    client.post("/goals", json={"target_body_fat_pct": 15, "start_date": d0.isoformat()})
+    _add_inbody_fat(engine, d0.isoformat(), 25.0)
+    _add_inbody_fat(engine, d1.isoformat(), 20.0)
+    m = _metric(client.get("/progress/goal").json(), "body_fat_pct")
+    assert m["percent"] == 50.0  # (20−25)/(15−25) = 50%
+    assert m["remaining"] == 5.0
+
+
+def test_goal_circumference_key_resolves_to_cm_column(ctx):
+    """Ключ цели waist → колонка waist_cm; метрика отдаётся под именем колонки."""
+    client, _ = ctx
+    d0 = dt.date(2026, 1, 1)
+    d1 = d0 + dt.timedelta(days=100)
+    client.post(
+        "/goals", json={"target_measurements_json": {"waist": 80}, "start_date": d0.isoformat()}
+    )
+    client.post("/body-measurements", json={"date": d0.isoformat(), "waist_cm": 90})
+    client.post("/body-measurements", json={"date": d1.isoformat(), "waist_cm": 85})
+    m = _metric(client.get("/progress/goal").json(), "waist_cm")
+    assert m["baseline"] == 90.0
+    assert m["current"] == 85.0
+    assert m["percent"] == 50.0  # (85−90)/(80−90) = 50%
+
+
+def test_goal_unmeasurable_target_key_skipped(ctx):
+    client, _ = ctx
+    client.post("/goals", json={"target_measurements_json": {"hips": 90}})
+    metrics = client.get("/progress/goal").json()["metrics"]
+    assert all(m["metric"] != "hips" for m in metrics)  # нет колонки hips → пропущено
+    assert all(m["metric"] != "hips_cm" for m in metrics)
