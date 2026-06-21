@@ -34,3 +34,4 @@ class Exercise(SQLModel, table=True):
     name: str
     kind: str | None = None  # strength | cardio | skill — как логировать упражнение
     unit: str | None = None  # дефолтная единица: кг / повторы / сек / км
+    notes: str | None = None  # произвольная заметка (техника, хват, оговорки) — S3.2
