@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import activity, auth, body, dashboard, food, goals, health
+from app.api import activity, auth, body, dashboard, food, goals, health, progress
 from app.core.config import CORS_ORIGINS
 from app.core.db import init_db
 from app.core.seed import seed_initial_user
@@ -36,3 +36,4 @@ app.include_router(food.router)
 app.include_router(activity.router)
 app.include_router(dashboard.router)
 app.include_router(body.router)
+app.include_router(progress.router)
