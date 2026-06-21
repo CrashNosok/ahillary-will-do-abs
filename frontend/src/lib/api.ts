@@ -525,6 +525,7 @@ export type Recommendation = {
   output_json: RecommendationPlan | null;
   raw_text: string | null;
   goal_id: number | null;
+  generation_ms: number | null; // S4.9: длительность генерации, мс (null у записей до S4.9)
 };
 
 export const api = {

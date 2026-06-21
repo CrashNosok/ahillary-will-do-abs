@@ -49,6 +49,18 @@ function macrosLine(m: { protein_g: number; carbs_g: number; fat_g: number }): s
   return `Б ${m.protein_g} · У ${m.carbs_g} · Ж ${m.fat_g} г`;
 }
 
+// Время генерации (S4.9): до секунды — в миллисекундах, дальше — в секундах с одним знаком.
+function formatDuration(ms: number): string {
+  return ms < 1000 ? `${ms} мс` : `${(ms / 1000).toFixed(1)} с`;
+}
+
+// «Модель: X» и, если замер есть, « · сгенерировано за Yс». У записей до S4.9 времени нет.
+function modelLine(model: string, generationMs: number | null): string {
+  return generationMs == null
+    ? `Модель: ${model}`
+    : `Модель: ${model} · сгенерировано за ${formatDuration(generationMs)}`;
+}
+
 // Человеческие подписи целевых обхватов. Ключи цели — «голые» (waist, chest…), как в
 // target_measurements_json; неизвестный ключ показываем как есть.
 const MEASUREMENT_LABELS_RU: Record<string, string> = {
@@ -93,6 +105,9 @@ export default function RecommendationsPage() {
   }, [history, selectedId]);
 
   function onGenerate() {
+    // Защита от двойного вызова (S4.9): кнопка дизейблится на isPending, но гасим и сам
+    // обработчик — на случай повторного клика до перерисовки запрос не дублируется.
+    if (generate.isPending) return;
     generate.mutate(undefined, { onSuccess: (rec) => setSelectedId(rec.id) });
   }
 
@@ -231,6 +246,7 @@ function DetailPanel({
           plan={detail.output_json}
           created={detail.created_at}
           model={detail.model}
+          generationMs={detail.generation_ms}
           goal={detail.input_snapshot_json?.goal ?? null}
         />
       ) : (
@@ -238,7 +254,7 @@ function DetailPanel({
         <div>
           <h2 className="text-display">План недоступен</h2>
           <p className="mt-1 text-sm text-muted">
-            {formatCreated(detail.created_at)} · модель {detail.model}
+            {formatCreated(detail.created_at)} · {modelLine(detail.model, detail.generation_ms)}
           </p>
           <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm text-muted">
             {detail.raw_text ?? '—'}
@@ -253,18 +269,20 @@ function RecommendationPlanView({
   plan,
   created,
   model,
+  generationMs,
   goal,
 }: {
   plan: NonNullable<Recommendation['output_json']>;
   created: string;
   model: string;
+  generationMs: number | null;
   goal: GoalSnapshot | null;
 }) {
   return (
     <>
       <div>
         <h2 className="text-display">План от {formatCreated(created)}</h2>
-        <p className="mt-1 text-sm text-muted">Модель: {model}</p>
+        <p className="mt-1 text-sm text-muted">{modelLine(model, generationMs)}</p>
       </div>
 
       {goal && <GoalCard goal={goal} />}
