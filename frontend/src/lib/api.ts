@@ -271,6 +271,60 @@ export type InbodyProgress = {
   composition: Record<string, SeriesPoint[]>;
 };
 
+/** Тип личного рекорда (S3.10): дискриминатор рода рекорда упражнения. */
+export type PrMetric = 'max_weight' | 'best_1rm' | 'best_pace' | 'max_distance';
+
+/** Личный рекорд (S3.10): лучший результат по упражнению. Для темпа value — сек/км
+ *  (меньше = лучше). date — день, когда рекорд установлен (для подсветки на графике). */
+export type PersonalRecord = {
+  id: number;
+  exercise_id: number;
+  metric: PrMetric;
+  date: string; // ISO YYYY-MM-DD
+  value: number;
+  unit: string | null;
+};
+
+/** Ряды силовых по упражнению (S3.11): рабочий вес (макс/день), 1ПМ (Эпли),
+ *  тоннаж (Σ вес·повт/день). Точка есть только где значение реально посчитано. */
+export type ExerciseStrengthSeries = {
+  exercise_id: number;
+  working_weight: SeriesPoint[];
+  best_1rm: SeriesPoint[];
+  tonnage: SeriesPoint[];
+};
+
+/** Тоннаж по виду спорта (группе упражнений) за день (S3.11). */
+export type GroupTonnageSeries = {
+  sport_id: number | null;
+  tonnage: SeriesPoint[];
+};
+
+/** Прогресс силовых за период (S3.11): ряды по упражнениям + тоннаж по группам. */
+export type StrengthProgress = {
+  start: string; // ISO YYYY-MM-DD
+  end: string; // ISO YYYY-MM-DD
+  by_exercise: ExerciseStrengthSeries[];
+  by_group: GroupTonnageSeries[];
+};
+
+/** Ряды кардио по упражнению (S3.11): дистанция (км), темп (сек/км), средний пульс,
+ *  пульсовая эффективность (метров на удар). Точка есть только где метрика считается. */
+export type ExerciseCardioSeries = {
+  exercise_id: number | null;
+  distance: SeriesPoint[];
+  pace: SeriesPoint[];
+  avg_hr: SeriesPoint[];
+  efficiency: SeriesPoint[];
+};
+
+/** Прогресс кардио за период (S3.11): ряды по упражнениям. */
+export type CardioProgress = {
+  start: string; // ISO YYYY-MM-DD
+  end: string; // ISO YYYY-MM-DD
+  by_exercise: ExerciseCardioSeries[];
+};
+
 /** Импорт дневника питания (S1.8): превью разобранного дня и результат сохранения. */
 export type ImportTotals = {
   kcal: number;
@@ -437,6 +491,17 @@ export const api = {
   // Прогресс состава тела InBody (S2.12): ряды %жира/мышц/висцерального жира/воды.
   getInbodyProgress: (start: string, end: string) =>
     request<InbodyProgress>(`/progress/inbody?start=${start}&end=${end}`),
+
+  // Прогресс силовых (S3.11): ряды веса/1ПМ/тоннажа за период для графиков (S3.12).
+  getStrengthProgress: (start: string, end: string) =>
+    request<StrengthProgress>(`/progress/strength?start=${start}&end=${end}`),
+
+  // Прогресс кардио (S3.11): ряды дистанции/темпа/пульса/эффективности за период.
+  getCardioProgress: (start: string, end: string) =>
+    request<CardioProgress>(`/progress/cardio?start=${start}&end=${end}`),
+
+  // Личные рекорды (S3.10): все PR упражнений — для подсветки точек на графиках (S3.12).
+  listPersonalRecords: () => request<PersonalRecord[]>('/workouts/prs'),
 
   // Замеры тела (S2.3): создать запись обхватов (см) на дату. Бэкенд — POST /body-measurements.
   createMeasurement: (input: BodyMeasurementInput) =>
