@@ -48,3 +48,53 @@ def test_json_column_roundtrips_dict():
     with Session(engine) as session:
         row = session.exec(select(ActivityDay)).one()
     assert row.raw_json == payload  # dict сериализуется/читается через JSON-колонку
+
+
+# --- S1.2: тренировки + LLM + ачивки ---
+
+_S12_TABLES = {
+    "sport",
+    "exercise",
+    "workout_session",
+    "strength_set",
+    "cardio_log",
+    "skill_log",
+    "personal_record",
+    "recommendation",
+    "achievement",
+    "achievement_proof",
+}
+
+# (таблица, колонка) -> таблица, на которую FK обязан ссылаться. Критерий приёмки:
+# FK на sport/exercise/session согласованы.
+_EXPECTED_FKS = {
+    ("exercise", "sport_id"): "sport",
+    ("workout_session", "sport_id"): "sport",
+    ("strength_set", "session_id"): "workout_session",
+    ("strength_set", "exercise_id"): "exercise",
+    ("cardio_log", "session_id"): "workout_session",
+    ("cardio_log", "exercise_id"): "exercise",
+    ("skill_log", "session_id"): "workout_session",
+    ("skill_log", "exercise_id"): "exercise",
+    ("personal_record", "exercise_id"): "exercise",
+    ("achievement", "sport_id"): "sport",
+    ("achievement_proof", "achievement_id"): "achievement",
+    ("recommendation", "goal_id"): "smart_goal",
+}
+
+
+def test_create_all_builds_every_s12_table():
+    tables = set(inspect(_memory_engine()).get_table_names())
+    assert _S12_TABLES <= tables  # критерий: все таблицы создаются
+
+
+def test_foreign_keys_reference_expected_tables():
+    # критерий: FK на sport/exercise/session (и др.) согласованы
+    insp = inspect(_memory_engine())
+    actual = {
+        (table, col): fk["referred_table"]
+        for table in _S12_TABLES
+        for fk in insp.get_foreign_keys(table)
+        for col in fk["constrained_columns"]
+    }
+    assert actual == _EXPECTED_FKS
