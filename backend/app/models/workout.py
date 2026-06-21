@@ -35,6 +35,7 @@ class StrengthSet(SQLModel, table=True):
     set_index: int | None = None  # порядковый номер подхода в сессии
     reps: int | None = None
     weight_kg: float | None = None
+    rest_sec: float | None = None  # отдых после подхода, сек (S3.4)
     rpe: float | None = None  # субъективная интенсивность (0–10)
 
 
