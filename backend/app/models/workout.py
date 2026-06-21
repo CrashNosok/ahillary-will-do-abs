@@ -5,7 +5,8 @@ workout_session — одна тренировка (FK sport_id). Внутри с
 - strength_set — силовой подход (вес/повторы/RPE);
 - cardio_log — кардио (дистанция/время/пульс);
 - skill_log — элемент/навык (попытки/приземления, напр. вейкборд, BMX, эндуро).
-personal_record — лучший результат по упражнению (FK exercise_id), вне сессии.
+personal_record — лучший результат по упражнению (FK exercise_id), вне сессии; поле
+metric различает род рекорда (вес / 1ПМ / темп / дистанция) — PR-движок S3.10.
 """
 
 import datetime as dt
@@ -74,7 +75,10 @@ class PersonalRecord(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     exercise_id: int = Field(foreign_key="exercise.id", index=True)
+    # тип рекорда (S3.10): max_weight | best_1rm | best_pace | max_distance —
+    # дискриминатор, чтобы сравнивать новый результат с лучшим того же рода.
+    metric: str = Field(index=True)
     date: dt.date = Field(index=True)
-    value: float  # значение рекорда
-    unit: str | None = None  # кг / повторы / сек / км
+    value: float  # значение рекорда (для темпа — сек/км, меньше = лучше)
+    unit: str | None = None  # кг / сек/км / км
     notes: str | None = None
