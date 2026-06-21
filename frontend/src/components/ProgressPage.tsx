@@ -22,6 +22,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useBodyProgress, useEnergyProgress, useInbodyProgress } from '../lib/progress';
+import TrainingProgress from './TrainingProgress';
 import { useActiveGoal } from '../lib/goals';
 import { classifyDays, countByQuality, type DayQuality } from '../lib/dayQuality';
 import type { BodyProgress, EnergyProgress, SeriesPoint } from '../lib/api';
@@ -815,6 +816,9 @@ export default function ProgressPage() {
           </div>
         )}
       </div>
+
+      {/* Тренировочный прогресс (S3.12): силовые + кардио рядом с прогрессом тела. */}
+      <TrainingProgress periodDays={periodDays} start={start} end={end} />
     </section>
   );
 }
