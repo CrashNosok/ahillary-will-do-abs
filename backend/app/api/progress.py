@@ -11,6 +11,10 @@ GET /progress/energy?start&end (S2.5) — ряды питания/энергии
 - macros — тренд Б/Ж/У (суммы food_entry за день);
 - steps / active_min — шаги и минуты активности из activity_day.
 
+GET /progress/goal (S2.6) — прогресс к активной SMART-цели по доступным метрикам:
+- вес / %жира / обхваты — % к target_*, темп и грубый линейный прогноз (eta) к цели,
+  флаг on_track (успеет ли eta к дедлайну). Метрики без измеримой колонки пропускаются.
+
 Общие правила: период фильтруется по [start; end]; точка ряда появляется только
 там, где есть реальное (не-null) значение, поэтому пропуски дней не рвут ряд и не
 дают ложных нулей. start > end → 422. Все роуты под сессией (CurrentUser) —
@@ -18,7 +22,7 @@ GET /progress/energy?start&end (S2.5) — ряды питания/энергии
 """
 
 import datetime as dt
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -30,6 +34,7 @@ from app.core.db import get_session
 from app.models.activity import ActivityDay
 from app.models.body import BodyMeasurement, InbodyMeasurement
 from app.models.deficit import DeficitDay
+from app.models.goal import GoalStatus, SmartGoal
 from app.models.nutrition import FoodEntry
 
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -194,4 +199,205 @@ def get_energy_progress(
         macros=macros,
         steps=steps,
         active_min=active_min,
+    )
+
+
+# --- S2.6 Progress API: прогресс к SMART-цели --------------------------------
+
+
+class GoalMetricProgress(BaseModel):
+    metric: str  # имя поля измерения: weight_kg | body_fat_pct | waist_cm | …
+    target: float
+    baseline: float | None  # старт отсчёта: baseline_json@start_date или 1-й замер
+    current: float | None  # последний замер
+    remaining: float | None  # |target − current|, сколько ещё двигаться
+    percent: float | None  # 0..100 прогресс baseline→target (None — нет данных)
+    eta: dt.date | None  # грубый линейный прогноз достижения target
+    on_track: bool | None  # eta ≤ deadline (None — нет eta/дедлайна)
+
+
+class GoalProgressOut(BaseModel):
+    goal_id: int
+    start_date: dt.date | None
+    deadline: dt.date | None
+    metrics: list[GoalMetricProgress]
+
+
+def _resolve_body_col(key: str) -> str | None:
+    """Ключ цели (waist) → колонка body_measurement (waist_cm); None если нет такой."""
+    for candidate in (key, f"{key}_cm"):
+        if hasattr(BodyMeasurement, candidate):
+            return candidate
+    return None
+
+
+def _baseline_lookup(baseline_json: dict[str, Any] | None, *keys: str) -> float | None:
+    """Значение базы из baseline_json по первому совпавшему ключу (число), иначе None."""
+    if not baseline_json:
+        return None
+    for key in keys:
+        value = baseline_json.get(key)
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _dated_values(
+    session: Session, model, col_name: str, start_date: dt.date | None, today: dt.date
+) -> list[tuple[dt.date, float]]:
+    """Хронологический ряд (date, value) метрики из модели, пропуская null и будущее."""
+    column = getattr(model, col_name)
+    conds = [column.is_not(None), model.date <= today]
+    if start_date is not None:
+        conds.append(model.date >= start_date)
+    rows = session.exec(
+        select(model.date, column).where(*conds).order_by(model.date, model.id)
+    ).all()
+    return [(d, float(v)) for d, v in rows]
+
+
+def _percent(baseline: float | None, current: float | None, target: float) -> float | None:
+    """Доля пути baseline→target, %; направление любое; 0..100. None — нет данных."""
+    if baseline is None or current is None:
+        return None
+    denom = target - baseline
+    if denom == 0:  # база уже равна цели — считаем достигнутой
+        return 100.0
+    pct = (current - baseline) / denom * 100
+    return round(min(100.0, max(0.0, pct)), 1)
+
+
+def _eta(
+    baseline: float | None,
+    baseline_date: dt.date | None,
+    current: float | None,
+    current_date: dt.date | None,
+    target: float,
+) -> dt.date | None:
+    """Грубый линейный прогноз даты достижения target по темпу baseline→current."""
+    if None in (baseline, baseline_date, current, current_date):
+        return None
+    span = (current_date - baseline_date).days
+    if span <= 0:
+        return None
+    remaining = target - current
+    if remaining == 0:  # уже на цели
+        return current_date
+    rate = (current - baseline) / span  # единиц в день
+    if rate == 0 or (remaining > 0) != (rate > 0):  # стоим или движемся от цели
+        return None
+    return current_date + dt.timedelta(days=round(remaining / rate))
+
+
+def _round1(value: float | None) -> float | None:
+    return None if value is None else round(value, 1)
+
+
+def _metric_progress(
+    session: Session,
+    goal: SmartGoal,
+    today: dt.date,
+    *,
+    metric: str,
+    target: float,
+    model,
+    col: str,
+    baseline_keys: tuple[str, ...],
+) -> GoalMetricProgress:
+    points = _dated_values(session, model, col, goal.start_date, today)
+    # baseline_json@start_date — синтетический самый ранний замер (точнее темп/процент),
+    # но только если есть хотя бы один реальный замер и старт раньше него.
+    bjson = _baseline_lookup(goal.baseline_json, *baseline_keys)
+    if bjson is not None and goal.start_date is not None and points:
+        if goal.start_date < points[0][0]:
+            points = [(goal.start_date, bjson)] + points
+
+    baseline = points[0][1] if points else None
+    baseline_date = points[0][0] if points else None
+    current = points[-1][1] if points else None
+    current_date = points[-1][0] if points else None
+
+    percent = _percent(baseline, current, target)
+    eta = _eta(baseline, baseline_date, current, current_date, target)
+    remaining = None if current is None else round(abs(target - current), 1)
+    on_track = (eta <= goal.deadline) if (eta is not None and goal.deadline is not None) else None
+
+    return GoalMetricProgress(
+        metric=metric,
+        target=round(float(target), 1),
+        baseline=_round1(baseline),
+        current=_round1(current),
+        remaining=remaining,
+        percent=percent,
+        eta=eta,
+        on_track=on_track,
+    )
+
+
+@router.get("/goal")
+def get_goal_progress(session: SessionDep, _: CurrentUser) -> GoalProgressOut:
+    goal = session.exec(select(SmartGoal).where(SmartGoal.status == GoalStatus.active)).first()
+    if goal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Активной цели нет")
+
+    today = dt.date.today()
+    metrics: list[GoalMetricProgress] = []
+
+    if goal.target_weight_kg is not None:
+        metrics.append(
+            _metric_progress(
+                session,
+                goal,
+                today,
+                metric="weight_kg",
+                target=goal.target_weight_kg,
+                model=InbodyMeasurement,
+                col="weight_kg",
+                baseline_keys=("weight_kg",),
+            )
+        )
+    if goal.target_body_fat_pct is not None:
+        metrics.append(
+            _metric_progress(
+                session,
+                goal,
+                today,
+                metric="body_fat_pct",
+                target=goal.target_body_fat_pct,
+                model=InbodyMeasurement,
+                col="body_fat_pct",
+                baseline_keys=("body_fat_pct",),
+            )
+        )
+    for key, raw_target in (goal.target_measurements_json or {}).items():
+        if raw_target is None:
+            continue
+        col = _resolve_body_col(key)
+        if col is None:  # цель задана на неизмеримую колонку — пропускаем (нет данных)
+            continue
+        try:
+            target = float(raw_target)
+        except (TypeError, ValueError):
+            continue
+        metrics.append(
+            _metric_progress(
+                session,
+                goal,
+                today,
+                metric=col,
+                target=target,
+                model=BodyMeasurement,
+                col=col,
+                baseline_keys=(key, col),
+            )
+        )
+
+    return GoalProgressOut(
+        goal_id=goal.id,
+        start_date=goal.start_date,
+        deadline=goal.deadline,
+        metrics=metrics,
     )
