@@ -27,7 +27,20 @@ from app.api.deps import CurrentUser
 from app.core.db import get_session
 from app.models.activity import ActivityDay
 from app.models.sport import Exercise, Sport
-from app.models.workout import CardioLog, SkillLog, StrengthSet, WorkoutSession
+from app.models.workout import (
+    CardioLog,
+    PersonalRecord,
+    SkillLog,
+    StrengthSet,
+    WorkoutSession,
+)
+from app.services.workout_metrics import (
+    apply_prs,
+    cardio_candidates,
+    epley_1rm,
+    strength_candidates,
+    tonnage,
+)
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -61,6 +74,15 @@ class StrengthSetRead(BaseModel):
     rpe: float | None
 
 
+class PersonalRecordRead(BaseModel):
+    id: int
+    exercise_id: int
+    metric: str  # max_weight | best_1rm | best_pace | max_distance
+    date: dt.date
+    value: float
+    unit: str | None
+
+
 class WorkoutRead(BaseModel):
     id: int
     date: dt.date
@@ -70,6 +92,8 @@ class WorkoutRead(BaseModel):
     notes: str | None
     created_at: dt.datetime
     sets: list[StrengthSetRead]
+    # новые PR, зафиксированные этой сессией (флаг S3.10); заполняется только при создании
+    personal_records: list[PersonalRecordRead] = []
 
 
 def _link_activity_date(session: Session, date: dt.date) -> dt.date | None:
@@ -90,6 +114,10 @@ def _require_exercises(session: Session, exercise_ids: set[int]) -> None:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Упражнение {exercise_id} не найдено",
             )
+
+
+def _pr_reads(prs: list[PersonalRecord]) -> list[PersonalRecordRead]:
+    return [PersonalRecordRead.model_validate(p.model_dump()) for p in prs]
 
 
 def _read(session: Session, ws: WorkoutSession) -> WorkoutRead:
@@ -132,7 +160,9 @@ def create_workout(payload: WorkoutCreate, session: SessionDep, _: CurrentUser) 
         session.add(StrengthSet(session_id=ws.id, **item.model_dump()))
     session.commit()
 
-    return _read(session, ws)
+    # PR-движок (S3.10): фиксируем новые рекорды (макс вес / лучший 1ПМ) по сессии
+    new_prs = apply_prs(session, strength_candidates(payload.sets), payload.date)
+    return _read(session, ws).model_copy(update={"personal_records": _pr_reads(new_prs)})
 
 
 @router.get("")
@@ -141,6 +171,84 @@ def list_workouts(session: SessionDep, _: CurrentUser) -> list[WorkoutRead]:
         select(WorkoutSession).order_by(WorkoutSession.date.desc(), WorkoutSession.id.desc())
     ).all()
     return [_read(session, ws) for ws in sessions]
+
+
+class ExerciseMetrics(BaseModel):
+    exercise_id: int
+    exercise_name: str
+    sets: int
+    tonnage: float
+    max_weight: float | None  # макс рабочий вес в сессии, кг
+    best_1rm: float | None  # лучшая оценка 1ПМ (Epley) в сессии, кг
+
+
+class GroupMetrics(BaseModel):
+    sport_id: int | None
+    sport_name: str
+    tonnage: float  # суммарный объём по группе (виду спорта)
+
+
+class WorkoutMetrics(BaseModel):
+    workout_id: int
+    total_tonnage: float  # sum(w*reps) по всей сессии
+    by_exercise: list[ExerciseMetrics]
+    by_group: list[GroupMetrics]
+
+
+@router.get("/prs")
+def list_personal_records(session: SessionDep, _: CurrentUser) -> list[PersonalRecordRead]:
+    """Все зафиксированные персональные рекорды (S3.10), свежие сверху."""
+    rows = session.exec(
+        select(PersonalRecord).order_by(PersonalRecord.date.desc(), PersonalRecord.id.desc())
+    ).all()
+    return [PersonalRecordRead.model_validate(r.model_dump()) for r in rows]
+
+
+@router.get("/{workout_id}/metrics")
+def get_workout_metrics(workout_id: int, session: SessionDep, _: CurrentUser) -> WorkoutMetrics:
+    """1ПМ/тоннаж/объём силовой сессии: по упражнению и по группе (S3.10)."""
+    _get_or_404(session, workout_id)
+    sets = session.exec(select(StrengthSet).where(StrengthSet.session_id == workout_id)).all()
+
+    by_ex: dict[int, list[StrengthSet]] = {}
+    for s in sets:
+        by_ex.setdefault(s.exercise_id, []).append(s)
+
+    ex_metrics: list[ExerciseMetrics] = []
+    group_tonnage: dict[int | None, float] = {}
+    group_names: dict[int | None, str] = {}
+    for eid in sorted(by_ex):
+        ex_sets = by_ex[eid]
+        ex = session.get(Exercise, eid)
+        one_rms = [r for r in (epley_1rm(s.weight_kg, s.reps) for s in ex_sets) if r is not None]
+        weights = [s.weight_kg for s in ex_sets if s.weight_kg and s.reps]
+        ex_tonnage = tonnage(ex_sets)
+        ex_metrics.append(
+            ExerciseMetrics(
+                exercise_id=eid,
+                exercise_name=ex.name if ex else f"#{eid}",
+                sets=len(ex_sets),
+                tonnage=ex_tonnage,
+                max_weight=round(max(weights), 2) if weights else None,
+                best_1rm=max(one_rms) if one_rms else None,
+            )
+        )
+        sport_id = ex.sport_id if ex else None
+        group_tonnage[sport_id] = round(group_tonnage.get(sport_id, 0.0) + ex_tonnage, 2)
+        if sport_id not in group_names:
+            sport = session.get(Sport, sport_id) if sport_id is not None else None
+            group_names[sport_id] = sport.name if sport else "—"
+
+    by_group = [
+        GroupMetrics(sport_id=sid, sport_name=group_names[sid], tonnage=group_tonnage[sid])
+        for sid in sorted(group_tonnage, key=lambda x: (x is None, x))
+    ]
+    return WorkoutMetrics(
+        workout_id=workout_id,
+        total_tonnage=tonnage(sets),
+        by_exercise=ex_metrics,
+        by_group=by_group,
+    )
 
 
 @router.get("/{workout_id}")
@@ -178,6 +286,8 @@ class CardioRead(BaseModel):
     avg_hr: int | None
     max_hr: int | None
     avg_pace: str | None
+    # новые PR (лучший темп / макс дистанция), зафиксированные этой сессией (флаг S3.10)
+    personal_records: list[PersonalRecordRead] = []
 
 
 def _compute_pace(distance_km: float, duration_sec: float) -> str | None:
@@ -238,7 +348,9 @@ def create_cardio(payload: CardioIn, session: SessionDep, _: CurrentUser) -> Car
     session.commit()
     session.refresh(log)
 
-    return _read_cardio(ws, log)
+    # PR-движок (S3.10): фиксируем лучший темп / макс дистанцию по упражнению
+    new_prs = apply_prs(session, cardio_candidates(log), payload.date)
+    return _read_cardio(ws, log).model_copy(update={"personal_records": _pr_reads(new_prs)})
 
 
 @router.get("/cardio/{cardio_id}")
