@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
+    achievements,
     activity,
     auth,
     body,
@@ -58,3 +59,4 @@ app.include_router(exercises.router)
 app.include_router(workouts.router)
 app.include_router(snapshot.router)
 app.include_router(recommendations.router)
+app.include_router(achievements.router)

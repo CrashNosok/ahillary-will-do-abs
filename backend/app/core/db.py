@@ -41,6 +41,13 @@ def inbody_dir() -> Path:
     return target
 
 
+def videos_dir(achievement_id: int) -> Path:
+    """Каталог видео-пруфов ачивки (data/videos/<achievement_id>). Создаётся при обращении."""
+    target = _data_dir() / "videos" / str(achievement_id)
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 def make_engine(db_path: Path) -> Engine:
     """SQLite-движок. check_same_thread=False — сессии живут в разных потоках FastAPI."""
     return create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
