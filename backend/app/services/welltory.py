@@ -155,6 +155,53 @@ def parse_activity_screen(image_bytes: bytes, model: str | None = None) -> Activ
     return parse_activity_response(reply)
 
 
+# Колонки ActivityDay, которые пишет импорт (поля метрик; ключ date и служебные
+# raw_json/source_image_path/parsed_at проставляются отдельно).
+FIELD_NAMES = (
+    "total_kcal",
+    "active_kcal",
+    "steps",
+    "moving_min",
+    "idle_min",
+    "warmup_min",
+    "active_met",
+    "intense_met",
+)
+
+
+def _upsert_day(
+    image_bytes: bytes,
+    date: dt.date,
+    session: Session,
+    *,
+    fields: dict[str, int | None],
+    raw: dict,
+) -> ActivityDay:
+    """Записать скрин на диск и upsert-нуть день с готовыми значениями полей.
+
+    Общая запись для обоих путей (vision-разбор S1.10 и правка S1.11): файл кладётся
+    в `data/uploads/welltory/<date>.png`, день пишется в `activity_day`. Идемпотентно
+    по дню — повторная загрузка того же дня заменяет запись и перезаписывает файл.
+    """
+    dest = db.welltory_dir() / f"{date}.png"
+    dest.write_bytes(image_bytes)
+    try:
+        source_image_path = str(dest.relative_to(db.BACKEND_DIR))
+    except ValueError:  # каталог данных вне backend/ (абсолютный DATA_DIR) — храним как есть
+        source_image_path = str(dest)
+
+    day = session.get(ActivityDay, date) or ActivityDay(date=date)
+    for name in FIELD_NAMES:
+        setattr(day, name, fields.get(name))
+    day.raw_json = raw
+    day.source_image_path = source_image_path
+    day.parsed_at = utcnow()
+    session.add(day)
+    session.commit()
+    session.refresh(day)
+    return day
+
+
 def save_activity_day(
     image_bytes: bytes,
     date: dt.date,
@@ -166,32 +213,26 @@ def save_activity_day(
 
     Полный путь карточки: vision-разбор → файл `data/uploads/welltory/<date>.png`
     → upsert ActivityDay (поля + raw_json + source_image_path + parsed_at).
-    Разбор идёт ПЕРВЫМ: при ошибке файл не пишется и записи нет. Идемпотентно по
-    дню — повторная загрузка того же дня заменяет запись и перезаписывает файл.
+    Разбор идёт ПЕРВЫМ: при ошибке файл не пишется и записи нет.
     VisionParseError / llm.LLMError пробрасываются как есть — HTTP-код выбирает роут.
     """
     vision = parse_activity_screen(image_bytes, model=model)
+    fields = {name: getattr(vision, name) for name in FIELD_NAMES}
+    return _upsert_day(image_bytes, date, session, fields=fields, raw=vision.raw)
 
-    dest = db.welltory_dir() / f"{date}.png"
-    dest.write_bytes(image_bytes)
-    try:
-        source_image_path = str(dest.relative_to(db.BACKEND_DIR))
-    except ValueError:  # каталог данных вне backend/ (абсолютный DATA_DIR) — храним как есть
-        source_image_path = str(dest)
 
-    day = session.get(ActivityDay, date) or ActivityDay(date=date)
-    day.total_kcal = vision.total_kcal
-    day.active_kcal = vision.active_kcal
-    day.steps = vision.steps
-    day.moving_min = vision.moving_min
-    day.idle_min = vision.idle_min
-    day.warmup_min = vision.warmup_min
-    day.active_met = vision.active_met
-    day.intense_met = vision.intense_met
-    day.raw_json = vision.raw
-    day.source_image_path = source_image_path
-    day.parsed_at = utcnow()
-    session.add(day)
-    session.commit()
-    session.refresh(day)
-    return day
+def save_activity_day_values(
+    image_bytes: bytes,
+    date: dt.date,
+    session: Session,
+    *,
+    fields: dict[str, int | None],
+    raw: dict,
+) -> ActivityDay:
+    """Сохранить день с уже выверенными пользователем значениями (S1.11).
+
+    В отличие от save_activity_day, vision НЕ дёргается: значения полей приходят с
+    экрана сверки (пользователь подтвердил/поправил их), а `raw` — исходный разбор
+    модели из шага превью (для аудита: что увидела модель против того, что сохранили).
+    """
+    return _upsert_day(image_bytes, date, session, fields=fields, raw=raw)
