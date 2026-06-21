@@ -136,6 +136,22 @@ export type ActivityDay = ActivityFields & {
   parsed_at: string;
 };
 
+/** Дашборд (S1.13): по каждому дню диапазона — флаги наличия данных 4 типов. */
+export type DayFlags = {
+  date: string; // ISO YYYY-MM-DD
+  has_food: boolean;
+  has_activity: boolean;
+  has_training: boolean;
+  has_measurement: boolean;
+};
+
+export type DashboardData = {
+  start: string; // ISO YYYY-MM-DD
+  end: string; // ISO YYYY-MM-DD
+  days: DayFlags[];
+  current_streak: number;
+};
+
 export const api = {
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) =>
@@ -144,6 +160,10 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   logout: () => request<{ status: string }>('/auth/logout', { method: 'POST' }),
+
+  // Дашборд-хитмап: флаги данных по дням месяца (start/end — ISO YYYY-MM-DD).
+  getDashboard: (start: string, end: string) =>
+    request<DashboardData>(`/dashboard?start=${start}&end=${end}`),
 
   // Список (200 + []), а не /goals/active (404 при отсутствии) — чтобы пустое
   // состояние не порождало console.error/4xx; активную цель выбираем на клиенте.
