@@ -4,7 +4,7 @@
 
 // ponytail: локальный бэкенд захардкожен — проект локальный (один пользователь).
 // Вынести в env, если когда-нибудь появится не-локальный деплой.
-const API_BASE = 'http://localhost:8000';
+export const API_BASE = 'http://localhost:8000';
 
 export class ApiError extends Error {
   constructor(
@@ -535,7 +535,9 @@ export type AchievementTier = 'foundation' | 'intermediate' | 'advanced' | 'elit
 export type AchievementStatus = 'locked' | 'in_progress' | 'unlocked';
 
 /** Ачивка вида спорта (S5.1/S5.2): достижение-вызов. `level` — тир сложности
- *  (AchievementTier), но хранится строкой, поэтому тип широкий. */
+ *  (AchievementTier), но хранится строкой, поэтому тип широкий. `has_proof` (S5.6) —
+ *  есть ли видео-пруф: по нему карточка решает, рисовать ли превью. Опционально, т.к.
+ *  ответы /proofs и /unlock возвращают ачивку без этого поля. */
 export type Achievement = {
   id: number;
   sport_id: number | null;
@@ -545,7 +547,23 @@ export type Achievement = {
   status: AchievementStatus;
   created_at: string;
   unlocked_at: string | null;
+  has_proof?: boolean;
 };
+
+/** Видео-пруф ачивки (S5.4): пути к видео/превью на диске + метаданные. */
+export type AchievementProof = {
+  id: number;
+  achievement_id: number;
+  video_path: string | null;
+  thumbnail_path: string | null;
+  uploaded_at: string;
+  notes: string | null;
+};
+
+/** URL превью последнего видео-пруфа ачивки (S5.6): картинка для карточки.
+ *  Cache-bust (`v`) — чтобы после новой загрузки бралась свежая картинка, а не из кеша. */
+export const achievementThumbnailUrl = (achievementId: number, v?: string | number): string =>
+  `${API_BASE}/achievements/${achievementId}/proof/thumbnail${v != null ? `?v=${v}` : ''}`;
 
 export const api = {
   me: () => request<User>('/auth/me'),
@@ -563,6 +581,13 @@ export const api = {
 
   // Ачивки вида спорта (S5.2): набор достижений со статусами (locked/in_progress/unlocked).
   listAchievements: (sportId: number) => request<Achievement[]>(`/sports/${sportId}/achievements`),
+
+  // Видео-пруф ачивки (S5.4): загрузка видео (multipart) → запись пруфа + превью.
+  uploadAchievementProof: (achievementId: number, file: File) =>
+    upload<AchievementProof>(`/achievements/${achievementId}/proofs`, file),
+  // Закрытие ачивки (S5.5): сервер требует наличия пруфа, иначе 409 → status=unlocked.
+  unlockAchievement: (achievementId: number) =>
+    request<Achievement>(`/achievements/${achievementId}/unlock`, { method: 'POST' }),
 
   // Упражнения библиотеки (S3.2): без sport_id — все; иначе фильтр по виду спорта.
   listExercises: (sportId?: number) =>

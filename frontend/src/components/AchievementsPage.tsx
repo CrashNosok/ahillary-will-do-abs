@@ -3,12 +3,14 @@
  *  пунктирная рамка, серый чип. Данные: GET /sports + GET /sports/{id}/achievements (S5.2). */
 
 import {
+  achievementThumbnailUrl,
+  ApiError,
   type Achievement,
   type AchievementStatus,
   type AchievementTier,
   type Sport,
 } from '../lib/api';
-import { useSportAchievements } from '../lib/achievements';
+import { useSportAchievements, useUnlockAchievement, useUploadProof } from '../lib/achievements';
 import { useSports } from '../lib/sports';
 
 // Тиры по возрастанию сложности — для сортировки карточек внутри спорта.
@@ -130,7 +132,7 @@ function SportAchievements({ sport, achievements }: { sport: Sport; achievements
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sorted.map((achievement) => (
             <li key={achievement.id}>
-              <AchievementCard achievement={achievement} />
+              <AchievementCard achievement={achievement} sportId={sport.id} />
             </li>
           ))}
         </ul>
@@ -139,21 +141,48 @@ function SportAchievements({ sport, achievements }: { sport: Sport; achievements
   );
 }
 
-function AchievementCard({ achievement }: { achievement: Achievement }) {
+function errorText(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  return 'Что-то пошло не так. Проверьте, что сервер запущен.';
+}
+
+function AchievementCard({ achievement, sportId }: { achievement: Achievement; sportId: number }) {
+  const upload = useUploadProof(sportId);
+  const unlock = useUnlockAchievement(sportId);
+
   const status = STATUS_META[achievement.status] ?? STATUS_META.locked;
   const isLocked = achievement.status === 'locked';
+  const isUnlocked = achievement.status === 'unlocked';
+  // Пруф есть, если бэкенд так сказал (has_proof) или мы только что загрузили его сами.
+  const hasProof = achievement.has_proof === true || upload.isSuccess;
+
+  // cache-bust превью: id свежезагруженного пруфа, иначе момент закрытия (стабилен на reload).
+  const bust = upload.data?.id ?? achievement.unlocked_at ?? 'p';
+  const thumbSrc = hasProof ? achievementThumbnailUrl(achievement.id, bust) : null;
 
   // Карточка по статусу: закрытая — пунктир + приглушение, открытая — акцентная рамка.
   const cardCls = isLocked
-    ? 'border-dashed border-line bg-surface/50 opacity-60'
-    : achievement.status === 'unlocked'
+    ? 'border-dashed border-line bg-surface/50'
+    : isUnlocked
       ? 'border-accent/30 bg-gradient-to-br from-panel to-surface'
       : 'border-amber/30 bg-surface';
+
+  function onPick(file: File | undefined) {
+    if (file) upload.mutate({ achievementId: achievement.id, file });
+  }
 
   return (
     <article
       className={`flex h-full flex-col gap-3 rounded-[var(--radius-card)] border p-5 ${cardCls}`}
     >
+      {thumbSrc && (
+        <img
+          src={thumbSrc}
+          alt={`Превью видео-пруфа: ${achievement.title}`}
+          className="aspect-video w-full rounded-xl border border-line object-cover"
+        />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-display text-xs font-semibold uppercase tracking-[0.16em] text-muted">
           {tierLabel(achievement.level)}
@@ -172,6 +201,53 @@ function AchievementCard({ achievement }: { achievement: Achievement }) {
 
       {achievement.description && (
         <p className="text-sm leading-relaxed text-muted">{achievement.description}</p>
+      )}
+
+      {/* Загрузка видео → превью → разблокировка (S5.6). На открытой ачивке скрыто. */}
+      {!isUnlocked && (
+        <div className="mt-auto flex flex-col gap-2 border-t border-line pt-4">
+          <label
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              onPick(e.dataTransfer.files[0]);
+            }}
+            className="cursor-pointer rounded-lg border border-dashed border-line bg-surface px-3 py-2 text-center text-sm font-medium text-muted transition-colors duration-[var(--duration-fast)] hover:border-accent/50 hover:text-fg"
+          >
+            <input
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={(e) => onPick(e.target.files?.[0])}
+            />
+            {upload.isPending
+              ? 'Загружаем видео…'
+              : hasProof
+                ? 'Видео загружено ✓ — заменить'
+                : 'Загрузить видео'}
+          </label>
+
+          {upload.isError && (
+            <p role="alert" className="text-xs font-medium text-amber">
+              {errorText(upload.error)}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => unlock.mutate(achievement.id)}
+            disabled={!hasProof || unlock.isPending}
+            className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink transition-all duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+          >
+            {unlock.isPending ? 'Разблокируем…' : 'Разблокировать'}
+          </button>
+
+          {unlock.isError && (
+            <p role="alert" className="text-xs font-medium text-amber">
+              {errorText(unlock.error)}
+            </p>
+          )}
+        </div>
       )}
     </article>
   );
