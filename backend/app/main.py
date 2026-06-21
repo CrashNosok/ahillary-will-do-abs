@@ -10,6 +10,7 @@ from app.api import (
     auth,
     body,
     dashboard,
+    exercises,
     food,
     goals,
     health,
@@ -50,3 +51,4 @@ app.include_router(body.router)
 app.include_router(progress.router)
 app.include_router(inbody.router)
 app.include_router(sports.router)
+app.include_router(exercises.router)
