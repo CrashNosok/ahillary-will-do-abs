@@ -6,6 +6,7 @@ const NAV = [
   { to: '/', label: 'Дашборд', end: true },
   { to: '/progress', label: 'Прогресс', end: false },
   { to: '/sports', label: 'Виды спорта', end: false },
+  { to: '/achievements', label: 'Достижения', end: false },
   { to: '/workouts', label: 'Тренировки', end: false },
   { to: '/recommendations', label: 'Рекомендации', end: false },
   { to: '/goal', label: 'Цель', end: false },

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import AchievementsPage from './components/AchievementsPage';
 import ActivityImportPage from './components/ActivityImportPage';
 import AppShell from './components/AppShell';
 import BodyMeasurementsPage from './components/BodyMeasurementsPage';
@@ -35,6 +36,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="progress" element={<ProgressPage />} />
             <Route path="sports" element={<SportsPage />} />
+            <Route path="achievements" element={<AchievementsPage />} />
             <Route path="workouts" element={<WorkoutLoggerPage />} />
             <Route path="recommendations" element={<RecommendationsPage />} />
             <Route path="goal" element={<GoalPage />} />
