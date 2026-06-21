@@ -21,7 +21,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { useBodyProgress, useEnergyProgress } from '../lib/progress';
+import { useBodyProgress, useEnergyProgress, useInbodyProgress } from '../lib/progress';
 import { useActiveGoal } from '../lib/goals';
 import { classifyDays, countByQuality, type DayQuality } from '../lib/dayQuality';
 import type { BodyProgress, EnergyProgress, SeriesPoint } from '../lib/api';
@@ -122,6 +122,36 @@ function buildSample(periodDays: number): BodyProgress {
       glutes_cm: trend(103, 98.1),
     },
   };
+}
+
+/** Состав тела InBody (S2.12): поле → подпись, единицы, цвет линии (дизайн-токены)
+ *  и пара from→to для демо-тренда (жир/висцеральный вниз, мышцы/вода вверх). */
+const INBODY_META = [
+  { field: 'body_fat_pct', label: 'Процент жира', unit: '%', color: 'var(--color-amber)', from: 24, to: 18.2 }, // prettier-ignore
+  { field: 'muscle_mass_kg', label: 'Мышечная масса', unit: 'кг', color: 'var(--color-cat-training)', from: 38, to: 41.6 }, // prettier-ignore
+  { field: 'visceral_fat', label: 'Висцеральный жир', unit: 'уровень', color: 'var(--color-cat-food)', from: 11, to: 7.4 }, // prettier-ignore
+  { field: 'water', label: 'Вода', unit: 'л', color: 'var(--color-cat-measurement)', from: 42, to: 45.8 }, // prettier-ignore
+] as const;
+
+/** Демо-ряды состава тела за период: 7 точек с плавным трендом на каждый показатель.
+ *  Рисуются, когда реальных замеров InBody нет, чтобы графики всё равно отрисовались
+ *  (критерий приёмки: динамика по InBody рисуется). */
+function buildInbodySample(periodDays: number): Record<string, SeriesPoint[]> {
+  const points = 7;
+  const end = new Date();
+  const step = Math.max(1, Math.floor((periodDays - 1) / (points - 1)));
+  const dates: string[] = [];
+  for (let i = points - 1; i >= 0; i--) {
+    const d = new Date(end);
+    d.setDate(d.getDate() - i * step);
+    dates.push(iso(d));
+  }
+  const trend = (from: number, to: number): SeriesPoint[] =>
+    dates.map((date, idx) => ({
+      date,
+      value: Math.round((from - ((from - to) * idx) / (points - 1)) * 10) / 10,
+    }));
+  return Object.fromEntries(INBODY_META.map((m) => [m.field, trend(m.from, m.to)]));
 }
 
 /** Макро-поле → подпись и цвет стека (только дизайн-токены, 3 разных оттенка). */
@@ -260,6 +290,15 @@ export default function ProgressPage() {
   const circRows = mergeSeries(
     Object.fromEntries(circFields.map((f) => [f, source.circumferences[f]])),
   );
+
+  // Состав тела InBody (S2.12): тот же период. Реальные ряды показываем, как только
+  // у любого из 4 показателей есть точка; иначе рисуем демо целиком — графики
+  // обязаны отрисоваться (критерий приёмки).
+  const inbodyQuery = useInbodyProgress(start, end);
+  const inbody = inbodyQuery.data;
+  const hasInbody = !!inbody && Object.values(inbody.composition).some((s) => s.length > 0);
+  const inbodySample = !hasInbody;
+  const inbodySource = hasInbody ? inbody!.composition : buildInbodySample(periodDays);
 
   // Энергобаланс (S2.8): тот же период. Показываем реальные ряды только когда они
   // наполняют ВСЕ 4 графика (ккал, дефицит, макросы, активность) — иначе один-два
@@ -450,6 +489,86 @@ export default function ProgressPage() {
           </ChartCard>
         </div>
       )}
+
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-t border-line pt-[var(--space-section)]">
+          <div className="max-w-2xl">
+            <h2 id="inbody-heading" className="font-display text-2xl font-semibold">
+              Состав тела (InBody)
+            </h2>
+            <p className="mt-2 text-muted">
+              Процент жира, мышечная масса, висцеральный жир и вода по замерам InBody за выбранный
+              период.
+            </p>
+          </div>
+          {inbodySample && (
+            <span className="rounded-full border border-amber/40 px-3 py-1 text-xs font-medium text-amber">
+              Демо-данные
+            </span>
+          )}
+        </div>
+
+        {inbodyQuery.isLoading ? (
+          <p className="text-muted">Загрузка…</p>
+        ) : (
+          <div className="flex flex-col gap-6">
+            {inbodyQuery.isError && (
+              <p role="alert" className="text-sm font-medium text-amber">
+                Не удалось получить данные с сервера — показаны демо-данные.
+              </p>
+            )}
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              {INBODY_META.map((m) => {
+                const rows = (inbodySource[m.field] ?? []).map((p) => ({
+                  date: p.date,
+                  value: p.value,
+                }));
+                return (
+                  <ChartCard key={m.field} title={m.label} unit={m.unit}>
+                    {rows.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={260}>
+                        <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+                          <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
+                          <XAxis
+                            dataKey="date"
+                            tickFormatter={fmtTick}
+                            tick={axisTick}
+                            stroke="var(--color-line)"
+                            minTickGap={24}
+                          />
+                          <YAxis
+                            tick={axisTick}
+                            stroke="var(--color-line)"
+                            width={44}
+                            domain={['auto', 'auto']}
+                          />
+                          <Tooltip
+                            contentStyle={tooltipStyle}
+                            labelStyle={{ color: 'var(--color-muted)' }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            name={`${m.label}, ${m.unit}`}
+                            stroke={m.color}
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                            connectNulls
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <EmptyNote text="Нет данных за период." />
+                    )}
+                  </ChartCard>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-3 border-t border-line pt-[var(--space-section)]">

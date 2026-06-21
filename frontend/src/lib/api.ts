@@ -121,6 +121,15 @@ export type EnergyProgress = {
   active_min: SeriesPoint[];
 };
 
+/** Ряды состава тела InBody за период (S2.12): по одному ряду на показатель
+ *  (%жира, мыш.масса, висцеральный жир, вода). Точка есть только там, где значение
+ *  не-null — редкие замеры не дают ложных нулей. */
+export type InbodyProgress = {
+  start: string; // ISO YYYY-MM-DD
+  end: string; // ISO YYYY-MM-DD
+  composition: Record<string, SeriesPoint[]>;
+};
+
 /** Импорт дневника питания (S1.8): превью разобранного дня и результат сохранения. */
 export type ImportTotals = {
   kcal: number;
@@ -260,6 +269,10 @@ export const api = {
   // Прогресс энергии (S2.5): ряды ккал/дефицита/макросов/активности за период (S2.8).
   getEnergyProgress: (start: string, end: string) =>
     request<EnergyProgress>(`/progress/energy?start=${start}&end=${end}`),
+
+  // Прогресс состава тела InBody (S2.12): ряды %жира/мышц/висцерального жира/воды.
+  getInbodyProgress: (start: string, end: string) =>
+    request<InbodyProgress>(`/progress/inbody?start=${start}&end=${end}`),
 
   // Замеры тела (S2.3): создать запись обхватов (см) на дату. Бэкенд — POST /body-measurements.
   createMeasurement: (input: BodyMeasurementInput) =>
