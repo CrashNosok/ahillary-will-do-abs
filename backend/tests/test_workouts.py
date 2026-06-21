@@ -219,3 +219,119 @@ def test_cardio_with_unknown_sport_returns_404(client):
 
 def test_read_unknown_cardio_returns_404(client):
     assert client.get("/workouts/cardio/999").status_code == 404
+
+
+# --- Скилловые/элементы (S3.6) ---
+
+
+def test_skill_session_is_saved_and_readable(client):
+    # критерий: скилл-сессия сохраняется. Пишем, потом читаем заново из БД.
+    ex = _make_exercise(client, name="Бэксайд 180")
+    created = client.post(
+        "/workouts/skill",
+        json={
+            "date": "2026-06-21",
+            "title": "Вейкборд",
+            "entries": [
+                {"exercise_id": ex, "attempts": 10, "landed": 3, "notes": "первые приземления"},
+            ],
+        },
+    )
+    assert created.status_code == 201
+    skill_id = created.json()["id"]
+
+    resp = client.get(f"/workouts/skill/{skill_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["date"] == "2026-06-21"
+    assert body["title"] == "Вейкборд"
+    entry = body["entries"][0]
+    assert entry["attempts"] == 10
+    assert entry["landed"] == 3
+    assert entry["notes"] == "первые приземления"
+
+
+def test_skill_session_with_multiple_elements(client):
+    ex1 = _make_exercise(client, name="Олли")
+    ex2 = _make_exercise(client, name="Банни-хоп")
+    body = client.post(
+        "/workouts/skill",
+        json={
+            "date": "2026-06-21",
+            "entries": [
+                {"exercise_id": ex1, "attempts": 8, "landed": 5},
+                {"exercise_id": ex2, "attempts": 6, "landed": 2},
+            ],
+        },
+    ).json()
+    assert len(body["entries"]) == 2  # оба элемента сохранены в одной сессии
+
+
+def test_skill_progress_aggregates_by_element(client):
+    # критерий: видно прогресс по элементам (landed/попытки) — суммируем по сессиям.
+    ex = _make_exercise(client, name="Кикфлип")
+    client.post(
+        "/workouts/skill",
+        json={"date": "2026-06-19", "entries": [{"exercise_id": ex, "attempts": 10, "landed": 1}]},
+    )
+    client.post(
+        "/workouts/skill",
+        json={"date": "2026-06-21", "entries": [{"exercise_id": ex, "attempts": 10, "landed": 4}]},
+    )
+    resp = client.get("/workouts/skill/progress")
+    assert resp.status_code == 200
+    progress = {item["exercise_id"]: item for item in resp.json()}
+    p = progress[ex]
+    assert p["attempts"] == 20  # 10 + 10
+    assert p["landed"] == 5  # 1 + 4
+    assert p["landing_rate"] == 0.25  # 5 / 20
+    assert p["sessions"] == 2  # элемент встречался в двух сессиях
+    assert p["exercise_name"] == "Кикфлип"
+
+
+def test_skill_requires_at_least_one_entry(client):
+    resp = client.post("/workouts/skill", json={"date": "2026-06-21", "entries": []})
+    assert resp.status_code == 422  # скилл-сессия без элементов бессмысленна
+
+
+def test_skill_landed_cannot_exceed_attempts(client):
+    ex = _make_exercise(client, name="360")
+    resp = client.post(
+        "/workouts/skill",
+        json={"date": "2026-06-21", "entries": [{"exercise_id": ex, "attempts": 3, "landed": 5}]},
+    )
+    assert resp.status_code == 422  # нельзя приземлить больше, чем попыток
+
+
+def test_skill_attempts_must_be_positive(client):
+    ex = _make_exercise(client, name="Грэб")
+    resp = client.post(
+        "/workouts/skill",
+        json={"date": "2026-06-21", "entries": [{"exercise_id": ex, "attempts": 0, "landed": 0}]},
+    )
+    assert resp.status_code == 422  # без попыток нечего логировать
+
+
+def test_skill_with_unknown_exercise_returns_404(client):
+    resp = client.post(
+        "/workouts/skill",
+        json={"date": "2026-06-21", "entries": [{"exercise_id": 999, "attempts": 5, "landed": 1}]},
+    )
+    assert resp.status_code == 404  # нельзя привязать к несуществующему элементу
+
+
+def test_skill_with_unknown_sport_returns_404(client):
+    ex = _make_exercise(client, name="Шувит")
+    resp = client.post(
+        "/workouts/skill",
+        json={
+            "date": "2026-06-21",
+            "sport_id": 999,
+            "entries": [{"exercise_id": ex, "attempts": 5, "landed": 1}],
+        },
+    )
+    assert resp.status_code == 404
+
+
+def test_read_unknown_skill_returns_404(client):
+    assert client.get("/workouts/skill/999").status_code == 404

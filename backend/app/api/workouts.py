@@ -1,4 +1,4 @@
-"""Логирование тренировок: силовая (S3.4) и кардио (S3.5).
+"""Логирование тренировок: силовая (S3.4), кардио (S3.5), скилловые (S3.6).
 
 Силовая: POST /workouts создаёт workout_session и все strength_set'ы (≥1 подход),
 пишет вес/повторы/отдых/RPE и возвращает сессию с подходами.
@@ -6,6 +6,11 @@
 Кардио (S3.5): POST /workouts/cardio создаёт сессию + cardio_log
 (distance_km, duration_sec, avg_hr, max_hr); темп (avg_pace) считается из дистанции/времени
 и сохраняется как снимок. GET /workouts/cardio/{id} читает её обратно.
+
+Скилловые (S3.6): POST /workouts/skill создаёт сессию + skill_log'и (≥1 элемент),
+каждый пишет попытки/приземления (attempts, landed) по элементу (вейкборд/BMX/эндуро).
+GET /workouts/skill/{id} читает сессию обратно; GET /workouts/skill/progress
+агрегирует прогресс по элементам (сумма попыток/приземлений и доля удачных).
 
 Каждая запись ссылается на упражнение/вид спорта (FK); несуществующий FK → 404 (SQLite сам не
 проверяет). Все роуты под сессией (CurrentUser) — приложение однопользовательское.
@@ -15,13 +20,13 @@ import datetime as dt
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
 from app.core.db import get_session
 from app.models.sport import Exercise, Sport
-from app.models.workout import CardioLog, StrengthSet, WorkoutSession
+from app.models.workout import CardioLog, SkillLog, StrengthSet, WorkoutSession
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -228,3 +233,127 @@ def get_cardio(cardio_id: int, session: SessionDep, _: CurrentUser) -> CardioRea
         )
     ws = session.get(WorkoutSession, log.session_id)
     return _read_cardio(ws, log)
+
+
+# --- Скилловые/элементы (S3.6) ---
+
+
+class SkillEntryIn(BaseModel):
+    exercise_id: int  # элемент: трюк/фигура (вейкборд, BMX, эндуро…)
+    attempts: int = Field(ge=1)  # без попыток нечего логировать
+    landed: int = Field(ge=0)  # удачных приземлений
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def _landed_within_attempts(self) -> "SkillEntryIn":
+        if self.landed > self.attempts:
+            raise ValueError("landed не может превышать attempts")
+        return self
+
+
+class SkillCreate(BaseModel):
+    date: dt.date
+    sport_id: int | None = None
+    title: str | None = None
+    notes: str | None = None
+    entries: list[SkillEntryIn] = Field(min_length=1)  # скилл-сессия без элементов бессмысленна
+
+
+class SkillEntryRead(BaseModel):
+    id: int
+    exercise_id: int
+    attempts: int | None
+    landed: int | None
+    notes: str | None
+
+
+class SkillRead(BaseModel):
+    id: int
+    date: dt.date
+    sport_id: int | None
+    title: str | None
+    notes: str | None
+    created_at: dt.datetime
+    entries: list[SkillEntryRead]
+
+
+class SkillProgressItem(BaseModel):
+    exercise_id: int
+    exercise_name: str
+    attempts: int  # суммарно попыток по элементу
+    landed: int  # суммарно удачных
+    landing_rate: float  # landed / attempts, 0..1
+    sessions: int  # в скольких сессиях встречался элемент
+
+
+def _read_skill(session: Session, ws: WorkoutSession) -> SkillRead:
+    entries = session.exec(
+        select(SkillLog).where(SkillLog.session_id == ws.id).order_by(SkillLog.id)
+    ).all()
+    return SkillRead(
+        **ws.model_dump(),
+        entries=[SkillEntryRead.model_validate(e.model_dump()) for e in entries],
+    )
+
+
+@router.post("/skill", status_code=status.HTTP_201_CREATED)
+def create_skill(payload: SkillCreate, session: SessionDep, _: CurrentUser) -> SkillRead:
+    if payload.sport_id is not None:
+        _require_sport(session, payload.sport_id)
+    _require_exercises(session, {e.exercise_id for e in payload.entries})
+
+    ws = WorkoutSession(
+        date=payload.date, sport_id=payload.sport_id, title=payload.title, notes=payload.notes
+    )
+    session.add(ws)
+    session.commit()
+    session.refresh(ws)
+
+    for item in payload.entries:
+        session.add(SkillLog(session_id=ws.id, **item.model_dump()))
+    session.commit()
+
+    return _read_skill(session, ws)
+
+
+@router.get("/skill/progress")
+def skill_progress(session: SessionDep, _: CurrentUser) -> list[SkillProgressItem]:
+    """Прогресс по элементам: суммируем попытки/приземления по каждому упражнению."""
+    logs = session.exec(select(SkillLog)).all()
+
+    agg: dict[int, dict] = {}
+    for log in logs:
+        acc = agg.setdefault(log.exercise_id, {"attempts": 0, "landed": 0, "sessions": set()})
+        acc["attempts"] += log.attempts or 0
+        acc["landed"] += log.landed or 0
+        acc["sessions"].add(log.session_id)
+
+    items: list[SkillProgressItem] = []
+    for exercise_id in sorted(agg):
+        acc = agg[exercise_id]
+        attempts = acc["attempts"]
+        ex = session.get(Exercise, exercise_id)
+        items.append(
+            SkillProgressItem(
+                exercise_id=exercise_id,
+                exercise_name=ex.name if ex else f"#{exercise_id}",
+                attempts=attempts,
+                landed=acc["landed"],
+                landing_rate=round(acc["landed"] / attempts, 3) if attempts else 0.0,
+                sessions=len(acc["sessions"]),
+            )
+        )
+    return items
+
+
+@router.get("/skill/{skill_id}")
+def get_skill(skill_id: int, session: SessionDep, _: CurrentUser) -> SkillRead:
+    ws = session.get(WorkoutSession, skill_id)
+    has_entries = (
+        ws is not None
+        and session.exec(select(SkillLog).where(SkillLog.session_id == skill_id).limit(1)).first()
+        is not None
+    )
+    if not has_entries:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Скилл-сессия не найдена")
+    return _read_skill(session, ws)
