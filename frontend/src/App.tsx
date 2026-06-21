@@ -10,6 +10,7 @@ import InbodyImportPage from './components/InbodyImportPage';
 import PlaceholderPage from './components/PlaceholderPage';
 import ProgressPage from './components/ProgressPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import SportsPage from './components/SportsPage';
 import LoginPage from './pages/LoginPage';
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ export default function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="progress" element={<ProgressPage />} />
+            <Route path="sports" element={<SportsPage />} />
             <Route path="workouts" element={<PlaceholderPage title="Тренировки" />} />
             <Route path="recommendations" element={<PlaceholderPage title="Рекомендации" />} />
             <Route path="goal" element={<GoalPage />} />
