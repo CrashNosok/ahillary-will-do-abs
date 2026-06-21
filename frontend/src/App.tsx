@@ -11,6 +11,7 @@ import PlaceholderPage from './components/PlaceholderPage';
 import ProgressPage from './components/ProgressPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import SportsPage from './components/SportsPage';
+import WorkoutLoggerPage from './components/WorkoutLoggerPage';
 import LoginPage from './pages/LoginPage';
 
 const queryClient = new QueryClient();
@@ -33,7 +34,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="progress" element={<ProgressPage />} />
             <Route path="sports" element={<SportsPage />} />
-            <Route path="workouts" element={<PlaceholderPage title="Тренировки" />} />
+            <Route path="workouts" element={<WorkoutLoggerPage />} />
             <Route path="recommendations" element={<PlaceholderPage title="Рекомендации" />} />
             <Route path="goal" element={<GoalPage />} />
             <Route path="body" element={<BodyMeasurementsPage />} />
