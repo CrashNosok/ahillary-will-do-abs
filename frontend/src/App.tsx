@@ -6,6 +6,7 @@ import BodyMeasurementsPage from './components/BodyMeasurementsPage';
 import Dashboard from './components/Dashboard';
 import GoalPage from './components/GoalPage';
 import ImportPage from './components/ImportPage';
+import InbodyImportPage from './components/InbodyImportPage';
 import PlaceholderPage from './components/PlaceholderPage';
 import ProgressPage from './components/ProgressPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="body" element={<BodyMeasurementsPage />} />
             <Route path="import" element={<ImportPage />} />
             <Route path="import-activity" element={<ActivityImportPage />} />
+            <Route path="import-inbody" element={<InbodyImportPage />} />
             <Route path="settings" element={<PlaceholderPage title="Настройки" />} />
           </Route>
 

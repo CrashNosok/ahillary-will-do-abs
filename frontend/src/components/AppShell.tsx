@@ -11,6 +11,7 @@ const NAV = [
   { to: '/body', label: 'Замеры', end: false },
   { to: '/import', label: 'Импорт еды', end: false },
   { to: '/import-activity', label: 'Импорт активности', end: false },
+  { to: '/import-inbody', label: 'InBody', end: false },
   { to: '/settings', label: 'Настройки', end: false },
 ] as const;
 

@@ -181,6 +181,32 @@ export type ActivityDay = ActivityFields & {
   parsed_at: string;
 };
 
+/** Ингест скрина InBody (S2.11): пять ключевых показателей. Все — float или null
+ *  (поля нет на скрине / не распозналось). */
+export type InbodyFields = {
+  weight_kg: number | null;
+  body_fat_pct: number | null;
+  muscle_mass_kg: number | null;
+  visceral_fat: number | null;
+  water: number | null;
+};
+
+/** Результат шага сверки: ключевые поля + дата + прочие показатели (metrics_json). */
+export type InbodyPreview = InbodyFields & {
+  date: string; // ISO YYYY-MM-DD
+  metrics_json: Record<string, unknown>;
+  saved: boolean;
+};
+
+/** Сохранённый замер InBody (ответ /import/inbody). */
+export type InbodyMeasurement = InbodyFields & {
+  id: number;
+  date: string; // ISO YYYY-MM-DD
+  metrics_json: Record<string, unknown> | null;
+  source_image_path: string | null;
+  parsed_at: string;
+};
+
 /** Дашборд (S1.13): по каждому дню диапазона — флаги наличия данных 4 типов. */
 export type DayFlags = {
   date: string; // ISO YYYY-MM-DD
@@ -261,5 +287,22 @@ export const api = {
     form.append('fields', JSON.stringify(fields));
     form.append('raw_json', JSON.stringify(rawJson ?? {}));
     return postForm<ActivityDay>('/import/activity', form);
+  },
+
+  // Ингест скрина InBody (S2.11): превью распознаёт скрин без записи; save пишет
+  // выверенные пользователем поля (vision не дёргается) идемпотентно по дню.
+  previewInbody: (file: File, date: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('date', date);
+    return postForm<InbodyPreview>('/import/inbody/preview', form);
+  },
+  saveInbody: (file: File, date: string, fields: InbodyFields, metricsJson: unknown) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('date', date);
+    form.append('fields', JSON.stringify(fields));
+    form.append('metrics_json', JSON.stringify(metricsJson ?? {}));
+    return postForm<InbodyMeasurement>('/import/inbody', form);
   },
 };
