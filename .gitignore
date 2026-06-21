@@ -229,3 +229,6 @@ data/
 node_modules/
 # Python-шаблон выше игнорит `lib/` (пакеджинг) — но это и наш фронтовый src/lib/ (живой код).
 !frontend/src/lib/
+
+# Playwright MCP артефакты прогона (снимки/логи) — на диск, не в git
+.playwright-mcp/
