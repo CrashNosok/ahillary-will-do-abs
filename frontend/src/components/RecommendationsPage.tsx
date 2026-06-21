@@ -3,7 +3,13 @@
  *  попадает в историю слева и раскрывается планом справа. Деталь читается по id с бэкенда. */
 
 import { useEffect, useState } from 'react';
-import { ApiError, type DayNutrition, type Recommendation, type WorkoutPlan } from '../lib/api';
+import {
+  ApiError,
+  type DayNutrition,
+  type GoalSnapshot,
+  type Recommendation,
+  type WorkoutPlan,
+} from '../lib/api';
 import {
   useGenerateRecommendation,
   useRecommendation,
@@ -19,13 +25,57 @@ const dateTimeFmt = new Intl.DateTimeFormat('ru-RU', {
   minute: '2-digit',
 });
 
+// Дедлайн цели — дата без времени; отдельный формат без часов/минут.
+const dateFmt = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+
 function formatCreated(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : dateTimeFmt.format(d);
 }
 
+// ponytail: 'YYYY-MM-DD' парсится как UTC-полночь; для зоны пользователя (MSK, +3) день
+// не съезжает. Понадобятся отрицательные зоны — парсить по частям.
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : dateFmt.format(d);
+}
+
 function macrosLine(m: { protein_g: number; carbs_g: number; fat_g: number }): string {
   return `Б ${m.protein_g} · У ${m.carbs_g} · Ж ${m.fat_g} г`;
+}
+
+// Человеческие подписи целевых обхватов. Ключи цели — «голые» (waist, chest…), как в
+// target_measurements_json; неизвестный ключ показываем как есть.
+const MEASUREMENT_LABELS_RU: Record<string, string> = {
+  waist: 'Талия',
+  belly: 'Живот',
+  chest: 'Грудь',
+  hips: 'Бёдра',
+  shoulders: 'Плечи',
+  biceps_l: 'Бицепс (л)',
+  biceps_r: 'Бицепс (п)',
+  glutes: 'Ягодицы',
+  calf_l: 'Икра (л)',
+  calf_r: 'Икра (п)',
+};
+
+/** Числовые цели в виде читаемых строк: вес, % жира, целевые обхваты. Пусто — целей нет. */
+function goalTargets(goal: GoalSnapshot): { label: string; value: string }[] {
+  const out: { label: string; value: string }[] = [];
+  if (goal.target_weight_kg != null) {
+    out.push({ label: 'Целевой вес', value: `${goal.target_weight_kg} кг` });
+  }
+  if (goal.target_body_fat_pct != null) {
+    out.push({ label: 'Целевой % жира', value: `${goal.target_body_fat_pct}%` });
+  }
+  for (const [key, val] of Object.entries(goal.target_measurements ?? {})) {
+    out.push({ label: MEASUREMENT_LABELS_RU[key] ?? key, value: `${val} см` });
+  }
+  return out;
 }
 
 export default function RecommendationsPage() {
@@ -176,7 +226,11 @@ function DetailPanel({
             : 'Здесь появится план, когда вы сгенерируете первую рекомендацию.'}
         </p>
       ) : detail.output_json ? (
-        <RecommendationPlanView plan={detail.output_json} created={detail.created_at} />
+        <RecommendationPlanView
+          plan={detail.output_json}
+          created={detail.created_at}
+          goal={detail.input_snapshot_json?.goal ?? null}
+        />
       ) : (
         // Запись без распарсенного плана — показываем сырой ответ, чтобы не «терять» её.
         <div>
@@ -193,16 +247,19 @@ function DetailPanel({
 function RecommendationPlanView({
   plan,
   created,
+  goal,
 }: {
   plan: NonNullable<Recommendation['output_json']>;
   created: string;
+  goal: GoalSnapshot | null;
 }) {
   return (
     <>
       <div>
         <h2 className="text-display">План от {formatCreated(created)}</h2>
-        <p className="mt-2 leading-relaxed text-muted">{plan.sync_note}</p>
       </div>
+
+      {goal && <GoalCard goal={goal} />}
 
       <section aria-label="План питания" className="flex flex-col gap-4">
         <h3 className="font-display text-lg font-semibold tracking-tight">Питание</h3>
@@ -215,8 +272,55 @@ function RecommendationPlanView({
         )}
       </section>
 
+      <RationaleCard note={plan.sync_note} />
+
       <WorkoutPlanView plan={plan.workout_plan} />
     </>
+  );
+}
+
+// Цель, под которую сгенерирован план: целевые метрики, дедлайн и мотивация («зачем»).
+function GoalCard({ goal }: { goal: GoalSnapshot }) {
+  const targets = goalTargets(goal);
+  return (
+    <section
+      aria-label="Цель"
+      className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-panel p-5"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h3 className="font-display text-lg font-semibold tracking-tight">Цель</h3>
+        {goal.deadline && (
+          <span className="text-sm text-muted">до {formatDate(goal.deadline)}</span>
+        )}
+      </div>
+      {targets.length > 0 ? (
+        <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+          {targets.map((t) => (
+            <div key={t.label} className="flex items-baseline justify-between gap-3">
+              <dt className="text-sm text-muted">{t.label}</dt>
+              <dd className="font-display font-semibold tracking-tight">{t.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="text-sm text-muted">Числовые цели не заданы.</p>
+      )}
+      {goal.why_notes && (
+        <blockquote className="border-l-2 border-accent/50 pl-4 text-muted italic">
+          {goal.why_notes}
+        </blockquote>
+      )}
+    </section>
+  );
+}
+
+// Обоснование: как рацион увязан с тренировками (sync_note из плана модели).
+function RationaleCard({ note }: { note: string }) {
+  return (
+    <section aria-label="Обоснование" className="rounded-xl border border-line bg-surface p-5">
+      <h3 className="font-display text-lg font-semibold tracking-tight">Обоснование</h3>
+      <p className="mt-2 leading-relaxed text-muted">{note}</p>
+    </section>
   );
 }
 

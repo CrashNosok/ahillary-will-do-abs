@@ -485,6 +485,35 @@ export type RecommendationPlan = {
   sync_note: string;
 };
 
+/** Прогресс по одной метрике цели в снапшоте (S4.1): baseline→current→target. */
+export type GoalProgress = {
+  metric: string;
+  target: number;
+  baseline: number | null;
+  current: number | null;
+  remaining: number | null;
+  percent: number | null;
+};
+
+/** Цель из снапшота рекомендации (input_snapshot_json.goal, S4.1): та цель, что была
+ *  активна на момент генерации. null — активной цели не было. */
+export type GoalSnapshot = {
+  id: number | null;
+  target_weight_kg: number | null;
+  target_body_fat_pct: number | null;
+  target_measurements: Record<string, number>;
+  start_date: string | null;
+  deadline: string | null;
+  why_notes: string | null;
+  progress: GoalProgress[];
+};
+
+/** Снапшот входа, поданного модели (S4.1). Поля гибкие; в UI читаем секцию goal. */
+export type RecommendationSnapshot = {
+  goal?: GoalSnapshot | null;
+  [key: string]: unknown;
+};
+
 /** Сохранённая рекомендация (S4.4/S4.5): запись истории с распарсенным планом.
  *  output_json = null только у битой записи; обычно несёт RecommendationPlan. raw_text —
  *  сырой ответ модели для отладки. */
@@ -492,7 +521,7 @@ export type Recommendation = {
   id: number;
   created_at: string; // ISO datetime
   model: string;
-  input_snapshot_json: Record<string, unknown> | null;
+  input_snapshot_json: RecommendationSnapshot | null;
   output_json: RecommendationPlan | null;
   raw_text: string | null;
   goal_id: number | null;
