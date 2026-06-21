@@ -21,6 +21,9 @@ class WorkoutSession(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     sport_id: int | None = Field(default=None, foreign_key="sport.id", index=True)
     date: dt.date = Field(index=True)
+    # Связь с Welltory-днём (S3.9): FK на activity_day.date. Проставляется автолинком
+    # при создании, если за этот день есть activity_day; иначе None («день не размечен»).
+    activity_date: dt.date | None = Field(default=None, foreign_key="activity_day.date", index=True)
     title: str | None = None
     notes: str | None = None
     created_at: dt.datetime = Field(default_factory=utcnow)

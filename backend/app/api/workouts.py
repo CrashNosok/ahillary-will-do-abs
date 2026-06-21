@@ -25,6 +25,7 @@ from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
 from app.core.db import get_session
+from app.models.activity import ActivityDay
 from app.models.sport import Exercise, Sport
 from app.models.workout import CardioLog, SkillLog, StrengthSet, WorkoutSession
 
@@ -63,11 +64,17 @@ class StrengthSetRead(BaseModel):
 class WorkoutRead(BaseModel):
     id: int
     date: dt.date
+    activity_date: dt.date | None  # связанный Welltory-день (S3.9), None если не размечен
     sport_id: int | None
     title: str | None
     notes: str | None
     created_at: dt.datetime
     sets: list[StrengthSetRead]
+
+
+def _link_activity_date(session: Session, date: dt.date) -> dt.date | None:
+    """Автолинк к Welltory-дню (S3.9): дата, если за этот день есть activity_day, иначе None."""
+    return date if session.get(ActivityDay, date) is not None else None
 
 
 def _require_sport(session: Session, sport_id: int) -> None:
@@ -111,7 +118,11 @@ def create_workout(payload: WorkoutCreate, session: SessionDep, _: CurrentUser) 
     _require_exercises(session, {s.exercise_id for s in payload.sets})
 
     ws = WorkoutSession(
-        date=payload.date, sport_id=payload.sport_id, title=payload.title, notes=payload.notes
+        date=payload.date,
+        activity_date=_link_activity_date(session, payload.date),
+        sport_id=payload.sport_id,
+        title=payload.title,
+        notes=payload.notes,
     )
     session.add(ws)
     session.commit()
@@ -156,6 +167,7 @@ class CardioRead(BaseModel):
     id: int
     session_id: int
     date: dt.date
+    activity_date: dt.date | None  # связанный Welltory-день (S3.9)
     sport_id: int | None
     exercise_id: int | None
     title: str | None
@@ -181,6 +193,7 @@ def _read_cardio(ws: WorkoutSession, log: CardioLog) -> CardioRead:
         id=log.id,
         session_id=ws.id,
         date=ws.date,
+        activity_date=ws.activity_date,
         sport_id=ws.sport_id,
         exercise_id=log.exercise_id,
         title=ws.title,
@@ -202,7 +215,11 @@ def create_cardio(payload: CardioIn, session: SessionDep, _: CurrentUser) -> Car
         _require_exercises(session, {payload.exercise_id})
 
     ws = WorkoutSession(
-        date=payload.date, sport_id=payload.sport_id, title=payload.title, notes=payload.notes
+        date=payload.date,
+        activity_date=_link_activity_date(session, payload.date),
+        sport_id=payload.sport_id,
+        title=payload.title,
+        notes=payload.notes,
     )
     session.add(ws)
     session.commit()
@@ -270,6 +287,7 @@ class SkillEntryRead(BaseModel):
 class SkillRead(BaseModel):
     id: int
     date: dt.date
+    activity_date: dt.date | None  # связанный Welltory-день (S3.9)
     sport_id: int | None
     title: str | None
     notes: str | None
@@ -303,7 +321,11 @@ def create_skill(payload: SkillCreate, session: SessionDep, _: CurrentUser) -> S
     _require_exercises(session, {e.exercise_id for e in payload.entries})
 
     ws = WorkoutSession(
-        date=payload.date, sport_id=payload.sport_id, title=payload.title, notes=payload.notes
+        date=payload.date,
+        activity_date=_link_activity_date(session, payload.date),
+        sport_id=payload.sport_id,
+        title=payload.title,
+        notes=payload.notes,
     )
     session.add(ws)
     session.commit()
