@@ -5,6 +5,7 @@
 Все роуты под сессией (CurrentUser) — приложение однопользовательское.
 """
 
+import datetime as dt
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -14,7 +15,7 @@ from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
 from app.core.db import get_session
-from app.models.achievement import Achievement
+from app.models.achievement import Achievement, AchievementProof
 from app.models.sport import Sport, SportType
 from app.services import achievement as achievement_service
 from app.services.achievement_schema import AthleteLevel, InvalidAchievementSetError
@@ -35,6 +36,20 @@ class SportUpdate(BaseModel):
     name: str | None = None
     type: SportType | None = None
     description: str | None = None
+
+
+class AchievementRead(BaseModel):
+    """Ачивка для UI (S5.6): поля модели + has_proof — есть ли видео-пруф (рисовать превью)."""
+
+    id: int
+    sport_id: int | None
+    title: str
+    description: str | None
+    level: str | None
+    status: str
+    created_at: dt.datetime
+    unlocked_at: dt.datetime | None
+    has_proof: bool
 
 
 def _get_or_404(session: Session, sport_id: int) -> Sport:
@@ -93,15 +108,29 @@ def delete_sport(sport_id: int, session: SessionDep, _: CurrentUser) -> None:
 @router.get("/{sport_id}/achievements")
 def list_sport_achievements(
     sport_id: int, session: SessionDep, _: CurrentUser
-) -> list[Achievement]:
+) -> list[AchievementRead]:
     """Ачивки вида спорта со статусами (locked/in_progress/unlocked), в порядке создания.
 
+    Поле has_proof говорит UI, есть ли видео-пруф (рисовать ли превью в карточке, S5.6).
     404 для неизвестного спорта; пустой список — если набор ещё не сгенерирован.
     """
     _get_or_404(session, sport_id)
-    return session.exec(
+    achievements = session.exec(
         select(Achievement).where(Achievement.sport_id == sport_id).order_by(Achievement.id)
     ).all()
+    # Одним запросом — id ачивок, у которых есть пруф (без N+1 по карточкам).
+    proof_ids: set[int] = (
+        set(
+            session.exec(
+                select(AchievementProof.achievement_id).where(
+                    AchievementProof.achievement_id.in_([a.id for a in achievements])
+                )
+            ).all()
+        )
+        if achievements
+        else set()
+    )
+    return [AchievementRead(**a.model_dump(), has_proof=a.id in proof_ids) for a in achievements]
 
 
 @router.post("/{sport_id}/achievements/generate", status_code=status.HTTP_201_CREATED)

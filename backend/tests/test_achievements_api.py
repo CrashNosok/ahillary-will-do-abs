@@ -10,12 +10,12 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.core.db import get_session
 from app.core.security import hash_password
 from app.main import app
-from app.models.achievement import Achievement
+from app.models.achievement import Achievement, AchievementProof
 from app.models.sport import Sport
 from app.models.user import User
 
@@ -98,6 +98,31 @@ def test_list_serves_statuses(client, engine):
     assert resp.status_code == 200
     by_title = {a["title"]: a["status"] for a in resp.json()}
     assert by_title == {"Базовый трюк": "unlocked", "Сложный трюк": "locked"}
+
+
+def test_list_marks_has_proof(client, engine):
+    """has_proof отражает наличие видео-пруфа: с пруфом → true, без → false (S5.6 UI)."""
+    sport_id = _seed_sport(engine)
+    _seed_achievements(
+        engine,
+        sport_id,
+        ("С пруфом", "foundation", "unlocked"),
+        ("Без пруфа", "advanced", "locked"),
+    )
+    with Session(engine) as s:
+        target = s.exec(select(Achievement).where(Achievement.title == "С пруфом")).one()
+        s.add(
+            AchievementProof(
+                achievement_id=target.id,
+                video_path="data/videos/x/x.mp4",
+                thumbnail_path="data/videos/x/x.jpg",
+            )
+        )
+        s.commit()
+
+    body = client.get(f"/sports/{sport_id}/achievements").json()
+    by_title = {a["title"]: a["has_proof"] for a in body}
+    assert by_title == {"С пруфом": True, "Без пруфа": False}
 
 
 def test_list_only_returns_that_sports_achievements(client, engine):
