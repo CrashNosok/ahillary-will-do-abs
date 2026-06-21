@@ -4,7 +4,7 @@ workout_session — одна тренировка (FK sport_id). Внутри с
 типов, каждая ссылается на session (FK session_id) и на упражнение (FK exercise_id):
 - strength_set — силовой подход (вес/повторы/RPE);
 - cardio_log — кардио (дистанция/время/пульс);
-- skill_log — навык (удержание/повторы, напр. стойка, планш).
+- skill_log — элемент/навык (попытки/приземления, напр. вейкборд, BMX, эндуро).
 personal_record — лучший результат по упражнению (FK exercise_id), вне сессии.
 """
 
@@ -58,6 +58,8 @@ class SkillLog(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     session_id: int = Field(foreign_key="workout_session.id", index=True)
     exercise_id: int = Field(foreign_key="exercise.id", index=True)
+    attempts: int | None = None  # сколько попыток на элементе (S3.6)
+    landed: int | None = None  # сколько удачных приземлений (S3.6)
     hold_sec: float | None = None  # длительность удержания (стойка, планш…)
     reps: int | None = None
     quality: str | None = None  # субъективная оценка / прогресс
