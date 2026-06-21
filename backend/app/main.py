@@ -16,6 +16,7 @@ from app.api import (
     health,
     inbody,
     progress,
+    recommendations,
     snapshot,
     sports,
     workouts,
@@ -56,3 +57,4 @@ app.include_router(sports.router)
 app.include_router(exercises.router)
 app.include_router(workouts.router)
 app.include_router(snapshot.router)
+app.include_router(recommendations.router)
