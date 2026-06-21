@@ -1,11 +1,20 @@
-"""Каталог тренировок (S1.2): вид спорта и упражнение.
+"""Каталог тренировок (S1.2/S3.1): вид спорта и упражнение.
 
 sport — дисциплина (калистеника, бег, силовая…); на неё ссылаются сессии и ачивки.
+type делит дисциплины на силовые/кардио/навыковые (валидируется на CRUD, S3.1).
 exercise — конкретное упражнение внутри вида спорта (FK sport_id); на него ссылаются
 подходы/логи/рекорды. kind отделяет силовое/кардио/навык, unit — дефолтная единица.
 """
 
+from enum import StrEnum
+
 from sqlmodel import Field, SQLModel
+
+
+class SportType(StrEnum):
+    strength = "strength"
+    cardio = "cardio"
+    skill = "skill"
 
 
 class Sport(SQLModel, table=True):
@@ -13,7 +22,8 @@ class Sport(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
-    notes: str | None = None
+    type: SportType
+    description: str | None = None
 
 
 class Exercise(SQLModel, table=True):
