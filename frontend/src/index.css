@@ -115,3 +115,35 @@
     }
   }
 }
+
+/* Коуч (S5.9): ненавязчивое покачивание совы + мягкое появление бабла.
+ * Только transform/opacity → работа на компоновщике; reduced-motion гасит сверху. */
+.coach-bob {
+  animation: coach-bob 3.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+.coach-pop {
+  animation: coach-pop var(--duration-normal) var(--ease-out-expo) both;
+}
+
+@keyframes coach-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes coach-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

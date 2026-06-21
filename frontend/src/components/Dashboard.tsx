@@ -3,6 +3,7 @@
  *  GET /dashboard. Карточки «План на сегодня»/«Цель» — плейсхолдеры до своих спринтов. */
 
 import CalendarHeatmap from './CalendarHeatmap';
+import Coach from './Coach';
 import TodayPanel from './TodayPanel';
 
 const TODAY = [
@@ -28,6 +29,8 @@ export default function Dashboard() {
           лишнего шума.
         </p>
       </section>
+
+      <Coach />
 
       <TodayPanel />
 
