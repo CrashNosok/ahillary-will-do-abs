@@ -89,6 +89,47 @@ export type ExerciseInput = {
   notes: string | null;
 };
 
+/** Силовой подход — ввод (S3.7). exercise_id обязателен, метрики опциональны.
+ *  set_index проставляет фронт по порядку строк (1-based). */
+export type StrengthSetInput = {
+  exercise_id: number;
+  set_index: number | null;
+  weight_kg: number | null;
+  reps: number | null;
+  rest_sec: number | null;
+  rpe: number | null;
+};
+
+/** Создание силовой сессии (S3.7): шапка + ≥1 подход, всё уходит одним POST. */
+export type WorkoutInput = {
+  date: string; // ISO YYYY-MM-DD
+  sport_id: number | null;
+  title: string | null;
+  sets: StrengthSetInput[];
+};
+
+/** Силовой подход — ответ бэкенда (S3.4). */
+export type StrengthSet = {
+  id: number;
+  exercise_id: number;
+  set_index: number | null;
+  weight_kg: number | null;
+  reps: number | null;
+  rest_sec: number | null;
+  rpe: number | null;
+};
+
+/** Силовая сессия с подходами — ответ POST /workouts (S3.4/S3.7). */
+export type Workout = {
+  id: number;
+  date: string; // ISO YYYY-MM-DD
+  sport_id: number | null;
+  title: string | null;
+  notes: string | null;
+  created_at: string;
+  sets: StrengthSet[];
+};
+
 /** SMART-цель: ответ бэкенда (см. backend SmartGoal). Даты — ISO `YYYY-MM-DD`. */
 export type Goal = {
   id: number;
@@ -296,6 +337,10 @@ export const api = {
     request<Exercise[]>(sportId == null ? '/exercises' : `/exercises?sport_id=${sportId}`),
   createExercise: (input: ExerciseInput) =>
     request<Exercise>('/exercises', { method: 'POST', body: JSON.stringify(input) }),
+
+  // Силовая сессия (S3.7): шапка + все подходы одним POST → сессия с подходами.
+  createWorkout: (input: WorkoutInput) =>
+    request<Workout>('/workouts', { method: 'POST', body: JSON.stringify(input) }),
 
   // Дашборд-хитмап: флаги данных по дням месяца (start/end — ISO YYYY-MM-DD).
   getDashboard: (start: string, end: string) =>
