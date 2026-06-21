@@ -70,6 +70,7 @@ _S12_TABLES = {
 _EXPECTED_FKS = {
     ("exercise", "sport_id"): "sport",
     ("workout_session", "sport_id"): "sport",
+    ("workout_session", "activity_date"): "activity_day",  # связь с Welltory-днём (S3.9)
     ("strength_set", "session_id"): "workout_session",
     ("strength_set", "exercise_id"): "exercise",
     ("cardio_log", "session_id"): "workout_session",
