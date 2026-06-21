@@ -9,6 +9,7 @@ const NAV = [
   { to: '/recommendations', label: 'Рекомендации', end: false },
   { to: '/goal', label: 'Цель', end: false },
   { to: '/import', label: 'Импорт еды', end: false },
+  { to: '/import-activity', label: 'Импорт активности', end: false },
   { to: '/settings', label: 'Настройки', end: false },
 ] as const;
 

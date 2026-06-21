@@ -29,11 +29,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
-/** Загрузка файла (multipart). Не ставим Content-Type — браузер сам выставит
- *  boundary; ручной заголовок сломал бы парсинг формы на бэке. */
-async function upload<T>(path: string, file: File): Promise<T> {
-  const form = new FormData();
-  form.append('file', file);
+/** POST multipart-формы. Не ставим Content-Type — браузер сам выставит boundary;
+ *  ручной заголовок сломал бы парсинг формы на бэке. */
+async function postForm<T>(path: string, form: FormData): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     credentials: 'include',
@@ -44,6 +42,13 @@ async function upload<T>(path: string, file: File): Promise<T> {
     throw new ApiError(res.status, body?.detail ?? res.statusText);
   }
   return (await res.json()) as T;
+}
+
+/** Загрузка одного файла (поле `file`). */
+function upload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append('file', file);
+  return postForm<T>(path, form);
 }
 
 export type User = { id: number; email: string };
@@ -103,6 +108,34 @@ export type DiaryPreview = {
   import_id: string | null;
 };
 
+/** Импорт скрина активности Welltory (S1.11): распознанные метрики дня.
+ *  Все поля — целые или null (плитки не было / не распозналось). */
+export type ActivityFields = {
+  total_kcal: number | null;
+  active_kcal: number | null;
+  steps: number | null;
+  moving_min: number | null;
+  idle_min: number | null;
+  warmup_min: number | null;
+  active_met: number | null;
+  intense_met: number | null;
+};
+
+/** Результат шага сверки: распознанные поля + дата + сырой разбор модели. */
+export type ActivityPreview = ActivityFields & {
+  date: string; // ISO YYYY-MM-DD
+  raw_json: Record<string, unknown>;
+  saved: boolean;
+};
+
+/** Сохранённый день активности (ответ /import/activity). */
+export type ActivityDay = ActivityFields & {
+  date: string; // ISO YYYY-MM-DD
+  raw_json: Record<string, unknown> | null;
+  source_image_path: string | null;
+  parsed_at: string;
+};
+
 export const api = {
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) =>
@@ -123,4 +156,21 @@ export const api = {
   // Импорт еды: превью разбирает CSV без записи; save пишет идемпотентно по дню.
   previewImport: (file: File) => upload<DiaryPreview>('/import/food/preview', file),
   saveImport: (file: File) => upload<DiaryPreview>('/import/food', file),
+
+  // Импорт активности Welltory: превью распознаёт скрин без записи; save пишет
+  // выверенные пользователем поля (vision не дёргается) идемпотентно по дню.
+  previewActivity: (file: File, date: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('date', date);
+    return postForm<ActivityPreview>('/import/activity/preview', form);
+  },
+  saveActivity: (file: File, date: string, fields: ActivityFields, rawJson: unknown) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('date', date);
+    form.append('fields', JSON.stringify(fields));
+    form.append('raw_json', JSON.stringify(rawJson ?? {}));
+    return postForm<ActivityDay>('/import/activity', form);
+  },
 };
