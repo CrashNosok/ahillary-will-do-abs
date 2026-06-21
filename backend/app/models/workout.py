@@ -46,9 +46,10 @@ class CardioLog(SQLModel, table=True):
     session_id: int = Field(foreign_key="workout_session.id", index=True)
     exercise_id: int | None = Field(default=None, foreign_key="exercise.id", index=True)
     distance_km: float | None = None
-    duration_min: float | None = None
+    duration_sec: float | None = None  # длительность, сек (S3.5)
     avg_hr: int | None = None
-    avg_pace: str | None = None  # темп, напр. "5:30 /км"
+    max_hr: int | None = None  # пиковый пульс (S3.5)
+    avg_pace: str | None = None  # темп, считается из дистанции/времени, напр. "5:30 /км"
 
 
 class SkillLog(SQLModel, table=True):
