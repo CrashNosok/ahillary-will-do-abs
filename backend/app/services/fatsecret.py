@@ -20,7 +20,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.models.nutrition import FoodEntry
 
@@ -247,6 +247,7 @@ def import_food_diary(
     *,
     filename: str | None = None,
     import_id: str | None = None,
+    replace_day: bool = False,
 ) -> DiaryImport:
     """Разобрать дневник и записать продукты в food_entry под общим import_id.
 
@@ -254,8 +255,15 @@ def import_food_diary(
     что повторный импорт даёт отдельную партию. После commit у продуктов
     проставлены id. Пустые приёмы (без продуктов) строк не дают. Сверку сумм с
     заявленными итогами оставляем вызывающему (`sum_totals`/`totals_match`).
+
+    `replace_day=True` — идемпотентность по дню: перед записью удаляем прежние
+    food_entry той же даты, поэтому повторный импорт того же дня заменяет записи,
+    а не дублирует их (критерий приёмки S1.8). По умолчанию False — append.
     """
     parsed = parse_diary(raw, filename)
+    if replace_day:
+        for stale in session.exec(select(FoodEntry).where(FoodEntry.date == parsed.date)).all():
+            session.delete(stale)
     batch_id = import_id or uuid.uuid4().hex
     for entry in parsed.entries:
         entry.import_id = batch_id

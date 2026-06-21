@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, goals, health
+from app.api import auth, food, goals, health
 from app.core.config import CORS_ORIGINS
 from app.core.db import init_db
 from app.core.seed import seed_initial_user
@@ -32,3 +32,4 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(goals.router)
+app.include_router(food.router)
