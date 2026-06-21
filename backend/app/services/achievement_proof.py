@@ -9,10 +9,16 @@ import subprocess
 from pathlib import Path
 from uuid import uuid4
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core import db
 from app.models.achievement import AchievementProof
+
+
+def has_proof(session: Session, achievement_id: int) -> bool:
+    """Есть ли у ачивки хотя бы один видео-пруф (правило закрытия S5.5)."""
+    stmt = select(AchievementProof.id).where(AchievementProof.achievement_id == achievement_id)
+    return session.exec(stmt.limit(1)).first() is not None
 
 
 class ThumbnailError(RuntimeError):

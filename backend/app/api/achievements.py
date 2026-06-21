@@ -14,6 +14,7 @@ from sqlmodel import Session
 
 from app.api.deps import CurrentUser
 from app.core.db import get_session
+from app.models._time import utcnow
 from app.models.achievement import Achievement, AchievementProof
 from app.services import achievement_proof as proof_service
 
@@ -46,3 +47,32 @@ async def upload_proof(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Не удалось сгенерировать превью из видео: {exc}",
         ) from exc
+
+
+@router.post("/{achievement_id}/unlock")
+def unlock_achievement(
+    achievement_id: int,
+    session: SessionDep,
+    _: CurrentUser,
+) -> Achievement:
+    """Закрыть ачивку (S5.5): unlocked возможен ТОЛЬКО при наличии видео-пруфа.
+
+    Серверная проверка: без achievement_proof закрытие отклоняется (409), статус и
+    unlocked_at не меняются. Идемпотентно — повторный вызов сохраняет исходный момент
+    закрытия. Неизвестная ачивка → 404.
+    """
+    achievement = session.get(Achievement, achievement_id)
+    if achievement is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ачивка не найдена")
+    if not proof_service.has_proof(session, achievement_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Нельзя закрыть ачивку без видео-пруфа",
+        )
+    achievement.status = "unlocked"
+    if achievement.unlocked_at is None:
+        achievement.unlocked_at = utcnow()
+    session.add(achievement)
+    session.commit()
+    session.refresh(achievement)
+    return achievement
