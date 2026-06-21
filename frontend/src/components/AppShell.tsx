@@ -8,6 +8,7 @@ const NAV = [
   { to: '/workouts', label: 'Тренировки', end: false },
   { to: '/recommendations', label: 'Рекомендации', end: false },
   { to: '/goal', label: 'Цель', end: false },
+  { to: '/body', label: 'Замеры', end: false },
   { to: '/import', label: 'Импорт еды', end: false },
   { to: '/import-activity', label: 'Импорт активности', end: false },
   { to: '/settings', label: 'Настройки', end: false },

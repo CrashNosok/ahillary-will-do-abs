@@ -76,6 +76,26 @@ export type GoalInput = {
   why_notes: string | null;
 };
 
+/** Замер тела (S2.2): обхваты в см, дата ISO `YYYY-MM-DD`. Все обхваты опциональны. */
+export type BodyMeasurement = {
+  id: number;
+  date: string;
+  height_cm: number | null;
+  waist_cm: number | null;
+  belly_cm: number | null;
+  calf_l_cm: number | null;
+  calf_r_cm: number | null;
+  chest_cm: number | null;
+  shoulders_cm: number | null;
+  biceps_l_cm: number | null;
+  biceps_r_cm: number | null;
+  glutes_cm: number | null;
+  notes: string | null;
+};
+
+/** Поля формы замеров (S2.3) — то, что задаёт пользователь (без id/notes). */
+export type BodyMeasurementInput = Omit<BodyMeasurement, 'id' | 'notes'>;
+
 /** Импорт дневника питания (S1.8): превью разобранного дня и результат сохранения. */
 export type ImportTotals = {
   kcal: number;
@@ -181,6 +201,13 @@ export const api = {
     request<Goal>('/goals', { method: 'POST', body: JSON.stringify(input) }),
   updateGoal: (id: number, input: GoalInput) =>
     request<Goal>(`/goals/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+
+  // Замеры тела (S2.3): создать запись обхватов (см) на дату. Бэкенд — POST /body-measurements.
+  createMeasurement: (input: BodyMeasurementInput) =>
+    request<BodyMeasurement>('/body-measurements', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   // Импорт еды: превью разбирает CSV без записи; save пишет идемпотентно по дню.
   previewImport: (file: File) => upload<DiaryPreview>('/import/food/preview', file),
