@@ -159,15 +159,18 @@ def trello(cfg: Config, method: str, path: str, params: dict | None = None) -> o
         url = f"{API}{path}?{urllib.parse.urlencode(auth)}"
         data = urllib.parse.urlencode(params).encode()
     req = urllib.request.Request(url, data=data, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = resp.read().decode()
-            return json.loads(body) if body else None
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode(errors="replace")[:300]
-        raise TrelloError(f"Trello {method} {path} -> HTTP {e.code}: {detail}") from e
-    except urllib.error.URLError as e:
-        raise TrelloError(f"Trello {method} {path} -> network error: {e.reason}") from e
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                body = resp.read().decode()
+                return json.loads(body) if body else None
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode(errors="replace")[:300]
+            raise TrelloError(f"Trello {method} {path} -> HTTP {e.code}: {detail}") from e
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            if attempt == 2:
+                raise TrelloError(f"Trello {method} {path} -> network error after 3 attempts: {e}") from e
+            time.sleep(2 ** attempt)
 
 
 def resolve_board(cfg: Config) -> dict:
