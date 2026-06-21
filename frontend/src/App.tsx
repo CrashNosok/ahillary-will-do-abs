@@ -10,6 +10,7 @@ import InbodyImportPage from './components/InbodyImportPage';
 import PlaceholderPage from './components/PlaceholderPage';
 import ProgressPage from './components/ProgressPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import RecommendationsPage from './components/RecommendationsPage';
 import SportsPage from './components/SportsPage';
 import WorkoutLoggerPage from './components/WorkoutLoggerPage';
 import LoginPage from './pages/LoginPage';
@@ -35,7 +36,7 @@ export default function App() {
             <Route path="progress" element={<ProgressPage />} />
             <Route path="sports" element={<SportsPage />} />
             <Route path="workouts" element={<WorkoutLoggerPage />} />
-            <Route path="recommendations" element={<PlaceholderPage title="Рекомендации" />} />
+            <Route path="recommendations" element={<RecommendationsPage />} />
             <Route path="goal" element={<GoalPage />} />
             <Route path="body" element={<BodyMeasurementsPage />} />
             <Route path="import" element={<ImportPage />} />

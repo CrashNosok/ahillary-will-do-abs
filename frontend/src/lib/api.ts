@@ -436,6 +436,68 @@ export type DashboardData = {
   today: TodaySummary;
 };
 
+/** Макронутриенты в граммах (S4.3). */
+export type Macros = { protein_g: number; carbs_g: number; fat_g: number };
+
+/** Один приём пищи (S4.3): название + калории + макросы. */
+export type Meal = { name: string; calories: number; macros: Macros };
+
+/** Рацион одного типа дня (S4.3): тренировочный день или день отдыха. */
+export type DayNutrition = {
+  day_type: 'training' | 'rest';
+  calories: number;
+  macros: Macros;
+  meals: Meal[];
+};
+
+/** План питания (S4.3): раздельно тренировочный день и день отдыха. */
+export type MealPlan = {
+  training_day: DayNutrition;
+  rest_day: DayNutrition;
+  notes: string | null;
+};
+
+/** Назначение упражнения (S4.3). working_weight_kg = null → свой вес/кардио. */
+export type ExercisePrescription = {
+  name: string;
+  sets: number;
+  reps: number;
+  working_weight_kg: number | null;
+};
+
+/** Одна тренировка недели (S4.3): номер, фокус и упражнения. */
+export type WorkoutDay = { day: number; focus: string; exercises: ExercisePrescription[] };
+
+/** Шаг недельной прогрессии (S4.3). */
+export type WeekProgression = { week: number; adjustment: string };
+
+/** План тренировок (S4.3): расписание недели + недельная прогрессия. */
+export type WorkoutPlan = {
+  days_per_week: number;
+  schedule: WorkoutDay[];
+  weekly_progression: WeekProgression[];
+};
+
+/** Структурированный план рекомендации (S4.3): еда + тренировки + их связка. */
+export type RecommendationPlan = {
+  meal_plan: MealPlan;
+  workout_plan: WorkoutPlan;
+  sync_note: string;
+};
+
+/** Сохранённая рекомендация (S4.4/S4.5): запись истории с распарсенным планом.
+ *  output_json = null только у битой записи; обычно несёт RecommendationPlan. raw_text —
+ *  сырой ответ модели для отладки. */
+export type Recommendation = {
+  id: number;
+  created_at: string; // ISO datetime
+  model: string;
+  input_snapshot_json: Record<string, unknown> | null;
+  output_json: RecommendationPlan | null;
+  raw_text: string | null;
+  goal_id: number | null;
+};
+
 export const api = {
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) =>
@@ -530,6 +592,13 @@ export const api = {
     form.append('raw_json', JSON.stringify(rawJson ?? {}));
     return postForm<ActivityDay>('/import/activity', form);
   },
+
+  // Рекомендации (S4.5): генерация по кнопке (снапшот → Opus → план), история списком,
+  // деталь по id. Генерация может вернуть 502, если апстрим LLM недоступен.
+  generateRecommendation: () =>
+    request<Recommendation>('/recommendations/generate', { method: 'POST' }),
+  listRecommendations: () => request<Recommendation[]>('/recommendations'),
+  getRecommendation: (id: number) => request<Recommendation>(`/recommendations/${id}`),
 
   // Ингест скрина InBody (S2.11): превью распознаёт скрин без записи; save пишет
   // выверенные пользователем поля (vision не дёргается) идемпотентно по дню.

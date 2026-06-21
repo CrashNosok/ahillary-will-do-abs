@@ -1,0 +1,286 @@
+/** Экран рекомендаций (S4.5): кнопка генерации + история списком + деталь по id.
+ *  Кнопка зовёт POST /recommendations/generate (снапшот → Opus → план); готовая запись
+ *  попадает в историю слева и раскрывается планом справа. Деталь читается по id с бэкенда. */
+
+import { useEffect, useState } from 'react';
+import { ApiError, type DayNutrition, type Recommendation, type WorkoutPlan } from '../lib/api';
+import {
+  useGenerateRecommendation,
+  useRecommendation,
+  useRecommendations,
+} from '../lib/recommendations';
+
+// ponytail: created_at — наивный UTC без 'Z'; для личного трекера сдвиг зоны при показе
+// несущественен. Захотим точности — добавим 'Z' на бэке.
+const dateTimeFmt = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'long',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function formatCreated(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : dateTimeFmt.format(d);
+}
+
+function macrosLine(m: { protein_g: number; carbs_g: number; fat_g: number }): string {
+  return `Б ${m.protein_g} · У ${m.carbs_g} · Ж ${m.fat_g} г`;
+}
+
+export default function RecommendationsPage() {
+  const { data: history, isPending: historyPending } = useRecommendations();
+  const generate = useGenerateRecommendation();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { data: detail, isPending: detailPending } = useRecommendation(selectedId);
+
+  // По умолчанию открыта самая свежая запись истории, пока пользователь не выбрал другую.
+  useEffect(() => {
+    if (selectedId == null && history && history.length > 0) {
+      setSelectedId(history[0].id);
+    }
+  }, [history, selectedId]);
+
+  function onGenerate() {
+    generate.mutate(undefined, { onSuccess: (rec) => setSelectedId(rec.id) });
+  }
+
+  const generateError =
+    generate.error instanceof ApiError
+      ? generate.error.status === 502
+        ? 'Модель недоступна (502). Проверьте ключ LLM и повторите.'
+        : `Не удалось сгенерировать (${generate.error.status}).`
+      : generate.error
+        ? 'Не удалось сгенерировать. Проверьте, что сервер запущен.'
+        : null;
+
+  return (
+    <section aria-labelledby="reco-heading" className="flex flex-col gap-[var(--space-section)]">
+      <div className="max-w-2xl">
+        <p className="font-display text-sm font-medium uppercase tracking-[0.2em] text-accent">
+          Рекомендации
+        </p>
+        <h1 id="reco-heading" className="mt-3 text-display">
+          План от модели
+        </h1>
+        <p className="mt-4 text-lg leading-relaxed text-muted">
+          Сгенерируйте план питания и тренировок по вашим данным. Каждая генерация сохраняется в
+          историю — её можно открыть и сравнить с прошлыми.
+        </p>
+
+        <div className="mt-6 flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={generate.isPending}
+            className="rounded-xl bg-accent px-5 py-3 font-display font-semibold text-accent-ink transition-all duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-10px] hover:shadow-accent/60 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {generate.isPending ? 'Генерирую…' : 'Сгенерировать рекомендацию'}
+          </button>
+          {generate.isPending && (
+            <span className="text-sm text-muted">Модель составляет план, это занимает время…</span>
+          )}
+        </div>
+
+        {generateError && (
+          <p role="alert" className="mt-3 text-sm font-medium text-amber">
+            {generateError}
+          </p>
+        )}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <HistoryList
+          history={history}
+          isPending={historyPending}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+        />
+        <DetailPanel
+          hasHistory={Boolean(history && history.length > 0)}
+          detail={selectedId == null ? null : (detail ?? null)}
+          isPending={selectedId != null && detailPending}
+        />
+      </div>
+    </section>
+  );
+}
+
+function HistoryList({
+  history,
+  isPending,
+  selectedId,
+  onSelect,
+}: {
+  history: Recommendation[] | undefined;
+  isPending: boolean;
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-6">
+      <h2 className="text-display">История</h2>
+      {isPending ? (
+        <p className="text-muted">Загрузка…</p>
+      ) : !history || history.length === 0 ? (
+        <p className="text-muted">
+          История пуста. Нажмите «Сгенерировать рекомендацию» — первая появится здесь.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {history.map((rec) => {
+            const active = rec.id === selectedId;
+            return (
+              <li key={rec.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(rec.id)}
+                  aria-current={active}
+                  className={`flex w-full flex-col items-start gap-0.5 rounded-xl border px-4 py-3 text-left transition-colors duration-[var(--duration-fast)] ${
+                    active
+                      ? 'border-accent/60 bg-panel'
+                      : 'border-line hover:border-accent/40 hover:bg-panel'
+                  }`}
+                >
+                  <span className="font-display font-semibold tracking-tight">
+                    {formatCreated(rec.created_at)}
+                  </span>
+                  <span className="text-sm text-muted">{rec.model}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function DetailPanel({
+  hasHistory,
+  detail,
+  isPending,
+}: {
+  hasHistory: boolean;
+  detail: Recommendation | null;
+  isPending: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-6 rounded-[var(--radius-card)] border border-line bg-gradient-to-br from-panel to-surface p-6">
+      {isPending ? (
+        <p className="text-muted">Загрузка плана…</p>
+      ) : !detail ? (
+        <p className="text-muted">
+          {hasHistory
+            ? 'Выберите рекомендацию из истории слева, чтобы посмотреть план.'
+            : 'Здесь появится план, когда вы сгенерируете первую рекомендацию.'}
+        </p>
+      ) : detail.output_json ? (
+        <RecommendationPlanView plan={detail.output_json} created={detail.created_at} />
+      ) : (
+        // Запись без распарсенного плана — показываем сырой ответ, чтобы не «терять» её.
+        <div>
+          <h2 className="text-display">План недоступен</h2>
+          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm text-muted">
+            {detail.raw_text ?? '—'}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecommendationPlanView({
+  plan,
+  created,
+}: {
+  plan: NonNullable<Recommendation['output_json']>;
+  created: string;
+}) {
+  return (
+    <>
+      <div>
+        <h2 className="text-display">План от {formatCreated(created)}</h2>
+        <p className="mt-2 leading-relaxed text-muted">{plan.sync_note}</p>
+      </div>
+
+      <section aria-label="План питания" className="flex flex-col gap-4">
+        <h3 className="font-display text-lg font-semibold tracking-tight">Питание</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <DayCard title="Тренировочный день" day={plan.meal_plan.training_day} />
+          <DayCard title="День отдыха" day={plan.meal_plan.rest_day} />
+        </div>
+        {plan.meal_plan.notes && (
+          <p className="text-sm leading-relaxed text-muted">{plan.meal_plan.notes}</p>
+        )}
+      </section>
+
+      <WorkoutPlanView plan={plan.workout_plan} />
+    </>
+  );
+}
+
+function DayCard({ title, day }: { title: string; day: DayNutrition }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-display font-semibold tracking-tight">{title}</span>
+        <span className="font-display text-xl font-semibold tracking-tight">
+          {day.calories}
+          <span className="ml-1 text-sm font-normal text-muted">ккал</span>
+        </span>
+      </div>
+      <p className="text-sm text-muted">{macrosLine(day.macros)}</p>
+      <ul className="flex flex-col gap-1.5 border-t border-line pt-3">
+        {day.meals.map((meal, i) => (
+          <li key={i} className="flex items-baseline justify-between gap-3 text-sm">
+            <span>{meal.name}</span>
+            <span className="text-muted">{meal.calories} ккал</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function WorkoutPlanView({ plan }: { plan: WorkoutPlan }) {
+  return (
+    <section aria-label="План тренировок" className="flex flex-col gap-4">
+      <h3 className="font-display text-lg font-semibold tracking-tight">
+        Тренировки · {plan.days_per_week} в неделю
+      </h3>
+      <div className="flex flex-col gap-3">
+        {plan.schedule.map((wday) => (
+          <div key={wday.day} className="rounded-xl border border-line bg-surface p-4">
+            <p className="font-display font-semibold tracking-tight">
+              День {wday.day}. {wday.focus}
+            </p>
+            <ul className="mt-2 flex flex-col gap-1 text-sm">
+              {wday.exercises.map((ex, i) => (
+                <li key={i} className="flex items-baseline justify-between gap-3">
+                  <span>{ex.name}</span>
+                  <span className="text-muted">
+                    {ex.sets}×{ex.reps}
+                    {ex.working_weight_kg != null && ` · ${ex.working_weight_kg} кг`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-line bg-surface p-4">
+        <p className="font-display font-semibold tracking-tight">Недельная прогрессия</p>
+        <ol className="mt-2 flex flex-col gap-1.5 text-sm">
+          {plan.weekly_progression.map((w) => (
+            <li key={w.week} className="flex gap-2">
+              <span className="text-muted">Неделя {w.week}:</span>
+              <span>{w.adjustment}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
