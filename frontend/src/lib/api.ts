@@ -528,6 +528,25 @@ export type Recommendation = {
   generation_ms: number | null; // S4.9: длительность генерации, мс (null у записей до S4.9)
 };
 
+/** Тир сложности ачивки (S5.1): хранится в поле `level`, по возрастанию сложности. */
+export type AchievementTier = 'foundation' | 'intermediate' | 'advanced' | 'elite';
+
+/** Статус ачивки (S1.2): закрыта / в процессе / открыта. */
+export type AchievementStatus = 'locked' | 'in_progress' | 'unlocked';
+
+/** Ачивка вида спорта (S5.1/S5.2): достижение-вызов. `level` — тир сложности
+ *  (AchievementTier), но хранится строкой, поэтому тип широкий. */
+export type Achievement = {
+  id: number;
+  sport_id: number | null;
+  title: string;
+  description: string | null;
+  level: string | null;
+  status: AchievementStatus;
+  created_at: string;
+  unlocked_at: string | null;
+};
+
 export const api = {
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) =>
@@ -541,6 +560,9 @@ export const api = {
   listSports: () => request<Sport[]>('/sports'),
   createSport: (input: SportInput) =>
     request<Sport>('/sports', { method: 'POST', body: JSON.stringify(input) }),
+
+  // Ачивки вида спорта (S5.2): набор достижений со статусами (locked/in_progress/unlocked).
+  listAchievements: (sportId: number) => request<Achievement[]>(`/sports/${sportId}/achievements`),
 
   // Упражнения библиотеки (S3.2): без sport_id — все; иначе фильтр по виду спорта.
   listExercises: (sportId?: number) =>
