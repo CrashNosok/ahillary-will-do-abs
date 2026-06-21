@@ -1,23 +1,9 @@
-/** Контент раздела «Обзор» — витрина каркаса: герой + бенто-карточки + панель дня.
- *  Значения — демонстрационные плейсхолдеры (данные подключим в следующих спринтах).
- *  Календарь-хитмап (S1.14) — уже на реальных данных GET /dashboard. */
+/** Контент раздела «Обзор» — витрина каркаса: герой + панель дня + хитмап.
+ *  Панель «Сегодня» (S1.15) и календарь-хитмап (S1.14) — на реальных данных
+ *  GET /dashboard. Карточки «План на сегодня»/«Цель» — плейсхолдеры до своих спринтов. */
 
 import CalendarHeatmap from './CalendarHeatmap';
-
-type Stat = {
-  label: string;
-  value: string;
-  unit: string;
-  delta: string;
-  trend: 'up' | 'down';
-};
-
-const STATS: Stat[] = [
-  { label: 'Текущий вес', value: '78,4', unit: 'кг', delta: '−1,2 за неделю', trend: 'down' },
-  { label: 'Калории сегодня', value: '1 640', unit: 'ккал', delta: '−360 до нормы', trend: 'down' },
-  { label: 'Тренировки', value: '3', unit: '/ 4 за неделю', delta: '+1 к плану', trend: 'up' },
-  { label: 'Серия дней', value: '12', unit: 'дней', delta: 'личный рекорд', trend: 'up' },
-];
+import TodayPanel from './TodayPanel';
 
 const TODAY = [
   { time: '08:30', title: 'Замер веса', done: true },
@@ -43,13 +29,7 @@ export default function Dashboard() {
         </p>
       </section>
 
-      <section aria-label="Ключевые показатели">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {STATS.map((s) => (
-            <StatCard key={s.label} {...s} />
-          ))}
-        </div>
-      </section>
+      <TodayPanel />
 
       <CalendarHeatmap />
 
@@ -96,20 +76,5 @@ export default function Dashboard() {
         </div>
       </section>
     </div>
-  );
-}
-
-function StatCard({ label, value, unit, delta, trend }: Stat) {
-  return (
-    <article className="group rounded-[var(--radius-card)] border border-line bg-surface p-5 transition-colors duration-[var(--duration-normal)] hover:border-accent/50">
-      <p className="text-sm text-muted">{label}</p>
-      <p className="mt-3 flex items-baseline gap-1.5">
-        <span className="font-display text-4xl font-semibold tracking-tight">{value}</span>
-        <span className="text-sm text-muted">{unit}</span>
-      </p>
-      <p className={`mt-2 text-sm font-medium ${trend === 'up' ? 'text-accent' : 'text-amber'}`}>
-        {delta}
-      </p>
-    </article>
   );
 }

@@ -145,11 +145,20 @@ export type DayFlags = {
   has_measurement: boolean;
 };
 
+/** Сводка энергобаланса за сегодня (S1.15). deficit = kcal_out − kcal_in. */
+export type TodaySummary = {
+  date: string; // ISO YYYY-MM-DD
+  kcal_in: number;
+  kcal_out: number;
+  deficit: number;
+};
+
 export type DashboardData = {
   start: string; // ISO YYYY-MM-DD
   end: string; // ISO YYYY-MM-DD
   days: DayFlags[];
   current_streak: number;
+  today: TodaySummary;
 };
 
 export const api = {
