@@ -29,6 +29,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
+/** Загрузка файла (multipart). Не ставим Content-Type — браузер сам выставит
+ *  boundary; ручной заголовок сломал бы парсинг формы на бэке. */
+async function upload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+    throw new ApiError(res.status, body?.detail ?? res.statusText);
+  }
+  return (await res.json()) as T;
+}
+
 export type User = { id: number; email: string };
 
 /** SMART-цель: ответ бэкенда (см. backend SmartGoal). Даты — ISO `YYYY-MM-DD`. */
@@ -54,6 +71,38 @@ export type GoalInput = {
   why_notes: string | null;
 };
 
+/** Импорт дневника питания (S1.8): превью разобранного дня и результат сохранения. */
+export type ImportTotals = {
+  kcal: number;
+  fat_g: number;
+  carb_g: number;
+  protein_g: number;
+};
+
+export type ImportProduct = {
+  product_name: string;
+  portion_raw: string | null;
+  kcal: number | null;
+  protein_g: number | null;
+  fat_g: number | null;
+  carb_g: number | null;
+};
+
+export type ImportMeal = {
+  meal: string;
+  products: ImportProduct[];
+  totals: ImportTotals;
+};
+
+export type DiaryPreview = {
+  date: string; // ISO YYYY-MM-DD
+  meals: ImportMeal[];
+  totals: ImportTotals;
+  product_count: number;
+  saved: boolean;
+  import_id: string | null;
+};
+
 export const api = {
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) =>
@@ -70,4 +119,8 @@ export const api = {
     request<Goal>('/goals', { method: 'POST', body: JSON.stringify(input) }),
   updateGoal: (id: number, input: GoalInput) =>
     request<Goal>(`/goals/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+
+  // Импорт еды: превью разбирает CSV без записи; save пишет идемпотентно по дню.
+  previewImport: (file: File) => upload<DiaryPreview>('/import/food/preview', file),
+  saveImport: (file: File) => upload<DiaryPreview>('/import/food', file),
 };

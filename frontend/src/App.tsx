@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import Dashboard from './components/Dashboard';
 import GoalPage from './components/GoalPage';
+import ImportPage from './components/ImportPage';
 import PlaceholderPage from './components/PlaceholderPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="workouts" element={<PlaceholderPage title="Тренировки" />} />
             <Route path="recommendations" element={<PlaceholderPage title="Рекомендации" />} />
             <Route path="goal" element={<GoalPage />} />
+            <Route path="import" element={<ImportPage />} />
             <Route path="settings" element={<PlaceholderPage title="Настройки" />} />
           </Route>
 
