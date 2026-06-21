@@ -130,6 +130,70 @@ export type Workout = {
   sets: StrengthSet[];
 };
 
+/** Кардио-сессия — ввод (S3.8). distance_km/duration_sec обязательны (>0); пульс опционален. */
+export type CardioInput = {
+  date: string; // ISO YYYY-MM-DD
+  sport_id: number | null;
+  title: string | null;
+  distance_km: number;
+  duration_sec: number;
+  avg_hr: number | null;
+  max_hr: number | null;
+};
+
+/** Кардио-сессия — ответ бэкенда (S3.5): метрики + рассчитанный темп (avg_pace). */
+export type CardioLog = {
+  id: number;
+  session_id: number;
+  date: string; // ISO YYYY-MM-DD
+  sport_id: number | null;
+  exercise_id: number | null;
+  title: string | null;
+  notes: string | null;
+  created_at: string;
+  distance_km: number | null;
+  duration_sec: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  avg_pace: string | null;
+};
+
+/** Элемент скилл-сессии — ввод (S3.8). attempts ≥ 1, landed 0..attempts. */
+export type SkillEntryInput = {
+  exercise_id: number;
+  attempts: number;
+  landed: number;
+  notes: string | null;
+};
+
+/** Создание скилл-сессии (S3.8): шапка + ≥1 элемент, всё уходит одним POST. */
+export type SkillInput = {
+  date: string; // ISO YYYY-MM-DD
+  sport_id: number | null;
+  title: string | null;
+  entries: SkillEntryInput[];
+};
+
+/** Элемент скилл-сессии — ответ бэкенда (S3.6). */
+export type SkillEntry = {
+  id: number;
+  exercise_id: number;
+  attempts: number | null;
+  landed: number | null;
+  notes: string | null;
+};
+
+/** Скилл-сессия с элементами — ответ POST /workouts/skill (S3.6). */
+export type SkillSession = {
+  id: number;
+  date: string; // ISO YYYY-MM-DD
+  sport_id: number | null;
+  title: string | null;
+  notes: string | null;
+  created_at: string;
+  entries: SkillEntry[];
+};
+
 /** SMART-цель: ответ бэкенда (см. backend SmartGoal). Даты — ISO `YYYY-MM-DD`. */
 export type Goal = {
   id: number;
@@ -341,6 +405,14 @@ export const api = {
   // Силовая сессия (S3.7): шапка + все подходы одним POST → сессия с подходами.
   createWorkout: (input: WorkoutInput) =>
     request<Workout>('/workouts', { method: 'POST', body: JSON.stringify(input) }),
+
+  // Кардио-сессия (S3.8): дистанция/время/пульс одним POST; бэкенд считает темп.
+  createCardio: (input: CardioInput) =>
+    request<CardioLog>('/workouts/cardio', { method: 'POST', body: JSON.stringify(input) }),
+
+  // Скилл-сессия (S3.8): шапка + элементы (попытки/приземления) одним POST.
+  createSkill: (input: SkillInput) =>
+    request<SkillSession>('/workouts/skill', { method: 'POST', body: JSON.stringify(input) }),
 
   // Дашборд-хитмап: флаги данных по дням месяца (start/end — ISO YYYY-MM-DD).
   getDashboard: (start: string, end: string) =>
