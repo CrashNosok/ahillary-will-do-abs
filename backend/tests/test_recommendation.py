@@ -6,8 +6,9 @@
 - «хранится исходный raw для отладки» — `raw_text` хранит сырой текст модели той
   попытки, что прошла валидацию.
 
-Сеть не дёргаем: `llm.text` мокается. Проверяем и сервис напрямую, и HTTP-роут
-`/recommendations` под сессией (генерация и список).
+Сеть не дёргаем: `llm.text` мокается. Проверяем и сервис напрямую, и HTTP-роуты
+под сессией: генерация (POST /generate), список (GET /recommendations) и деталь по id
+(GET /recommendations/{id}, S4.5: 200 + 404).
 """
 
 import json
@@ -159,16 +160,16 @@ def test_post_requires_auth(engine):
 
     app.dependency_overrides[get_session] = override_get_session
     try:
-        assert TestClient(app).post("/recommendations").status_code == 401
+        assert TestClient(app).post("/recommendations/generate").status_code == 401
     finally:
         app.dependency_overrides.clear()
 
 
 def test_post_generates_and_get_lists(client, engine, monkeypatch):
-    """POST генерирует и сохраняет (201), GET возвращает её в списке."""
+    """POST /generate генерирует и сохраняет (201), GET возвращает её в списке."""
     monkeypatch.setattr(llm, "text", _reply(VALID_RAW))
 
-    resp = client.post("/recommendations")
+    resp = client.post("/recommendations/generate")
     assert resp.status_code == 201
     body = resp.json()
     assert body["model"] == settings.model_reco
@@ -182,6 +183,42 @@ def test_post_generates_and_get_lists(client, engine, monkeypatch):
     assert items[0]["id"] == body["id"]
 
 
+def test_get_detail_returns_full_record(client, monkeypatch):
+    """GET /{id} (S4.5): деталь по id отдаёт сохранённую запись целиком."""
+    monkeypatch.setattr(llm, "text", _reply(VALID_RAW))
+    created = client.post("/recommendations/generate").json()
+
+    resp = client.get(f"/recommendations/{created['id']}")
+    assert resp.status_code == 200
+    detail = resp.json()
+    assert detail["id"] == created["id"]
+    assert detail["raw_text"] == VALID_RAW
+    # Деталь несёт распарсенный план и вход модели — это и есть «просмотр прошлой».
+    assert detail["output_json"]["meal_plan"]["training_day"]["calories"] == 2400
+    assert set(detail["input_snapshot_json"]) >= {"goal", "nutrition", "training", "window"}
+
+
+def test_get_detail_unknown_id_returns_404(client):
+    """GET /{id} (S4.5): несуществующий id → 404 с понятным сообщением."""
+    resp = client.get("/recommendations/9999")
+    assert resp.status_code == 404
+    assert "не найдена" in resp.json()["detail"]
+
+
+def test_get_detail_requires_auth(engine):
+    """Деталь под сессией: без логина → 401."""
+
+    def override_get_session():
+        with Session(engine) as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    try:
+        assert TestClient(app).get("/recommendations/1").status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_post_llm_error_returns_502(client, monkeypatch):
     """Сбой модели → 502, тело с понятным сообщением."""
 
@@ -190,6 +227,6 @@ def test_post_llm_error_returns_502(client, monkeypatch):
 
     monkeypatch.setattr(llm, "text", boom)
 
-    resp = client.post("/recommendations")
+    resp = client.post("/recommendations/generate")
     assert resp.status_code == 502
     assert "модели" in resp.json()["detail"]

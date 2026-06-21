@@ -1,9 +1,10 @@
-"""Рекомендации (S4.4): сгенерировать (вызов Opus) и посмотреть сохранённые.
+"""Рекомендации (S4.4/S4.5): сгенерировать (вызов Opus), список истории и деталь по id.
 
-POST /recommendations — собирает снапшот, зовёт MODEL_RECO, парсит по схеме S4.3 и
-сохраняет `Recommendation` (input_snapshot_json, output_json, raw_text, model). Возвращает
-запись с распарсенным планом и сырым текстом для отладки.
+POST /recommendations/generate — собирает снапшот, зовёт MODEL_RECO, парсит по схеме S4.3
+и сохраняет `Recommendation` (input_snapshot_json, output_json, raw_text, model). Возвращает
+запись с распарсенным планом и сырым текстом для отладки. Это действие по кнопке (S4.5).
 GET  /recommendations — последние сохранённые рекомендации (свежие сверху), без вызова LLM.
+GET  /recommendations/{id} — одна сохранённая рекомендация целиком (404, если такой нет).
 
 Под сессией (CurrentUser) — приложение однопользовательское. Ошибка LLM или невалидный
 ответ модели после ретраев → 502 (сбой апстрима), в БД при этом ничего не пишется.
@@ -30,7 +31,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 _LIST_LIMIT = 20
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/generate", status_code=status.HTTP_201_CREATED)
 def create_recommendation(
     session: SessionDep,
     _: CurrentUser,
@@ -52,3 +53,13 @@ def list_recommendations(session: SessionDep, _: CurrentUser) -> list[Recommenda
             select(Recommendation).order_by(Recommendation.created_at.desc()).limit(_LIST_LIMIT)
         )
     )
+
+
+@router.get("/{recommendation_id}")
+def get_recommendation(
+    recommendation_id: int, session: SessionDep, _: CurrentUser
+) -> Recommendation:
+    rec = session.get(Recommendation, recommendation_id)
+    if rec is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Рекомендация не найдена")
+    return rec
