@@ -7,14 +7,18 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
 from app.core.db import get_session
+from app.models.achievement import Achievement
 from app.models.sport import Sport, SportType
+from app.services import achievement as achievement_service
+from app.services.achievement_schema import AthleteLevel, InvalidAchievementSetError
+from app.services.llm import LLMError
 
 router = APIRouter(prefix="/sports", tags=["sports"])
 
@@ -84,3 +88,25 @@ def delete_sport(sport_id: int, session: SessionDep, _: CurrentUser) -> None:
     sport = _get_or_404(session, sport_id)
     session.delete(sport)
     session.commit()
+
+
+@router.post("/{sport_id}/achievements/generate", status_code=status.HTTP_201_CREATED)
+def generate_sport_achievements(
+    sport_id: int,
+    session: SessionDep,
+    _: CurrentUser,
+    level: Annotated[AthleteLevel, Query()] = AthleteLevel.beginner,
+) -> list[Achievement]:
+    """LLM-генератор ачивок (S5.1): тированный набор под дисциплину и уровень атлета.
+
+    Уровень — query-параметр, по умолчанию самый безопасный (beginner). Ошибка модели или
+    невалидный ответ после ретраев → 502 (сбой апстрима), в БД при этом ничего не пишется.
+    """
+    sport = _get_or_404(session, sport_id)
+    try:
+        return achievement_service.generate_achievements(session, sport, level)
+    except (LLMError, InvalidAchievementSetError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Не удалось получить валидный набор ачивок от модели: {exc}",
+        ) from exc
