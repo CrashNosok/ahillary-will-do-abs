@@ -99,6 +99,8 @@ def test_generate_persists_parsed_plan_and_raw(engine, monkeypatch):
     assert rec.output_json["meal_plan"]["training_day"]["calories"] == 2400
     assert rec.output_json["workout_plan"]["days_per_week"] == 3
     assert "sync_note" in rec.output_json
+    # S4.9: засечён замер длительности генерации (мс) — целое, не отрицательное.
+    assert isinstance(rec.generation_ms, int) and rec.generation_ms >= 0
     # Вход модели сохранён целиком.
     assert set(rec.input_snapshot_json) >= {"goal", "nutrition", "training", "window"}
 
@@ -175,6 +177,7 @@ def test_post_generates_and_get_lists(client, engine, monkeypatch):
     assert body["model"] == settings.model_reco
     assert body["raw_text"] == VALID_RAW
     assert body["output_json"]["workout_plan"]["days_per_week"] == 3
+    assert isinstance(body["generation_ms"], int) and body["generation_ms"] >= 0  # S4.9
 
     listed = client.get("/recommendations")
     assert listed.status_code == 200

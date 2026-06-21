@@ -17,6 +17,7 @@ S4.3, поэтому промпт согласован именно с её фо
 """
 
 import json
+import time
 from typing import Any
 
 from sqlmodel import Session
@@ -98,7 +99,11 @@ def generate_recommendation(
         captured["raw"] = raw
         return raw
 
+    # S4.9: засекаем именно генерацию (вызовы модели + ретраи парса) — снапшот собирается
+    # локально и копейки не стоит. monotonic — на случай перевода системных часов.
+    started = time.monotonic()
     plan: RecommendationPlan = generate_valid_plan(produce, attempts=attempts)
+    generation_ms = round((time.monotonic() - started) * 1000)
 
     goal = snapshot.get("goal")
     recommendation = Recommendation(
@@ -107,6 +112,7 @@ def generate_recommendation(
         output_json=plan.model_dump(mode="json"),
         raw_text=captured["raw"],
         goal_id=goal["id"] if goal else None,
+        generation_ms=generation_ms,
     )
     session.add(recommendation)
     session.commit()
