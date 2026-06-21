@@ -1,10 +1,14 @@
-"""Логирование силовой тренировки (S3.4): создать сессию с подходами + чтение.
+"""Логирование тренировок: силовая (S3.4) и кардио (S3.5).
 
-Одна силовая тренировка = workout_session + её strength_set'ы (подходы). POST /workouts
-создаёт сессию и все подходы за один запрос (≥1 подход), пишет вес/повторы/отдых/RPE
-и возвращает сессию с подходами. Каждый подход ссылается на упражнение (FK exercise_id);
-несуществующее упражнение или вид спорта → 404 (SQLite не проверяет FK сам).
-Все роуты под сессией (CurrentUser) — приложение однопользовательское.
+Силовая: POST /workouts создаёт workout_session и все strength_set'ы (≥1 подход),
+пишет вес/повторы/отдых/RPE и возвращает сессию с подходами.
+
+Кардио (S3.5): POST /workouts/cardio создаёт сессию + cardio_log
+(distance_km, duration_sec, avg_hr, max_hr); темп (avg_pace) считается из дистанции/времени
+и сохраняется как снимок. GET /workouts/cardio/{id} читает её обратно.
+
+Каждая запись ссылается на упражнение/вид спорта (FK); несуществующий FK → 404 (SQLite сам не
+проверяет). Все роуты под сессией (CurrentUser) — приложение однопользовательское.
 """
 
 import datetime as dt
@@ -17,7 +21,7 @@ from sqlmodel import Session, select
 from app.api.deps import CurrentUser
 from app.core.db import get_session
 from app.models.sport import Exercise, Sport
-from app.models.workout import StrengthSet, WorkoutSession
+from app.models.workout import CardioLog, StrengthSet, WorkoutSession
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
 
@@ -126,3 +130,101 @@ def list_workouts(session: SessionDep, _: CurrentUser) -> list[WorkoutRead]:
 @router.get("/{workout_id}")
 def get_workout(workout_id: int, session: SessionDep, _: CurrentUser) -> WorkoutRead:
     return _read(session, _get_or_404(session, workout_id))
+
+
+# --- Кардио (S3.5) ---
+
+
+class CardioIn(BaseModel):
+    date: dt.date
+    sport_id: int | None = None
+    exercise_id: int | None = None
+    title: str | None = None
+    notes: str | None = None
+    distance_km: float = Field(gt=0)  # без дистанции темп не посчитать
+    duration_sec: float = Field(gt=0)  # без времени темп не посчитать
+    avg_hr: int | None = None
+    max_hr: int | None = None
+
+
+class CardioRead(BaseModel):
+    id: int
+    session_id: int
+    date: dt.date
+    sport_id: int | None
+    exercise_id: int | None
+    title: str | None
+    notes: str | None
+    created_at: dt.datetime
+    distance_km: float | None
+    duration_sec: float | None
+    avg_hr: int | None
+    max_hr: int | None
+    avg_pace: str | None
+
+
+def _compute_pace(distance_km: float, duration_sec: float) -> str | None:
+    """Темп = время/дистанция → "M:SS /км". Без валидной дистанции/времени темпа нет."""
+    if distance_km <= 0 or duration_sec <= 0:
+        return None
+    sec_per_km = round(duration_sec / distance_km)
+    return f"{sec_per_km // 60}:{sec_per_km % 60:02d} /км"
+
+
+def _read_cardio(ws: WorkoutSession, log: CardioLog) -> CardioRead:
+    return CardioRead(
+        id=log.id,
+        session_id=ws.id,
+        date=ws.date,
+        sport_id=ws.sport_id,
+        exercise_id=log.exercise_id,
+        title=ws.title,
+        notes=ws.notes,
+        created_at=ws.created_at,
+        distance_km=log.distance_km,
+        duration_sec=log.duration_sec,
+        avg_hr=log.avg_hr,
+        max_hr=log.max_hr,
+        avg_pace=log.avg_pace,
+    )
+
+
+@router.post("/cardio", status_code=status.HTTP_201_CREATED)
+def create_cardio(payload: CardioIn, session: SessionDep, _: CurrentUser) -> CardioRead:
+    if payload.sport_id is not None:
+        _require_sport(session, payload.sport_id)
+    if payload.exercise_id is not None:
+        _require_exercises(session, {payload.exercise_id})
+
+    ws = WorkoutSession(
+        date=payload.date, sport_id=payload.sport_id, title=payload.title, notes=payload.notes
+    )
+    session.add(ws)
+    session.commit()
+    session.refresh(ws)
+
+    log = CardioLog(
+        session_id=ws.id,
+        exercise_id=payload.exercise_id,
+        distance_km=payload.distance_km,
+        duration_sec=payload.duration_sec,
+        avg_hr=payload.avg_hr,
+        max_hr=payload.max_hr,
+        avg_pace=_compute_pace(payload.distance_km, payload.duration_sec),
+    )
+    session.add(log)
+    session.commit()
+    session.refresh(log)
+
+    return _read_cardio(ws, log)
+
+
+@router.get("/cardio/{cardio_id}")
+def get_cardio(cardio_id: int, session: SessionDep, _: CurrentUser) -> CardioRead:
+    log = session.get(CardioLog, cardio_id)
+    if log is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Кардио-сессия не найдена"
+        )
+    ws = session.get(WorkoutSession, log.session_id)
+    return _read_cardio(ws, log)

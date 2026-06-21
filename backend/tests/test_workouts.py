@@ -135,3 +135,87 @@ def test_list_sessions_newest_first(client):
 def test_workouts_require_auth():
     app.dependency_overrides.clear()
     assert TestClient(app).get("/workouts").status_code == 401
+
+
+# --- Кардио (S3.5) ---
+
+
+def test_cardio_session_is_saved_and_readable(client):
+    # критерий: кардио-сессия сохраняется. Пишем, потом читаем заново из БД.
+    created = client.post(
+        "/workouts/cardio",
+        json={
+            "date": "2026-06-21",
+            "title": "Утренняя пробежка",
+            "distance_km": 5,
+            "duration_sec": 1500,
+            "avg_hr": 150,
+            "max_hr": 172,
+        },
+    )
+    assert created.status_code == 201
+    cardio_id = created.json()["id"]
+
+    resp = client.get(f"/workouts/cardio/{cardio_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["date"] == "2026-06-21"
+    assert body["title"] == "Утренняя пробежка"
+    assert body["distance_km"] == 5
+    assert body["duration_sec"] == 1500
+    assert body["avg_hr"] == 150
+    assert body["max_hr"] == 172  # пиковый пульс сохранён
+
+
+def test_pace_is_computed_from_distance_and_time(client):
+    # критерий: темп считается из дистанции/времени. 1500 сек / 5 км = 300 сек/км = 5:00 /км.
+    body = client.post(
+        "/workouts/cardio",
+        json={"date": "2026-06-21", "distance_km": 5, "duration_sec": 1500},
+    ).json()
+    assert body["avg_pace"] == "5:00 /км"
+
+    # дробный темп: 1650 / 5 = 330 сек/км = 5:30 /км
+    other = client.post(
+        "/workouts/cardio",
+        json={"date": "2026-06-21", "distance_km": 5, "duration_sec": 1650},
+    ).json()
+    assert other["avg_pace"] == "5:30 /км"
+
+
+def test_cardio_requires_positive_distance_and_duration(client):
+    # без дистанции/времени темп не посчитать — это не валидная кардио-сессия
+    assert (
+        client.post(
+            "/workouts/cardio",
+            json={"date": "2026-06-21", "distance_km": 0, "duration_sec": 1500},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/workouts/cardio",
+            json={"date": "2026-06-21", "distance_km": 5, "duration_sec": 0},
+        ).status_code
+        == 422
+    )
+
+
+def test_cardio_with_unknown_exercise_returns_404(client):
+    resp = client.post(
+        "/workouts/cardio",
+        json={"date": "2026-06-21", "exercise_id": 999, "distance_km": 5, "duration_sec": 1500},
+    )
+    assert resp.status_code == 404  # нельзя привязать к несуществующему упражнению
+
+
+def test_cardio_with_unknown_sport_returns_404(client):
+    resp = client.post(
+        "/workouts/cardio",
+        json={"date": "2026-06-21", "sport_id": 999, "distance_km": 5, "duration_sec": 1500},
+    )
+    assert resp.status_code == 404
+
+
+def test_read_unknown_cardio_returns_404(client):
+    assert client.get("/workouts/cardio/999").status_code == 404
