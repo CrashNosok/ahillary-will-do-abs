@@ -3,6 +3,9 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
 import { useLogin, useMe } from '../lib/auth';
 
+// Простой формат — ловит опечатки до запроса; строгую проверку делает бэкенд.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /** Экран входа — цель редиректа из ProtectedRoute. Единственный сид-аккаунт,
  *  регистрации нет. Успех → возврат на исходный защищённый маршрут (или дашборд). */
 export default function LoginPage() {
@@ -12,6 +15,8 @@ export default function LoginPage() {
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Ошибка клиентской валидации; null = поля прошли проверку.
+  const [formError, setFormError] = useState<string | null>(null);
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/';
 
@@ -22,14 +27,29 @@ export default function LoginPage() {
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    login.mutate({ email, password }, { onSuccess: () => navigate(from, { replace: true }) });
+    const trimmedEmail = email.trim();
+    if (!EMAIL_RE.test(trimmedEmail)) {
+      setFormError('Введите корректный email');
+      return;
+    }
+    if (!password) {
+      setFormError('Введите пароль');
+      return;
+    }
+    setFormError(null);
+    login.mutate(
+      { email: trimmedEmail, password },
+      { onSuccess: () => navigate(from, { replace: true }) },
+    );
   }
 
-  const errorMessage = login.error
+  const serverError = login.error
     ? login.error instanceof ApiError && login.error.status === 401
       ? 'Неверный email или пароль'
       : 'Не удалось войти. Проверьте, что сервер запущен.'
     : null;
+  // Локальная валидация важнее серверной: показываем её первой.
+  const errorMessage = formError ?? serverError;
 
   return (
     <main className="grid min-h-screen place-items-center px-5">
@@ -48,7 +68,7 @@ export default function LoginPage() {
         </h1>
         <p className="mt-2 text-muted">Личный трекер веса и тренировок.</p>
 
-        <form onSubmit={onSubmit} className="mt-7 flex flex-col gap-4">
+        <form onSubmit={onSubmit} noValidate className="mt-7 flex flex-col gap-4">
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium text-muted">Email</span>
             <input
@@ -57,7 +77,10 @@ export default function LoginPage() {
               autoComplete="username"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setFormError(null);
+              }}
               className="rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent"
             />
           </label>
@@ -70,7 +93,10 @@ export default function LoginPage() {
               autoComplete="current-password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setFormError(null);
+              }}
               className="rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent"
             />
           </label>
