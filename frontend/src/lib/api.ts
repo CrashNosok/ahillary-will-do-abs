@@ -96,6 +96,17 @@ export type BodyMeasurement = {
 /** Поля формы замеров (S2.3) — то, что задаёт пользователь (без id/notes). */
 export type BodyMeasurementInput = Omit<BodyMeasurement, 'id' | 'notes'>;
 
+/** Точка временного ряда прогресса (S2.4): дата ISO + значение. */
+export type SeriesPoint = { date: string; value: number };
+
+/** Ряды тела за период (S2.4): вес (InBody) + обхваты (по полю → ряд). */
+export type BodyProgress = {
+  start: string; // ISO YYYY-MM-DD
+  end: string; // ISO YYYY-MM-DD
+  weight_kg: SeriesPoint[];
+  circumferences: Record<string, SeriesPoint[]>;
+};
+
 /** Импорт дневника питания (S1.8): превью разобранного дня и результат сохранения. */
 export type ImportTotals = {
   kcal: number;
@@ -201,6 +212,10 @@ export const api = {
     request<Goal>('/goals', { method: 'POST', body: JSON.stringify(input) }),
   updateGoal: (id: number, input: GoalInput) =>
     request<Goal>(`/goals/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+
+  // Прогресс тела (S2.4): ряды веса/обхватов за период [start; end] (ISO) для графиков.
+  getBodyProgress: (start: string, end: string) =>
+    request<BodyProgress>(`/progress/body?start=${start}&end=${end}`),
 
   // Замеры тела (S2.3): создать запись обхватов (см) на дату. Бэкенд — POST /body-measurements.
   createMeasurement: (input: BodyMeasurementInput) =>

@@ -7,6 +7,7 @@ import Dashboard from './components/Dashboard';
 import GoalPage from './components/GoalPage';
 import ImportPage from './components/ImportPage';
 import PlaceholderPage from './components/PlaceholderPage';
+import ProgressPage from './components/ProgressPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
 
@@ -28,7 +29,7 @@ export default function App() {
             }
           >
             <Route index element={<Dashboard />} />
-            <Route path="progress" element={<PlaceholderPage title="Прогресс" />} />
+            <Route path="progress" element={<ProgressPage />} />
             <Route path="workouts" element={<PlaceholderPage title="Тренировки" />} />
             <Route path="recommendations" element={<PlaceholderPage title="Рекомендации" />} />
             <Route path="goal" element={<GoalPage />} />
