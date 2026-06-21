@@ -230,12 +230,16 @@ function DetailPanel({
         <RecommendationPlanView
           plan={detail.output_json}
           created={detail.created_at}
+          model={detail.model}
           goal={detail.input_snapshot_json?.goal ?? null}
         />
       ) : (
         // Запись без распарсенного плана — показываем сырой ответ, чтобы не «терять» её.
         <div>
           <h2 className="text-display">План недоступен</h2>
+          <p className="mt-1 text-sm text-muted">
+            {formatCreated(detail.created_at)} · модель {detail.model}
+          </p>
           <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm text-muted">
             {detail.raw_text ?? '—'}
           </pre>
@@ -248,16 +252,19 @@ function DetailPanel({
 function RecommendationPlanView({
   plan,
   created,
+  model,
   goal,
 }: {
   plan: NonNullable<Recommendation['output_json']>;
   created: string;
+  model: string;
   goal: GoalSnapshot | null;
 }) {
   return (
     <>
       <div>
         <h2 className="text-display">План от {formatCreated(created)}</h2>
+        <p className="mt-1 text-sm text-muted">Модель: {model}</p>
       </div>
 
       {goal && <GoalCard goal={goal} />}
