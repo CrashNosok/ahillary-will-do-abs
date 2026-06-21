@@ -1,5 +1,8 @@
 /** Контент раздела «Обзор» — витрина каркаса: герой + бенто-карточки + панель дня.
- *  Значения — демонстрационные плейсхолдеры (данные подключим в следующих спринтах). */
+ *  Значения — демонстрационные плейсхолдеры (данные подключим в следующих спринтах).
+ *  Календарь-хитмап (S1.14) — уже на реальных данных GET /dashboard. */
+
+import CalendarHeatmap from './CalendarHeatmap';
 
 type Stat = {
   label: string;
@@ -47,6 +50,8 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
+
+      <CalendarHeatmap />
 
       <section aria-labelledby="today-heading" className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <div className="rounded-[var(--radius-card)] border border-line bg-surface p-6">

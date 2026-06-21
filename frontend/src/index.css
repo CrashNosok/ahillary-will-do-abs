@@ -22,6 +22,12 @@
   --color-accent-ink: oklch(24% 0.05 128); /* текст на акценте */
   --color-amber: oklch(80% 0.13 70); /* тёплый вторичный акцент */
 
+  /* — Категории данных дашборда (хитмап): 4 типа, раздельные оттенки — */
+  --color-cat-food: oklch(85% 0.17 145); /* зелёный — еда */
+  --color-cat-activity: oklch(80% 0.13 70); /* амбер — активность */
+  --color-cat-training: oklch(74% 0.14 255); /* синий — тренировки */
+  --color-cat-measurement: oklch(76% 0.16 330); /* пурпур — замеры */
+
   /* — Типографика — */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
