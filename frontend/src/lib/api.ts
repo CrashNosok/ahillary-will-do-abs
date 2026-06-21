@@ -53,6 +53,42 @@ function upload<T>(path: string, file: File): Promise<T> {
 
 export type User = { id: number; email: string };
 
+/** Тип дисциплины (S3.1): силовая / кардио / навыковая. */
+export type SportType = 'strength' | 'cardio' | 'skill';
+
+/** Вид спорта (S3.1): дисциплина с типом. name уникален (повтор → 409). */
+export type Sport = {
+  id: number;
+  name: string;
+  type: SportType;
+  description: string | null;
+};
+
+/** Поля формы создания вида спорта (S3.3). */
+export type SportInput = {
+  name: string;
+  type: SportType;
+  description: string | null;
+};
+
+/** Упражнение библиотеки (S3.2): принадлежит виду спорта (sport_id). */
+export type Exercise = {
+  id: number;
+  sport_id: number;
+  name: string;
+  kind: string | null;
+  unit: string | null;
+  notes: string | null;
+};
+
+/** Поля формы добавления упражнения (sport_id — из карточки вида спорта). */
+export type ExerciseInput = {
+  sport_id: number;
+  name: string;
+  unit: string | null;
+  notes: string | null;
+};
+
 /** SMART-цель: ответ бэкенда (см. backend SmartGoal). Даты — ISO `YYYY-MM-DD`. */
 export type Goal = {
   id: number;
@@ -249,6 +285,17 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   logout: () => request<{ status: string }>('/auth/logout', { method: 'POST' }),
+
+  // Виды спорта (S3.1): каталог дисциплин (бэкенд сортирует по имени).
+  listSports: () => request<Sport[]>('/sports'),
+  createSport: (input: SportInput) =>
+    request<Sport>('/sports', { method: 'POST', body: JSON.stringify(input) }),
+
+  // Упражнения библиотеки (S3.2): без sport_id — все; иначе фильтр по виду спорта.
+  listExercises: (sportId?: number) =>
+    request<Exercise[]>(sportId == null ? '/exercises' : `/exercises?sport_id=${sportId}`),
+  createExercise: (input: ExerciseInput) =>
+    request<Exercise>('/exercises', { method: 'POST', body: JSON.stringify(input) }),
 
   // Дашборд-хитмап: флаги данных по дням месяца (start/end — ISO YYYY-MM-DD).
   getDashboard: (start: string, end: string) =>
