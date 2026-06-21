@@ -124,6 +124,85 @@ def test_requires_auth():
     assert TestClient(app).get("/progress/body").status_code == 401
 
 
+# --- S2.12 Progress API: ряды состава тела InBody ----------------------------
+
+
+def _add_inbody_full(
+    engine,
+    date: str,
+    *,
+    body_fat_pct=None,
+    muscle_mass_kg=None,
+    visceral_fat=None,
+    water=None,
+) -> None:
+    with Session(engine) as session:
+        session.add(
+            InbodyMeasurement(
+                date=dt.date.fromisoformat(date),
+                body_fat_pct=body_fat_pct,
+                muscle_mass_kg=muscle_mass_kg,
+                visceral_fat=visceral_fat,
+                water=water,
+            )
+        )
+        session.commit()
+
+
+def test_inbody_composition_series_chronological(ctx):
+    client, engine = ctx
+    for date, fat, smm in (("2026-06-21", 18.0, 41.0), ("2026-05-24", 22.0, 39.5)):
+        _add_inbody_full(engine, date, body_fat_pct=fat, muscle_mass_kg=smm)
+    resp = client.get("/progress/inbody", params={"start": "2026-05-01", "end": "2026-06-30"})
+    assert resp.status_code == 200
+    comp = resp.json()["composition"]
+    assert [p["date"] for p in comp["body_fat_pct"]] == ["2026-05-24", "2026-06-21"]
+    assert [p["value"] for p in comp["body_fat_pct"]] == [22.0, 18.0]
+    assert [p["value"] for p in comp["muscle_mass_kg"]] == [39.5, 41.0]
+
+
+def test_inbody_all_four_metrics_present(ctx):
+    client, engine = ctx
+    _add_inbody_full(
+        engine, "2026-06-10", body_fat_pct=18.2, muscle_mass_kg=41.3, visceral_fat=8.0, water=45.6
+    )
+    resp = client.get("/progress/inbody", params={"start": "2026-06-01", "end": "2026-06-30"})
+    comp = resp.json()["composition"]
+    assert set(comp) == {"body_fat_pct", "muscle_mass_kg", "visceral_fat", "water"}
+    assert [p["value"] for p in comp["visceral_fat"]] == [8.0]
+    assert [p["value"] for p in comp["water"]] == [45.6]
+
+
+def test_inbody_null_values_skipped(ctx):
+    client, engine = ctx
+    _add_inbody_full(engine, "2026-06-10", body_fat_pct=None, muscle_mass_kg=40.0)
+    _add_inbody_full(engine, "2026-06-11", body_fat_pct=19.0, muscle_mass_kg=None)
+    resp = client.get("/progress/inbody", params={"start": "2026-06-01", "end": "2026-06-30"})
+    comp = resp.json()["composition"]
+    assert [p["date"] for p in comp["body_fat_pct"]] == ["2026-06-11"]
+    assert [p["date"] for p in comp["muscle_mass_kg"]] == ["2026-06-10"]
+
+
+def test_inbody_period_filter_excludes_out_of_range(ctx):
+    client, engine = ctx
+    _add_inbody_full(engine, "2026-01-01", body_fat_pct=25.0)  # вне периода
+    _add_inbody_full(engine, "2026-06-10", body_fat_pct=18.0)  # внутри
+    resp = client.get("/progress/inbody", params={"start": "2026-06-01", "end": "2026-06-30"})
+    comp = resp.json()["composition"]
+    assert [p["date"] for p in comp["body_fat_pct"]] == ["2026-06-10"]
+
+
+def test_inbody_start_after_end_returns_422(ctx):
+    client, _ = ctx
+    resp = client.get("/progress/inbody", params={"start": "2026-06-30", "end": "2026-06-01"})
+    assert resp.status_code == 422
+
+
+def test_inbody_requires_auth():
+    app.dependency_overrides.clear()
+    assert TestClient(app).get("/progress/inbody").status_code == 401
+
+
 # --- S2.5 Progress API: калории/дефицит/макросы/активность -------------------
 
 

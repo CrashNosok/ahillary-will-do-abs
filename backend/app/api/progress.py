@@ -113,6 +113,60 @@ def get_body_progress(
     return BodyProgressOut(start=start, end=end, weight_kg=weight, circumferences=circumferences)
 
 
+# Состав тела из inbody_measurement для графиков динамики (S2.12). Вес отдаёт
+# /progress/body, поэтому здесь — только четыре показателя состава.
+INBODY_COMPOSITION_FIELDS = (
+    "body_fat_pct",
+    "muscle_mass_kg",
+    "visceral_fat",
+    "water",
+)
+
+
+class InbodyProgressOut(BaseModel):
+    start: dt.date
+    end: dt.date
+    composition: dict[str, list[SeriesPoint]]
+
+
+@router.get("/inbody")
+def get_inbody_progress(
+    session: SessionDep,
+    _: CurrentUser,
+    start: dt.date | None = None,
+    end: dt.date | None = None,
+) -> InbodyProgressOut:
+    """Ряды состава тела (%жира, мыш.масса, висцеральный жир, вода) за период (S2.12).
+
+    Источник — inbody_measurement; по одному ряду на показатель. Точка ряда есть
+    только там, где значение не-null, поэтому редкие/неполные замеры не дают
+    ложных нулей. start > end → 422.
+    """
+    end = end or dt.date.today()
+    start = start or end - dt.timedelta(days=DEFAULT_RANGE_DAYS - 1)
+    if start > end:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Начало диапазона позже конца",
+        )
+
+    measurements = session.exec(
+        select(InbodyMeasurement)
+        .where(InbodyMeasurement.date >= start, InbodyMeasurement.date <= end)
+        .order_by(InbodyMeasurement.date, InbodyMeasurement.id)
+    ).all()
+    composition = {
+        field: [
+            SeriesPoint(date=m.date, value=getattr(m, field))
+            for m in measurements
+            if getattr(m, field) is not None
+        ]
+        for field in INBODY_COMPOSITION_FIELDS
+    }
+
+    return InbodyProgressOut(start=start, end=end, composition=composition)
+
+
 MACRO_FIELDS = ("protein_g", "fat_g", "carb_g")
 
 
