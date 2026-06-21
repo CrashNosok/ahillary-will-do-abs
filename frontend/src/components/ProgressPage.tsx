@@ -22,6 +22,8 @@ import {
   YAxis,
 } from 'recharts';
 import { useBodyProgress, useEnergyProgress } from '../lib/progress';
+import { useActiveGoal } from '../lib/goals';
+import { classifyDays, countByQuality, type DayQuality } from '../lib/dayQuality';
 import type { BodyProgress, EnergyProgress, SeriesPoint } from '../lib/api';
 
 /** Варианты периода (дни). 180 — дефолт бэкенда для редких замеров тела. */
@@ -134,6 +136,16 @@ const MACRO_META = [
 const DEFICIT_POS = 'var(--color-accent)';
 const DEFICIT_NEG = 'var(--color-amber)';
 
+/** Качество дня (S2.9) → подпись и цвет ячейки/легенды (только дизайн-токены).
+ *  good — лайм (дефицит достигнут + полный лог), bad — амбер (лог полный, дефицита
+ *  нет), incomplete — нейтральный (нет одного из источников за день). */
+const QUALITY_META: Record<DayQuality, { label: string; color: string }> = {
+  good: { label: 'Хороший', color: 'var(--color-accent)' },
+  bad: { label: 'Плохой', color: 'var(--color-amber)' },
+  incomplete: { label: 'Неполный', color: 'var(--color-line)' },
+};
+const QUALITY_ORDER: DayQuality[] = ['good', 'bad', 'incomplete'];
+
 /** Демо-данные энергобаланса: 14 подряд идущих дней до сегодня. Дефицит
  *  намеренно пересекает ноль (есть и дефицитные, и профицитные дни) — чтобы знак
  *  читался однозначно. ponytail: детерминированная синусоида, стабильный демо. */
@@ -157,13 +169,16 @@ function buildEnergySample(): EnergyProgress {
     // Базы прихода/расхода равны (2200), а амплитуды расходятся — поэтому дефицит
     // (cout − cin) заметно гуляет вокруг нуля: есть и дефицитные, и профицитные дни.
     const cin = Math.round(2200 + wave * 300);
-    const cout = Math.round(2200 + Math.cos(i * 0.6) * 450);
     kcalIn.push({ date, value: cin });
-    kcalOut.push({ date, value: cout });
-    deficit.push({ date, value: cout - cin });
     protein.push({ date, value: Math.round(130 + wave * 20) });
     fat.push({ date, value: Math.round(70 + wave * 12) });
     carb.push({ date, value: Math.round(210 + wave * 35) });
+    // ponytail: 2 дня без активности → «неполный лог» (нет расхода и дефицита),
+    // чтобы подсветка качества дней (S2.9) показывала все три категории на демо.
+    if (i === 4 || i === 10) continue;
+    const cout = Math.round(2200 + Math.cos(i * 0.6) * 450);
+    kcalOut.push({ date, value: cout });
+    deficit.push({ date, value: cout - cin });
     steps.push({ date, value: Math.round(8500 + wave * 2800) });
     activeMin.push({ date, value: Math.round(55 + wave * 22) });
   }
@@ -218,6 +233,10 @@ export default function ProgressPage() {
 
   const { data, isLoading, isError } = useBodyProgress(start, end);
 
+  // Цель (S2.9): целевой вес активной SMART-цели → линия поверх графика веса.
+  const { data: goal } = useActiveGoal();
+  const targetWeight = goal?.target_weight_kg ?? null;
+
   const hasReal =
     !!data &&
     (data.weight_kg.length > 0 || Object.values(data.circumferences).some((s) => s.length > 0));
@@ -225,6 +244,16 @@ export default function ProgressPage() {
   const source = hasReal ? data! : buildSample(periodDays);
 
   const weightRows = source.weight_kg.map((p) => ({ date: p.date, weight: p.value }));
+  // Домен оси веса расширяем так, чтобы целевая линия гарантированно попала в кадр
+  // (цель ниже текущего веса легко уехала бы за нижнюю границу 'auto').
+  const weightValues = weightRows.map((r) => r.weight);
+  const weightDomain: [number | string, number | string] =
+    targetWeight !== null && weightValues.length > 0
+      ? [
+          Math.floor(Math.min(...weightValues, targetWeight) - 1),
+          Math.ceil(Math.max(...weightValues, targetWeight) + 1),
+        ]
+      : ['auto', 'auto'];
   const circFields = Object.entries(source.circumferences)
     .filter(([, points]) => points.length > 0)
     .map(([field]) => field);
@@ -258,6 +287,10 @@ export default function ProgressPage() {
     active_min: energySource.active_min,
   });
   const hasActivity = energySource.steps.length > 0 || energySource.active_min.length > 0;
+
+  // Качество дней (S2.9): классифицируем каждый залогированный день периода.
+  const dayClasses = classifyDays(energySource);
+  const qualityCounts = countByQuality(dayClasses);
 
   return (
     <section
@@ -332,12 +365,27 @@ export default function ProgressPage() {
                     tick={axisTick}
                     stroke="var(--color-line)"
                     width={44}
-                    domain={['auto', 'auto']}
+                    domain={weightDomain}
                   />
                   <Tooltip
                     contentStyle={tooltipStyle}
                     labelStyle={{ color: 'var(--color-muted)' }}
                   />
+                  {targetWeight !== null && (
+                    <ReferenceLine
+                      y={targetWeight}
+                      stroke="var(--color-cat-measurement)"
+                      strokeWidth={2}
+                      strokeDasharray="6 4"
+                      ifOverflow="extendDomain"
+                      label={{
+                        value: `Цель ${targetWeight} кг`,
+                        position: 'insideTopRight',
+                        fill: 'var(--color-cat-measurement)',
+                        fontSize: 12,
+                      }}
+                    />
+                  )}
                   <Line
                     type="monotone"
                     dataKey="weight"
@@ -515,6 +563,49 @@ export default function ProgressPage() {
                 <EmptyNote text="Нет данных дефицита за период." />
               )}
             </ChartCard>
+
+            <div className="rounded-[var(--radius-card)] border border-line bg-surface p-5 sm:p-6">
+              <h2 className="font-display text-lg font-semibold">
+                Качество дней{' '}
+                <span className="text-sm font-normal text-muted">
+                  (хороший = дефицит достигнут и лог полный)
+                </span>
+              </h2>
+              {dayClasses.length > 0 ? (
+                <>
+                  <div
+                    role="img"
+                    aria-label={`Качество дней за период: хороших ${qualityCounts.good}, плохих ${qualityCounts.bad}, неполных ${qualityCounts.incomplete}`}
+                    className="mt-4 flex flex-wrap gap-1.5"
+                  >
+                    {dayClasses.map((d) => (
+                      <span
+                        key={d.date}
+                        title={`${fmtTick(d.date)} — ${QUALITY_META[d.quality].label}${
+                          d.deficit !== null ? ` · дефицит ${Math.round(d.deficit)} ккал` : ''
+                        }`}
+                        className="size-6 rounded-md border border-line/60"
+                        style={{ background: QUALITY_META[d.quality].color }}
+                      />
+                    ))}
+                  </div>
+                  <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                    {QUALITY_ORDER.map((q) => (
+                      <li key={q} className="flex items-center gap-2 text-muted">
+                        <span
+                          className="size-3 rounded-sm"
+                          style={{ background: QUALITY_META[q].color }}
+                        />
+                        {QUALITY_META[q].label}:{' '}
+                        <span className="font-medium text-fg">{qualityCounts[q]}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <EmptyNote text="Нет залогированных дней за период." />
+              )}
+            </div>
 
             <ChartCard title="Макросы (стек)" unit="г/день">
               {macroFields.length > 0 ? (
