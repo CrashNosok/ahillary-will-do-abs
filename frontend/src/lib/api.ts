@@ -107,6 +107,20 @@ export type BodyProgress = {
   circumferences: Record<string, SeriesPoint[]>;
 };
 
+/** Ряды энергии/питания за период (S2.5): для графиков энергобаланса (S2.8).
+ *  deficit = kcal_out − kcal_in (>0 — дефицит/расход больше прихода). macros —
+ *  ряды protein_g/fat_g/carb_g. Точка есть только там, где значение не-null. */
+export type EnergyProgress = {
+  start: string; // ISO YYYY-MM-DD
+  end: string; // ISO YYYY-MM-DD
+  kcal_in: SeriesPoint[];
+  kcal_out: SeriesPoint[];
+  deficit: SeriesPoint[];
+  macros: Record<string, SeriesPoint[]>;
+  steps: SeriesPoint[];
+  active_min: SeriesPoint[];
+};
+
 /** Импорт дневника питания (S1.8): превью разобранного дня и результат сохранения. */
 export type ImportTotals = {
   kcal: number;
@@ -216,6 +230,10 @@ export const api = {
   // Прогресс тела (S2.4): ряды веса/обхватов за период [start; end] (ISO) для графиков.
   getBodyProgress: (start: string, end: string) =>
     request<BodyProgress>(`/progress/body?start=${start}&end=${end}`),
+
+  // Прогресс энергии (S2.5): ряды ккал/дефицита/макросов/активности за период (S2.8).
+  getEnergyProgress: (start: string, end: string) =>
+    request<EnergyProgress>(`/progress/energy?start=${start}&end=${end}`),
 
   // Замеры тела (S2.3): создать запись обхватов (см) на дату. Бэкенд — POST /body-measurements.
   createMeasurement: (input: BodyMeasurementInput) =>

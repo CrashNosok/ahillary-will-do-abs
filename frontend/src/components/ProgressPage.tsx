@@ -1,22 +1,28 @@
-/** Экран «Прогресс» (S2.7): графики динамики тела — вес и обхваты.
- *  Данные берём из /progress/body (S2.4) за выбранный период. Если реальных
- *  замеров ещё нет (БД пустая), рисуем демо-набор за тот же период — графики
- *  обязаны рисоваться (критерий приёмки), а ResponsiveContainer Recharts даёт
+/** Экран «Прогресс»: графики динамики тела (S2.7) + энергобаланса (S2.8).
+ *  Тело — вес/обхваты из /progress/body (S2.4); энергия — калории, дефицит,
+ *  макросы и активность из /progress/energy (S2.5). Данные за выбранный период;
+ *  если реальных записей ещё нет (БД пустая), рисуем демо-набор — графики обязаны
+ *  рисоваться (критерий приёмки), а ResponsiveContainer Recharts даёт
  *  адаптивность на 320/768/1440 без ручных брейкпоинтов. */
 
 import { useState } from 'react';
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
-import { useBodyProgress } from '../lib/progress';
-import type { BodyProgress, SeriesPoint } from '../lib/api';
+import { useBodyProgress, useEnergyProgress } from '../lib/progress';
+import type { BodyProgress, EnergyProgress, SeriesPoint } from '../lib/api';
 
 /** Варианты периода (дни). 180 — дефолт бэкенда для редких замеров тела. */
 const PERIODS = [
@@ -116,6 +122,64 @@ function buildSample(periodDays: number): BodyProgress {
   };
 }
 
+/** Макро-поле → подпись и цвет стека (только дизайн-токены, 3 разных оттенка). */
+const MACRO_META = [
+  { field: 'protein_g', label: 'Белки', color: 'var(--color-cat-training)' },
+  { field: 'fat_g', label: 'Жиры', color: 'var(--color-amber)' },
+  { field: 'carb_g', label: 'Углеводы', color: 'var(--color-cat-measurement)' },
+] as const;
+
+/** Дефицит: знак → цвет столбца. >0 — расход больше прихода (дефицит, худеем),
+ *  <0 — профицит. Разные оттенки + нулевая линия делают знак однозначным. */
+const DEFICIT_POS = 'var(--color-accent)';
+const DEFICIT_NEG = 'var(--color-amber)';
+
+/** Демо-данные энергобаланса: 14 подряд идущих дней до сегодня. Дефицит
+ *  намеренно пересекает ноль (есть и дефицитные, и профицитные дни) — чтобы знак
+ *  читался однозначно. ponytail: детерминированная синусоида, стабильный демо. */
+function buildEnergySample(): EnergyProgress {
+  const days = 14;
+  const end = new Date();
+  const kcalIn: SeriesPoint[] = [];
+  const kcalOut: SeriesPoint[] = [];
+  const deficit: SeriesPoint[] = [];
+  const protein: SeriesPoint[] = [];
+  const fat: SeriesPoint[] = [];
+  const carb: SeriesPoint[] = [];
+  const steps: SeriesPoint[] = [];
+  const activeMin: SeriesPoint[] = [];
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(end);
+    d.setDate(d.getDate() - i);
+    const date = iso(d);
+    const wave = Math.sin(i * 0.9);
+    // Базы прихода/расхода равны (2200), а амплитуды расходятся — поэтому дефицит
+    // (cout − cin) заметно гуляет вокруг нуля: есть и дефицитные, и профицитные дни.
+    const cin = Math.round(2200 + wave * 300);
+    const cout = Math.round(2200 + Math.cos(i * 0.6) * 450);
+    kcalIn.push({ date, value: cin });
+    kcalOut.push({ date, value: cout });
+    deficit.push({ date, value: cout - cin });
+    protein.push({ date, value: Math.round(130 + wave * 20) });
+    fat.push({ date, value: Math.round(70 + wave * 12) });
+    carb.push({ date, value: Math.round(210 + wave * 35) });
+    steps.push({ date, value: Math.round(8500 + wave * 2800) });
+    activeMin.push({ date, value: Math.round(55 + wave * 22) });
+  }
+
+  return {
+    start: kcalIn[0].date,
+    end: kcalIn[kcalIn.length - 1].date,
+    kcal_in: kcalIn,
+    kcal_out: kcalOut,
+    deficit,
+    macros: { protein_g: protein, fat_g: fat, carb_g: carb },
+    steps,
+    active_min: activeMin,
+  };
+}
+
 const tooltipStyle = {
   background: 'var(--color-panel)',
   border: '1px solid var(--color-line)',
@@ -168,6 +232,33 @@ export default function ProgressPage() {
     Object.fromEntries(circFields.map((f) => [f, source.circumferences[f]])),
   );
 
+  // Энергобаланс (S2.8): тот же период. Показываем реальные ряды только когда они
+  // наполняют ВСЕ 4 графика (ккал, дефицит, макросы, активность) — иначе один-два
+  // случайных дня оставили бы графики (в т.ч. ключевой «Дефицит») пустыми. Пока
+  // полного дня нет — рисуем демо целиком, чтобы 4 графика и знак дефицита читались.
+  const energyQuery = useEnergyProgress(start, end);
+  const energy = energyQuery.data;
+  const energyComplete =
+    !!energy &&
+    (energy.kcal_in.length > 0 || energy.kcal_out.length > 0) &&
+    energy.deficit.length > 0 &&
+    Object.values(energy.macros).some((s) => s.length > 0) &&
+    (energy.steps.length > 0 || energy.active_min.length > 0);
+  const energySample = !energyComplete;
+  const energySource = energyComplete ? energy! : buildEnergySample();
+
+  const caloriesRows = mergeSeries({ in: energySource.kcal_in, out: energySource.kcal_out });
+  const deficitRows = energySource.deficit.map((p) => ({ date: p.date, deficit: p.value }));
+  const macroFields = MACRO_META.filter((m) => (energySource.macros[m.field]?.length ?? 0) > 0);
+  const macroRows = mergeSeries(
+    Object.fromEntries(macroFields.map((m) => [m.field, energySource.macros[m.field]])),
+  );
+  const activityRows = mergeSeries({
+    steps: energySource.steps,
+    active_min: energySource.active_min,
+  });
+  const hasActivity = energySource.steps.length > 0 || energySource.active_min.length > 0;
+
   return (
     <section
       aria-labelledby="progress-heading"
@@ -181,7 +272,8 @@ export default function ProgressPage() {
           Динамика тела
         </h1>
         <p className="mt-4 text-lg leading-relaxed text-muted">
-          Вес и обхваты во времени. Выберите период — графики перестроятся под выбранный диапазон.
+          Вес, обхваты и энергобаланс во времени. Выберите период — графики перестроятся под
+          выбранный диапазон.
         </p>
       </div>
 
@@ -310,6 +402,209 @@ export default function ProgressPage() {
           </ChartCard>
         </div>
       )}
+
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-t border-line pt-[var(--space-section)]">
+          <div className="max-w-2xl">
+            <h2 id="energy-heading" className="font-display text-2xl font-semibold">
+              Энергобаланс
+            </h2>
+            <p className="mt-2 text-muted">
+              Калории, дефицит, макросы и активность по дням за выбранный период.
+            </p>
+          </div>
+          {energySample && (
+            <span className="rounded-full border border-amber/40 px-3 py-1 text-xs font-medium text-amber">
+              Демо-данные
+            </span>
+          )}
+        </div>
+
+        {energyQuery.isLoading ? (
+          <p className="text-muted">Загрузка…</p>
+        ) : (
+          <div className="flex flex-col gap-6">
+            {energyQuery.isError && (
+              <p role="alert" className="text-sm font-medium text-amber">
+                Не удалось получить данные с сервера — показаны демо-данные.
+              </p>
+            )}
+
+            <ChartCard title="Калории: приход и расход" unit="ккал/день">
+              {caloriesRows.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart
+                    data={caloriesRows}
+                    margin={{ top: 8, right: 12, bottom: 4, left: -8 }}
+                  >
+                    <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={fmtTick}
+                      tick={axisTick}
+                      stroke="var(--color-line)"
+                      minTickGap={24}
+                    />
+                    <YAxis tick={axisTick} stroke="var(--color-line)" width={44} />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      labelStyle={{ color: 'var(--color-muted)' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="in"
+                      name="Съедено"
+                      stroke="var(--color-cat-food)"
+                      strokeWidth={2}
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 4 }}
+                      connectNulls
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="out"
+                      name="Потрачено"
+                      stroke="var(--color-amber)"
+                      strokeWidth={2}
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 4 }}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyNote text="Нет данных калорий за период." />
+              )}
+            </ChartCard>
+
+            <ChartCard title="Дефицит калорий" unit="ккал/день">
+              <p className="-mt-3 mb-3 text-xs text-muted">
+                <span className="font-medium text-accent">Выше нуля</span> — дефицит (потрачено
+                больше съеденного, идёт снижение).{' '}
+                <span className="font-medium text-amber">Ниже нуля</span> — профицит.
+              </p>
+              {deficitRows.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={deficitRows} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+                    <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={fmtTick}
+                      tick={axisTick}
+                      stroke="var(--color-line)"
+                      minTickGap={24}
+                    />
+                    <YAxis tick={axisTick} stroke="var(--color-line)" width={44} />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      labelStyle={{ color: 'var(--color-muted)' }}
+                    />
+                    <ReferenceLine y={0} stroke="var(--color-fg)" strokeWidth={1.5} />
+                    <Bar dataKey="deficit" name="Дефицит, ккал" radius={[3, 3, 0, 0]}>
+                      {deficitRows.map((r) => (
+                        <Cell
+                          key={r.date}
+                          fill={Number(r.deficit) >= 0 ? DEFICIT_POS : DEFICIT_NEG}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyNote text="Нет данных дефицита за период." />
+              )}
+            </ChartCard>
+
+            <ChartCard title="Макросы (стек)" unit="г/день">
+              {macroFields.length > 0 ? (
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={macroRows} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+                    <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={fmtTick}
+                      tick={axisTick}
+                      stroke="var(--color-line)"
+                      minTickGap={24}
+                    />
+                    <YAxis tick={axisTick} stroke="var(--color-line)" width={44} />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      labelStyle={{ color: 'var(--color-muted)' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    {macroFields.map((m) => (
+                      <Bar
+                        key={m.field}
+                        dataKey={m.field}
+                        name={m.label}
+                        stackId="macros"
+                        fill={m.color}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyNote text="Нет данных макросов за период." />
+              )}
+            </ChartCard>
+
+            <ChartCard title="Шаги и активность" unit="шаги · мин">
+              {hasActivity ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart
+                    data={activityRows}
+                    margin={{ top: 8, right: 4, bottom: 4, left: -8 }}
+                  >
+                    <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={fmtTick}
+                      tick={axisTick}
+                      stroke="var(--color-line)"
+                      minTickGap={24}
+                    />
+                    <YAxis yAxisId="steps" tick={axisTick} stroke="var(--color-line)" width={48} />
+                    <YAxis
+                      yAxisId="min"
+                      orientation="right"
+                      tick={axisTick}
+                      stroke="var(--color-line)"
+                      width={36}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      labelStyle={{ color: 'var(--color-muted)' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar
+                      yAxisId="steps"
+                      dataKey="steps"
+                      name="Шаги"
+                      fill="var(--color-cat-training)"
+                      radius={[3, 3, 0, 0]}
+                    />
+                    <Line
+                      yAxisId="min"
+                      type="monotone"
+                      dataKey="active_min"
+                      name="Активные мин"
+                      stroke="var(--color-accent)"
+                      strokeWidth={2}
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 4 }}
+                      connectNulls
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyNote text="Нет данных активности за период." />
+              )}
+            </ChartCard>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
