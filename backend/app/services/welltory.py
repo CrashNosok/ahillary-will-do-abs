@@ -25,7 +25,7 @@ from sqlmodel import Session
 from app.core import db
 from app.models._time import utcnow
 from app.models.activity import ActivityDay
-from app.services import llm
+from app.services import deficit, llm
 
 # Скрин и плитки русские — промпт тоже русский. Просим строго JSON и только текст
 # плиток (без вычислений на стороне модели), ровно восемь ключей карточки S1.9.
@@ -198,7 +198,8 @@ def _upsert_day(
     day.parsed_at = utcnow()
     session.add(day)
     session.commit()
-    session.refresh(day)
+    deficit.recompute(date, session)  # S1.12: активность изменилась → пересчёт дефицита дня
+    session.refresh(day)  # recompute коммитит и сбрасывает day — перечитываем перед возвратом
     return day
 
 

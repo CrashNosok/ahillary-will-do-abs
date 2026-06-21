@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from sqlmodel import Session, select
 
 from app.models.nutrition import FoodEntry
+from app.services import deficit
 
 # Колонки нутриентов по индексу (docs/sample-formats.md). Матчим по позиции, а не
 # по русскому заголовку с нестабильными пробелами.
@@ -269,4 +270,5 @@ def import_food_diary(
         entry.import_id = batch_id
         session.add(entry)
     session.commit()
+    deficit.recompute(parsed.date, session)  # S1.12: еда изменилась → пересчёт дефицита дня
     return parsed
