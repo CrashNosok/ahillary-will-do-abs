@@ -12,6 +12,7 @@ current_streak — длина серии последовательных «по
 import datetime as dt
 from dataclasses import dataclass
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.models.activity import ActivityDay
@@ -29,6 +30,16 @@ class DayFlag:
     has_activity: bool
     has_training: bool
     has_measurement: bool
+
+
+@dataclass(frozen=True)
+class TodaySummary:
+    """Энергобаланс за сегодня для сводки дашборда (S1.15)."""
+
+    date: dt.date
+    kcal_in: int  # сумма kcal съеденного за день
+    kcal_out: int  # total_kcal активности (0, если дня активности нет)
+    deficit: int  # kcal_out − kcal_in: >0 — дефицит, <0 — профицит
 
 
 def _dates(session: Session, column, start: dt.date, end: dt.date) -> set[dt.date]:
@@ -82,3 +93,19 @@ def current_streak(session: Session, today: dt.date | None = None) -> int:
         streak += 1
         day -= dt.timedelta(days=1)
     return streak
+
+
+def today_summary(session: Session, today: dt.date | None = None) -> TodaySummary:
+    """Сводка за сегодня: ккал съедено (food) и потрачено (activity.total_kcal).
+
+    kcal_in — сумма kcal всех записей еды за день; kcal_out — total_kcal дня
+    активности (0, если его нет). deficit = kcal_out − kcal_in.
+    """
+    today = today or dt.date.today()
+    kcal_in = session.exec(
+        select(func.coalesce(func.sum(FoodEntry.kcal), 0.0)).where(FoodEntry.date == today)
+    ).one()
+    activity = session.get(ActivityDay, today)
+    kcal_out = activity.total_kcal if activity and activity.total_kcal is not None else 0
+    kcal_in = round(kcal_in)
+    return TodaySummary(date=today, kcal_in=kcal_in, kcal_out=kcal_out, deficit=kcal_out - kcal_in)

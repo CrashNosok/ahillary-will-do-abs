@@ -32,11 +32,19 @@ class DayFlags(BaseModel):
     has_measurement: bool
 
 
+class TodaySummary(BaseModel):
+    date: dt.date
+    kcal_in: int
+    kcal_out: int
+    deficit: int
+
+
 class DashboardOut(BaseModel):
     start: dt.date
     end: dt.date
     days: list[DayFlags]
     current_streak: int
+    today: TodaySummary
 
 
 @router.get("")
@@ -59,4 +67,5 @@ def get_dashboard(
         end=end,
         days=[DayFlags(**vars(f)) for f in flags],
         current_streak=dashboard.current_streak(session),
+        today=TodaySummary(**vars(dashboard.today_summary(session))),
     )

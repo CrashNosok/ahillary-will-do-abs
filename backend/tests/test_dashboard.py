@@ -156,6 +156,40 @@ def test_streak_zero_when_yesterday_also_missing(session):
     assert dashboard.current_streak(session, today=today) == 0
 
 
+# ── сводка дня ────────────────────────────────────────────────────────────
+
+
+def test_today_summary_empty_is_zero(session):
+    s = dashboard.today_summary(session, today=dt.date(2026, 6, 21))
+    assert (s.kcal_in, s.kcal_out, s.deficit) == (0, 0, 0)
+
+
+def test_today_summary_sums_food_and_reads_activity(session):
+    today = dt.date(2026, 6, 21)
+    _food(session, today, kcal=600)
+    _food(session, today, kcal=750)
+    _activity(session, today, total_kcal=2100)
+    s = dashboard.today_summary(session, today=today)
+    assert s.kcal_in == 1350
+    assert s.kcal_out == 2100
+    assert s.deficit == 750  # потрачено − съедено
+
+
+def test_today_summary_surplus_is_negative(session):
+    today = dt.date(2026, 6, 21)
+    _food(session, today, kcal=3000)
+    _activity(session, today, total_kcal=2000)
+    assert dashboard.today_summary(session, today=today).deficit == -1000
+
+
+def test_today_summary_ignores_other_days(session):
+    today = dt.date(2026, 6, 21)
+    _food(session, today - dt.timedelta(days=1), kcal=999)
+    _activity(session, today - dt.timedelta(days=1), total_kcal=999)
+    s = dashboard.today_summary(session, today=today)
+    assert (s.kcal_in, s.kcal_out) == (0, 0)
+
+
 # ── эндпоинт ──────────────────────────────────────────────────────────────
 
 
@@ -196,6 +230,18 @@ def test_dashboard_endpoint_returns_flags_and_streak(client):
     assert d["date"] == str(today)
     assert d["has_food"] and d["has_activity"]
     assert not d["has_training"] and not d["has_measurement"]
+
+
+def test_dashboard_endpoint_includes_today_summary(client):
+    # фикстура клиента кладёт на сегодня еду 100 ккал и активность 500 ккал
+    today = dt.date.today()
+    resp = client.get("/dashboard", params={"start": str(today), "end": str(today)})
+    assert resp.status_code == 200
+    t = resp.json()["today"]
+    assert t["date"] == str(today)
+    assert t["kcal_in"] == 100
+    assert t["kcal_out"] == 500
+    assert t["deficit"] == 400
 
 
 def test_dashboard_inverted_range_is_422(client):
