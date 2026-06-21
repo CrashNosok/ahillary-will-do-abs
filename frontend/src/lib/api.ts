@@ -31,6 +31,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type User = { id: number; email: string };
 
+/** SMART-цель: ответ бэкенда (см. backend SmartGoal). Даты — ISO `YYYY-MM-DD`. */
+export type Goal = {
+  id: number;
+  target_weight_kg: number | null;
+  target_body_fat_pct: number | null;
+  target_measurements_json: Record<string, number> | null;
+  start_date: string | null;
+  deadline: string | null;
+  baseline_json: Record<string, unknown> | null;
+  why_notes: string | null;
+  status: string;
+  created_at: string;
+};
+
+/** Поля формы цели — только то, что задаёт пользователь на экране настройки. */
+export type GoalInput = {
+  target_weight_kg: number | null;
+  target_body_fat_pct: number | null;
+  target_measurements_json: Record<string, number> | null;
+  deadline: string | null;
+  why_notes: string | null;
+};
+
 export const api = {
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) =>
@@ -39,4 +62,12 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   logout: () => request<{ status: string }>('/auth/logout', { method: 'POST' }),
+
+  // Список (200 + []), а не /goals/active (404 при отсутствии) — чтобы пустое
+  // состояние не порождало console.error/4xx; активную цель выбираем на клиенте.
+  listGoals: () => request<Goal[]>('/goals'),
+  createGoal: (input: GoalInput) =>
+    request<Goal>('/goals', { method: 'POST', body: JSON.stringify(input) }),
+  updateGoal: (id: number, input: GoalInput) =>
+    request<Goal>(`/goals/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
 };
