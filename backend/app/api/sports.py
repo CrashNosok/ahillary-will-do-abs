@@ -90,6 +90,20 @@ def delete_sport(sport_id: int, session: SessionDep, _: CurrentUser) -> None:
     session.commit()
 
 
+@router.get("/{sport_id}/achievements")
+def list_sport_achievements(
+    sport_id: int, session: SessionDep, _: CurrentUser
+) -> list[Achievement]:
+    """Ачивки вида спорта со статусами (locked/in_progress/unlocked), в порядке создания.
+
+    404 для неизвестного спорта; пустой список — если набор ещё не сгенерирован.
+    """
+    _get_or_404(session, sport_id)
+    return session.exec(
+        select(Achievement).where(Achievement.sport_id == sport_id).order_by(Achievement.id)
+    ).all()
+
+
 @router.post("/{sport_id}/achievements/generate", status_code=status.HTTP_201_CREATED)
 def generate_sport_achievements(
     sport_id: int,
