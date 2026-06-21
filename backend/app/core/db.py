@@ -1,16 +1,16 @@
 """Фундамент БД: SQLModel engine, session-фабрика и инициализация хранилища.
 
-SQLite-файл лежит в data/app.db. Схема создаётся через create_all при старте —
-Alembic вводим в Sprint 2. Здесь же создаются каталоги для загрузок и видео.
+SQLite-файл лежит в data/app.db. Схема приводится к head через Alembic при старте
+(см. init_db → _migrate_to_head). Здесь же создаются каталоги для загрузок и видео.
 """
 
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import Engine
-from sqlmodel import Session, SQLModel, create_engine
+from sqlalchemy import Engine, inspect
+from sqlmodel import Session, create_engine
 
-import app.models  # noqa: F401 — регистрирует таблицы в SQLModel.metadata до create_all
+import app.models  # noqa: F401 — регистрирует таблицы в SQLModel.metadata
 from app.core.config import settings
 
 # backend/ — корень бэкенда (db.py лежит в backend/app/core/).
@@ -41,13 +41,38 @@ def make_engine(db_path: Path) -> Engine:
 
 engine = make_engine(_data_dir() / "app.db")
 
+# alembic.ini лежит в backend/ (рядом с app/). Конфиг строим от него.
+_ALEMBIC_INI = _BACKEND_DIR / "alembic.ini"
+
+
+def _migrate_to_head() -> None:
+    """Приводит схему к Alembic head на текущем engine (его монкейпатчат тесты).
+
+    Чистая БД → upgrade head создаёт всю схему. Доalembic-овская БД (таблицы есть,
+    alembic_version нет) — штампуем baseline, чтобы adopt существующие данные без падения.
+    """
+    from alembic.config import Config
+
+    from alembic import command
+
+    cfg = Config(str(_ALEMBIC_INI))
+    cfg.attributes["connection"] = engine  # env.py возьмёт именно этот движок
+    tables = set(inspect(engine).get_table_names())
+    if "user" in tables and "alembic_version" not in tables:
+        command.stamp(cfg, "head")
+    else:
+        command.upgrade(cfg, "head")
+
 
 def init_db() -> None:
-    """Создаёт каталоги данных и таблицы. Идемпотентно — вызывается на старте приложения."""
+    """Создаёт каталоги данных и приводит схему к Alembic head.
+
+    Идемпотентно — вызывается на старте приложения (повторный upgrade head — no-op).
+    """
     data_dir = _data_dir()
     for sub in _SUBDIRS:
         (data_dir / sub).mkdir(parents=True, exist_ok=True)
-    SQLModel.metadata.create_all(engine)
+    _migrate_to_head()
 
 
 def get_session() -> Iterator[Session]:
