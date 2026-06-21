@@ -17,6 +17,10 @@
 import csv
 import datetime as dt
 import re
+import uuid
+from dataclasses import dataclass, field
+
+from sqlmodel import Session
 
 from app.models.nutrition import FoodEntry
 
@@ -109,15 +113,78 @@ def _portion_grams(raw: str) -> float | None:
     return parse_decimal(match.group()) if match else None
 
 
-def parse_food_diary(raw: bytes, filename: str | None = None) -> list[FoodEntry]:
-    """Строки FatSecret-CSV → список съеденных продуктов (`FoodEntry`, без id).
+@dataclass(frozen=True)
+class Totals:
+    """Заявленные/посчитанные нутриенты строки или набора продуктов (None → 0.0)."""
+
+    kcal: float = 0.0
+    fat_g: float = 0.0
+    carb_g: float = 0.0
+    protein_g: float = 0.0
+
+
+@dataclass
+class DiaryImport:
+    """Разбор дневника: продукты + заявленные итоги (день и приёмы) для сверки.
+
+    `declared_day` — итог из строки-даты (дублирует «Всего», берём один).
+    `declared_meals` — приём → его заявленный итог (включая пустой Перекус/Другое).
+    `entries` несут проставленную дату; import_id ставит `import_food_diary`.
+    """
+
+    date: dt.date
+    entries: list[FoodEntry]
+    declared_day: Totals
+    declared_meals: dict[str, Totals] = field(default_factory=dict)
+
+
+def _row_totals(row: list[str]) -> Totals:
+    """Нутриенты строки по индексам колонок; пустая ячейка/нет колонки → 0.0."""
+
+    def cell(idx: int) -> float:
+        return (parse_decimal(row[idx]) if idx < len(row) else None) or 0.0
+
+    return Totals(cell(_KCAL), cell(_FAT), cell(_CARB), cell(_PROTEIN))
+
+
+def sum_totals(entries: list[FoodEntry]) -> Totals:
+    """Сумма нутриентов по продуктам (None → 0.0)."""
+    return Totals(
+        kcal=sum(e.kcal or 0.0 for e in entries),
+        fat_g=sum(e.fat_g or 0.0 for e in entries),
+        carb_g=sum(e.carb_g or 0.0 for e in entries),
+        protein_g=sum(e.protein_g or 0.0 for e in entries),
+    )
+
+
+def totals_match(a: Totals, b: Totals, *, tol: float = 1.0) -> bool:
+    """Сходятся ли итоги по каждому полю в пределах `tol`.
+
+    FatSecret округляет и сами продукты, и итоги, поэтому сумма продуктов может
+    дрейфовать от заявленного итога на доли единицы — допуск 1.0 на поле это
+    покрывает. ponytail: общий допуск; если краевые сэмплы дадут больший дрейф —
+    поднять tol или масштабировать его от числа продуктов.
+    """
+    return (
+        abs(a.kcal - b.kcal) <= tol
+        and abs(a.fat_g - b.fat_g) <= tol
+        and abs(a.carb_g - b.carb_g) <= tol
+        and abs(a.protein_g - b.protein_g) <= tol
+    )
+
+
+def parse_diary(raw: bytes, filename: str | None = None) -> DiaryImport:
+    """Строки FatSecret-CSV → продукты + заявленные итоги дня и приёмов.
 
     Иерархия по ведущим пробелам col0: 0=день/Всего, 1=приём, 2=продукт,
     3=порция. Порция привязывается к продукту строкой выше. Дата дня берётся из
-    строки-даты (уровень 0), при неудаче — из имени файла. `FoodEntry` не
-    кладётся в БД: import_id/persist — следующий шаг.
+    строки-даты (уровень 0), при неудаче — из имени файла. Заявленный дневной
+    итог берётся из первой строки уровня 0 с числами (строка-дата; «Всего» её
+    дублирует — второй раз не учитываем).
     """
     day_date: dt.date | None = None
+    declared_day: Totals | None = None
+    declared_meals: dict[str, Totals] = {}
     current_meal: str | None = None
     entries: list[FoodEntry] = []
     last_product: FoodEntry | None = None
@@ -129,10 +196,16 @@ def parse_food_diary(raw: bytes, filename: str | None = None) -> list[FoodEntry]
         label = row[0].strip()
 
         if level == 0:
-            # строка-дата (дневной итог) или «Всего» (grand-total) — продукты не несут
-            day_date = day_date or parse_day_date(label)
+            # строка-дата (дневной итог) или «Всего» (grand-total): дублируют друг
+            # друга — берём первую с числами, чтобы не учесть итог дважды. Строку-
+            # заголовок («Дата,Кал…») этим и отсекаем: она не дата и не «Всего».
+            parsed_date = parse_day_date(label)
+            if parsed_date is not None or label == "Всего":
+                day_date = day_date or parsed_date
+                declared_day = declared_day if declared_day is not None else _row_totals(row)
         elif level == 1:
             current_meal = label
+            declared_meals[label] = _row_totals(row)
         elif level == 2:
             last_product = FoodEntry(
                 date=dt.date.min,  # проставится после цикла, когда дата известна
@@ -155,4 +228,37 @@ def parse_food_diary(raw: bytes, filename: str | None = None) -> list[FoodEntry]
 
     for entry in entries:
         entry.date = day_date
-    return entries
+    return DiaryImport(
+        date=day_date,
+        entries=entries,
+        declared_day=declared_day or Totals(),
+        declared_meals=declared_meals,
+    )
+
+
+def parse_food_diary(raw: bytes, filename: str | None = None) -> list[FoodEntry]:
+    """Только продукты дневника (`FoodEntry`, без id) — тонкая обёртка над parse_diary."""
+    return parse_diary(raw, filename).entries
+
+
+def import_food_diary(
+    raw: bytes,
+    session: Session,
+    *,
+    filename: str | None = None,
+    import_id: str | None = None,
+) -> DiaryImport:
+    """Разобрать дневник и записать продукты в food_entry под общим import_id.
+
+    `import_id` связывает строки одного импорта; по умолчанию — свежий uuid, так
+    что повторный импорт даёт отдельную партию. После commit у продуктов
+    проставлены id. Пустые приёмы (без продуктов) строк не дают. Сверку сумм с
+    заявленными итогами оставляем вызывающему (`sum_totals`/`totals_match`).
+    """
+    parsed = parse_diary(raw, filename)
+    batch_id = import_id or uuid.uuid4().hex
+    for entry in parsed.entries:
+        entry.import_id = batch_id
+        session.add(entry)
+    session.commit()
+    return parsed
