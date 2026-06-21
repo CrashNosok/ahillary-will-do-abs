@@ -17,6 +17,7 @@ from app.api import (
     inbody,
     progress,
     sports,
+    workouts,
 )
 from app.core.config import CORS_ORIGINS
 from app.core.db import init_db
@@ -52,3 +53,4 @@ app.include_router(progress.router)
 app.include_router(inbody.router)
 app.include_router(sports.router)
 app.include_router(exercises.router)
+app.include_router(workouts.router)
