@@ -15,10 +15,16 @@
 (app/models/activity.py): длительности — в минутах, ккал/МЕТ/шаги — целые.
 """
 
+import datetime as dt
 import json
 import re
 from dataclasses import dataclass
 
+from sqlmodel import Session
+
+from app.core import db
+from app.models._time import utcnow
+from app.models.activity import ActivityDay
 from app.services import llm
 
 # Скрин и плитки русские — промпт тоже русский. Просим строго JSON и только текст
@@ -147,3 +153,45 @@ def parse_activity_screen(image_bytes: bytes, model: str | None = None) -> Activ
     """
     reply = llm.vision(image_bytes, ACTIVITY_PROMPT, model=model)
     return parse_activity_response(reply)
+
+
+def save_activity_day(
+    image_bytes: bytes,
+    date: dt.date,
+    session: Session,
+    *,
+    model: str | None = None,
+) -> ActivityDay:
+    """Разобрать скрин активности и сохранить день + исходник (S1.10).
+
+    Полный путь карточки: vision-разбор → файл `data/uploads/welltory/<date>.png`
+    → upsert ActivityDay (поля + raw_json + source_image_path + parsed_at).
+    Разбор идёт ПЕРВЫМ: при ошибке файл не пишется и записи нет. Идемпотентно по
+    дню — повторная загрузка того же дня заменяет запись и перезаписывает файл.
+    VisionParseError / llm.LLMError пробрасываются как есть — HTTP-код выбирает роут.
+    """
+    vision = parse_activity_screen(image_bytes, model=model)
+
+    dest = db.welltory_dir() / f"{date}.png"
+    dest.write_bytes(image_bytes)
+    try:
+        source_image_path = str(dest.relative_to(db.BACKEND_DIR))
+    except ValueError:  # каталог данных вне backend/ (абсолютный DATA_DIR) — храним как есть
+        source_image_path = str(dest)
+
+    day = session.get(ActivityDay, date) or ActivityDay(date=date)
+    day.total_kcal = vision.total_kcal
+    day.active_kcal = vision.active_kcal
+    day.steps = vision.steps
+    day.moving_min = vision.moving_min
+    day.idle_min = vision.idle_min
+    day.warmup_min = vision.warmup_min
+    day.active_met = vision.active_met
+    day.intense_met = vision.intense_met
+    day.raw_json = vision.raw
+    day.source_image_path = source_image_path
+    day.parsed_at = utcnow()
+    session.add(day)
+    session.commit()
+    session.refresh(day)
+    return day

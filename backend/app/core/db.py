@@ -15,6 +15,7 @@ from app.core.config import settings
 
 # backend/ — корень бэкенда (db.py лежит в backend/app/core/).
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
+BACKEND_DIR = _BACKEND_DIR  # экспортируем для построения относительных путей к загрузкам
 
 # Подкаталоги под локальные данные (parents=True заодно создаёт сам data/).
 _SUBDIRS = ("uploads", "videos")
@@ -24,6 +25,13 @@ def _data_dir() -> Path:
     """Каталог данных. Относительный путь якорим к backend/, чтобы не зависеть от CWD."""
     data_dir = settings.data_dir
     return data_dir if data_dir.is_absolute() else _BACKEND_DIR / data_dir
+
+
+def welltory_dir() -> Path:
+    """Каталог исходных скринов Welltory (data/uploads/welltory). Создаётся при обращении."""
+    target = _data_dir() / "uploads" / "welltory"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
 
 
 def make_engine(db_path: Path) -> Engine:
