@@ -34,6 +34,13 @@ def welltory_dir() -> Path:
     return target
 
 
+def inbody_dir() -> Path:
+    """Каталог исходных скринов InBody (data/uploads/inbody). Создаётся при обращении."""
+    target = _data_dir() / "uploads" / "inbody"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 def make_engine(db_path: Path) -> Engine:
     """SQLite-движок. check_same_thread=False — сессии живут в разных потоках FastAPI."""
     return create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
