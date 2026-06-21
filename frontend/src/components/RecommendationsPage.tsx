@@ -7,6 +7,7 @@ import {
   ApiError,
   type DayNutrition,
   type GoalSnapshot,
+  type MealPlan,
   type Recommendation,
   type WorkoutPlan,
 } from '../lib/api';
@@ -274,7 +275,7 @@ function RecommendationPlanView({
 
       <RationaleCard note={plan.sync_note} />
 
-      <WorkoutPlanView plan={plan.workout_plan} />
+      <WorkoutPlanView plan={plan.workout_plan} mealPlan={plan.meal_plan} />
     </>
   );
 }
@@ -347,18 +348,32 @@ function DayCard({ title, day }: { title: string; day: DayNutrition }) {
   );
 }
 
-function WorkoutPlanView({ plan }: { plan: WorkoutPlan }) {
+function WorkoutPlanView({ plan, mealPlan }: { plan: WorkoutPlan; mealPlan: MealPlan }) {
+  // Связка еда↔тренировка: каждая тренировка из расписания — это «тренировочный день»,
+  // т.е. ей соответствует более калорийный рацион (mealPlan.training_day); дни без
+  // тренировки идут по рациону отдыха (mealPlan.rest_day).
+  const trainingCal = mealPlan.training_day.calories;
+  const restCal = mealPlan.rest_day.calories;
   return (
     <section aria-label="План тренировок" className="flex flex-col gap-4">
       <h3 className="font-display text-lg font-semibold tracking-tight">
         Тренировки · {plan.days_per_week} в неделю
       </h3>
+
+      <FoodLinkLegend trainingCal={trainingCal} restCal={restCal} />
+
       <div className="flex flex-col gap-3">
         {plan.schedule.map((wday) => (
           <div key={wday.day} className="rounded-xl border border-line bg-surface p-4">
-            <p className="font-display font-semibold tracking-tight">
-              День {wday.day}. {wday.focus}
-            </p>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1.5">
+              <p className="font-display font-semibold tracking-tight">
+                День {wday.day}. {wday.focus}
+              </p>
+              {/* Пометка связки с едой: тренировочный день → рацион тренировочного дня. */}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
+                🍽 Рацион тренировочного дня · {trainingCal} ккал
+              </span>
+            </div>
             <ul className="mt-2 flex flex-col gap-1 text-sm">
               {wday.exercises.map((ex, i) => (
                 <li key={i} className="flex items-baseline justify-between gap-3">
@@ -379,12 +394,29 @@ function WorkoutPlanView({ plan }: { plan: WorkoutPlan }) {
         <ol className="mt-2 flex flex-col gap-1.5 text-sm">
           {plan.weekly_progression.map((w) => (
             <li key={w.week} className="flex gap-2">
-              <span className="text-muted">Неделя {w.week}:</span>
+              <span className="shrink-0 text-muted">Неделя {w.week}:</span>
               <span>{w.adjustment}</span>
             </li>
           ))}
         </ol>
       </div>
     </section>
+  );
+}
+
+// Связка еда↔тренировка в явном виде: какой рацион в день тренировки, какой — в день
+// отдыха. Делает зависимость питания от наличия нагрузки видимой прямо в плане тренировок.
+function FoodLinkLegend({ trainingCal, restCal }: { trainingCal: number; restCal: number }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-accent/30 bg-panel p-4 sm:flex-row sm:items-center sm:gap-4">
+      <span className="font-display text-xs font-semibold tracking-[0.15em] text-accent uppercase">
+        Связка с едой
+      </span>
+      <p className="text-sm leading-relaxed text-muted">
+        Дни тренировок → рацион <span className="font-medium text-fg">тренировочного дня</span> (
+        {trainingCal} ккал); дни отдыха → рацион{' '}
+        <span className="font-medium text-fg">дня отдыха</span> ({restCal} ккал).
+      </p>
+    </div>
   );
 }
