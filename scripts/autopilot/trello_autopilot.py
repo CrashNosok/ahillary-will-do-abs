@@ -686,6 +686,16 @@ def integrate_branch_to_main(branch: str) -> bool:
     m = subprocess.run(["git", "merge", "--ff-only", branch], cwd=str(REPO_ROOT), capture_output=True, text=True)
     if m.returncode == 0:
         print(f"    🔀 merged {branch} -> main (fast-forward)")
+        # Опц. пуш в origin/main (только зелёные FF-карточки), включается AUTOPILOT_PUSH_MAIN=1.
+        if os.environ.get("AUTOPILOT_PUSH_MAIN"):
+            p = subprocess.run(
+                ["git", "push", "origin", "main"], cwd=str(REPO_ROOT), capture_output=True, text=True
+            )
+            print(
+                "    ⬆ pushed main -> origin"
+                if p.returncode == 0
+                else f"    ⚠ push main -> origin failed: {(p.stderr or p.stdout).strip()[:200]}"
+            )
         return True
     print(f"    ⚠ integrate: ff-merge {branch} -> main failed: {(m.stderr or m.stdout).strip()[:200]}")
     return False
