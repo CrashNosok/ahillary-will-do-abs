@@ -27,9 +27,12 @@ type TabId =
   | 'sports'
   | 'goal';
 
+// Дату выбранного дня (из календаря, ?date=) формы-вкладки берут как стартовую (если умеют).
+type EntryTabProps = { initialDate?: string };
+
 // id вкладок «еда/активность/тренировки/замеры» совпадают с CATS в DayChargeProgress —
 // так чип «Заряда» уводит ровно на свою вкладку.
-const TABS: { id: TabId; label: string; Component: ComponentType }[] = [
+const TABS: { id: TabId; label: string; Component: ComponentType<EntryTabProps> }[] = [
   { id: 'food', label: 'Еда', Component: ImportPage },
   { id: 'activity', label: 'Активность', Component: ActivityImportPage },
   { id: 'training', label: 'Тренировки', Component: WorkoutLoggerPage },
@@ -47,6 +50,14 @@ function isTabId(value: string | null): value is TabId {
   return TABS.some((t) => t.id === value);
 }
 
+const dateBannerFmt = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export default function DataEntryPage() {
   const [params, setParams] = useSearchParams();
   const raw = params.get('tab');
@@ -54,8 +65,16 @@ export default function DataEntryPage() {
   const active = TABS.find((t) => t.id === tab) ?? TABS[0];
   const Active = active.Component;
 
+  const dateParam = params.get('date');
+  const date = dateParam && ISO_RE.test(dateParam) ? dateParam : undefined;
+
+  // Сохраняем дату при переключении вкладок (чтобы остаться на выбранном дне).
   function pick(id: string) {
-    setParams({ tab: id });
+    setParams(date ? { tab: id, date } : { tab: id });
+  }
+
+  function clearDate() {
+    setParams({ tab });
   }
 
   return (
@@ -99,9 +118,24 @@ export default function DataEntryPage() {
         ))}
       </div>
 
-      {/* key=tab — пересоздаём активную страницу при смене вкладки (сброс её локального состояния). */}
-      <div key={tab}>
-        <Active />
+      {date && (
+        <div className="flex flex-wrap items-center gap-3 self-start rounded-full border border-accent/40 bg-accent/10 px-4 py-2 text-sm">
+          <span className="font-medium text-fg">
+            День: {cap(dateBannerFmt.format(new Date(date + 'T00:00:00')))}
+          </span>
+          <button
+            type="button"
+            onClick={clearDate}
+            className="rounded-full border border-line px-2.5 py-0.5 text-xs text-muted transition-colors duration-[var(--duration-fast)] hover:text-fg"
+          >
+            Сбросить на сегодня
+          </button>
+        </div>
+      )}
+
+      {/* key=tab+date — пересоздаём активную страницу при смене вкладки/дня (сброс её состояния). */}
+      <div key={`${tab}:${date ?? ''}`}>
+        <Active initialDate={date} />
       </div>
     </section>
   );

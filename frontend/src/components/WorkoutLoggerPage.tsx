@@ -36,7 +36,7 @@ const TABS: { id: Tab; label: string; title: string; intro: string }[] = [
   },
 ];
 
-export default function WorkoutLoggerPage() {
+export default function WorkoutLoggerPage({ initialDate }: { initialDate?: string }) {
   const [tab, setTab] = useState<Tab>('strength');
   const active = TABS.find((t) => t.id === tab) ?? TABS[0];
 
@@ -73,9 +73,9 @@ export default function WorkoutLoggerPage() {
         ))}
       </div>
 
-      {tab === 'strength' && <StrengthLoggerForm />}
-      {tab === 'cardio' && <CardioLoggerForm />}
-      {tab === 'skill' && <SkillLoggerForm />}
+      {tab === 'strength' && <StrengthLoggerForm initialDate={initialDate} />}
+      {tab === 'cardio' && <CardioLoggerForm initialDate={initialDate} />}
+      {tab === 'skill' && <SkillLoggerForm initialDate={initialDate} />}
     </section>
   );
 }

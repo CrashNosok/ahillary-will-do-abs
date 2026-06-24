@@ -30,7 +30,7 @@ export default function ImportPage() {
   const [dragOver, setDragOver] = useState(false);
 
   const preview = useMutation<DiaryPreview, unknown, File>({ mutationFn: api.previewImport });
-  const save = useMutation<DiaryPreview, unknown, File>({ mutationFn: api.saveImport });
+  const save = useMutation<DiaryPreview, unknown, File>({ mutationFn: (f) => api.saveImport(f) });
 
   function handleFile(next: File | undefined) {
     if (!next) return;

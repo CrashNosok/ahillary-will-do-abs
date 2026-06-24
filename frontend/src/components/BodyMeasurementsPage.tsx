@@ -77,8 +77,8 @@ function errorText(error: unknown): string {
 const inputCls =
   'rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent';
 
-export default function BodyMeasurementsPage() {
-  const [date, setDate] = useState<string>(todayIso());
+export default function BodyMeasurementsPage({ initialDate }: { initialDate?: string }) {
+  const [date, setDate] = useState<string>(initialDate ?? todayIso());
   const [values, setValues] = useState<Values>(EMPTY_VALUES);
   const [validationError, setValidationError] = useState<string | null>(null);
 

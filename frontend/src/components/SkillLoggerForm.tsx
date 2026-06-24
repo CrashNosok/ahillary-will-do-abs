@@ -56,11 +56,11 @@ function errorText(error: unknown): string {
   return 'Не удалось сохранить. Проверьте, что сервер запущен.';
 }
 
-export default function SkillLoggerForm() {
+export default function SkillLoggerForm({ initialDate }: { initialDate?: string }) {
   const { data: sports } = useSports();
   const { data: exercises } = useExercises();
 
-  const [date, setDate] = useState<string>(todayIso());
+  const [date, setDate] = useState<string>(initialDate ?? todayIso());
   const [title, setTitle] = useState('');
   const [sportId, setSportId] = useState<string>('');
   const [rows, setRows] = useState<EntryRow[]>([emptyRow()]);

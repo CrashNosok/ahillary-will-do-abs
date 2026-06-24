@@ -19,14 +19,14 @@ function fmtDuration(totalSec: number): string {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 }
 
-export default function CardioLoggerForm() {
+export default function CardioLoggerForm({ initialDate }: { initialDate?: string }) {
   const { data: sports } = useSports();
   const cardioSports = useMemo<Sport[]>(
     () => (sports ?? []).filter((s) => s.type === 'cardio'),
     [sports],
   );
 
-  const [date, setDate] = useState<string>(todayIso());
+  const [date, setDate] = useState<string>(initialDate ?? todayIso());
   const [sportId, setSportId] = useState<string>('');
   const [title, setTitle] = useState('');
   const [distance, setDistance] = useState('');

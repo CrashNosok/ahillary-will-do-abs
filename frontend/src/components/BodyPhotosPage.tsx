@@ -29,12 +29,12 @@ function errorText(error: unknown): string {
   return 'Не удалось загрузить фото. Проверьте, что сервер запущен.';
 }
 
-export default function BodyPhotosPage() {
+export default function BodyPhotosPage({ initialDate }: { initialDate?: string }) {
   const qc = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [date, setDate] = useState<string>(todayIso());
+  const [date, setDate] = useState<string>(initialDate ?? todayIso());
 
   // Превью картинки из локального файла — без round-trip; чистим objectURL за собой.
   useEffect(() => {

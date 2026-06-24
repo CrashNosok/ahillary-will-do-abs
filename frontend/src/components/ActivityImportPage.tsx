@@ -60,11 +60,11 @@ function errorText(error: unknown): string {
   return 'Не удалось обработать скрин. Проверьте, что сервер запущен.';
 }
 
-export default function ActivityImportPage() {
+export default function ActivityImportPage({ initialDate }: { initialDate?: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [date, setDate] = useState<string>(todayIso());
+  const [date, setDate] = useState<string>(initialDate ?? todayIso());
   const [fields, setFields] = useState<ActivityFields | null>(null);
   const [rawJson, setRawJson] = useState<unknown>(null);
 
