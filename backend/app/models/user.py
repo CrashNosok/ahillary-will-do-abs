@@ -20,3 +20,7 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     password_hash: str
     created_at: datetime = Field(default_factory=_utcnow)
+    # Доп. поля профиля (M0·B2). display_name — опциональное отображаемое имя
+    # (пусто → показываем email). is_active — флаг активности, по умолчанию True.
+    display_name: str | None = Field(default=None)
+    is_active: bool = Field(default=True)

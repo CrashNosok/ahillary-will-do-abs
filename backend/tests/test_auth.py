@@ -73,6 +73,15 @@ def test_protected_route_with_session_returns_user(client):
     assert resp.json()["email"] == EMAIL
 
 
+def test_me_returns_profile_fields_with_defaults(client):
+    # критерий M0·B2: /auth/me отдаёт доп. поля профиля (display_name пусто, is_active=True)
+    client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    body = client.get("/auth/me").json()
+    assert body["display_name"] is None
+    assert body["is_active"] is True
+    assert "password_hash" not in body  # хэш по-прежнему не утекает
+
+
 def test_logout_invalidates_session(client):
     client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
     client.post("/auth/logout")

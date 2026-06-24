@@ -39,6 +39,15 @@ def test_flexible_fields_are_json_columns():
     assert isinstance(InbodyMeasurement.__table__.c.metrics_json.type, JSON)
 
 
+def test_user_profile_fields_have_defaults():
+    # критерий M0·B2: доп. поля профиля с дефолтами (display_name пусто, is_active=True)
+    from app.models.user import User
+
+    user = User(email="x@example.com", password_hash="h")
+    assert user.display_name is None
+    assert user.is_active is True
+
+
 def test_json_column_roundtrips_dict():
     engine = _memory_engine()
     payload = {"всего_ккал": 1218, "tiles": {"steps": 4459}}
