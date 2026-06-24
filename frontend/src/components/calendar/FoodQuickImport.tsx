@@ -12,14 +12,17 @@ const fmt = (iso: string) => {
   return dateFmt.format(new Date(y, m - 1, d));
 };
 
-export function FoodQuickImport({ date }: { date: string }) {
+export function FoodQuickImport({ date, onSaved }: { date: string; onSaved?: () => void }) {
   const qc = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
   const save = useMutation<DiaryPreview, unknown, File>({
     mutationFn: (f) => api.saveImport(f, date), // записываем на выбранный день
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dashboard'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      onSaved?.();
+    },
   });
 
   const choose = (f: File | undefined) => {

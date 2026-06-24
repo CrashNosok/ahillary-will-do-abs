@@ -20,7 +20,7 @@ const A_FIELDS: { key: keyof ActivityFields; label: string; req?: boolean }[] = 
 ];
 const REQUIRED: (keyof ActivityFields)[] = ['total_kcal', 'active_kcal', 'steps'];
 
-export function ActivityForm({ date }: { date: string }) {
+export function ActivityForm({ date, onSaved }: { date: string; onSaved?: () => void }) {
   const qc = useQueryClient();
   const [vals, setVals] = useState<Record<string, string>>({});
   const [err, setErr] = useState<string | null>(null);
@@ -48,7 +48,10 @@ export function ActivityForm({ date }: { date: string }) {
 
   const save = useMutation({
     mutationFn: () => api.saveActivityManual(date, fields()),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dashboard'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      onSaved?.();
+    },
   });
 
   const submit = (e: FormEvent) => {

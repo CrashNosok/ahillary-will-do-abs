@@ -7,13 +7,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type BodyMeasurementInput } from '../../lib/api';
 import { inputCls, SaveButton, errText, numOrNull } from './formKit';
 
-export function WeekWeightForm({ date }: { date: string }) {
+export function WeekWeightForm({ date, onSaved }: { date: string; onSaved?: () => void }) {
   const qc = useQueryClient();
   const [w, setW] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const save = useMutation({
     mutationFn: () => api.createWeight({ date, weight_kg: Number(w) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dashboard'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      onSaved?.();
+    },
   });
 
   const submit = (e: FormEvent) => {
@@ -67,7 +70,7 @@ const M_FIELDS: { key: MKey; label: string }[] = [
   { key: 'height_cm', label: 'Рост' },
 ];
 
-export function WeekMeasurementsForm({ date }: { date: string }) {
+export function WeekMeasurementsForm({ date, onSaved }: { date: string; onSaved?: () => void }) {
   const qc = useQueryClient();
   const [vals, setVals] = useState<Record<string, string>>({});
   const [err, setErr] = useState<string | null>(null);
@@ -89,7 +92,10 @@ export function WeekMeasurementsForm({ date }: { date: string }) {
       };
       return api.createMeasurement(payload);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dashboard'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      onSaved?.();
+    },
   });
 
   const submit = (e: FormEvent) => {
@@ -227,7 +233,7 @@ function CameraShot({
   );
 }
 
-export function WeekPhotoForm({ date }: { date: string }) {
+export function WeekPhotoForm({ date, onSaved }: { date: string; onSaved?: () => void }) {
   const qc = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -238,6 +244,7 @@ export function WeekPhotoForm({ date }: { date: string }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['body-photos'] });
+      onSaved?.();
     },
   });
 

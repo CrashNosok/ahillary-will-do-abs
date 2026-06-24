@@ -37,20 +37,20 @@ const WEEKLY_ROWS: Row[] = [
 
 // Инлайн-форма категории. Дневные (еда/активность/тренировки) — существующие страницы;
 // недельные (вес/замеры/фото) — минимальные формы без даты (пишут на дату недели).
-function renderForm(tab: string, iso: string) {
+function renderForm(tab: string, iso: string, onSaved: () => void) {
   switch (tab) {
     case 'food':
-      return <FoodQuickImport date={iso} />;
+      return <FoodQuickImport date={iso} onSaved={onSaved} />;
     case 'activity':
-      return <ActivityForm date={iso} />;
+      return <ActivityForm date={iso} onSaved={onSaved} />;
     case 'training':
       return <WorkoutLoggerPage initialDate={iso} />;
     case 'weight':
-      return <WeekWeightForm date={iso} />;
+      return <WeekWeightForm date={iso} onSaved={onSaved} />;
     case 'measurements':
-      return <WeekMeasurementsForm date={iso} />;
+      return <WeekMeasurementsForm date={iso} onSaved={onSaved} />;
     case 'photos':
-      return <WeekPhotoForm date={iso} />;
+      return <WeekPhotoForm date={iso} onSaved={onSaved} />;
     default:
       return null;
   }
@@ -74,6 +74,8 @@ export function DayEditorPanel({
   const showDaily = rows !== 'weekly';
   const showWeekly = rows !== 'daily';
   const [open, setOpen] = useState<string | null>(null);
+  // Категории, сохранённые прямо в попапе — чтобы строка сразу стала «Изменить».
+  const [saved, setSaved] = useState<ReadonlySet<string>>(new Set());
   useScrollLock();
 
   useEffect(() => {
@@ -95,7 +97,7 @@ export function DayEditorPanel({
   );
 
   const renderRow = (r: Row) => {
-    const done = !!flags?.[r.key];
+    const done = !!flags?.[r.key] || saved.has(r.tab);
     const isOpen = open === r.tab;
     return (
       <li key={r.key} className="border-b border-line/60 last:border-0">
@@ -134,7 +136,7 @@ export function DayEditorPanel({
         </div>
         {isOpen && (
           <div className="entry-embed mb-3 rounded-xl border border-line bg-ink/40 p-3">
-            {renderForm(r.tab, iso)}
+            {renderForm(r.tab, iso, () => setSaved((s) => new Set(s).add(r.tab)))}
           </div>
         )}
       </li>
