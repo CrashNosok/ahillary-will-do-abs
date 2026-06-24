@@ -41,6 +41,13 @@ def inbody_dir() -> Path:
     return target
 
 
+def progress_dir() -> Path:
+    """Каталог фото прогресса тела (data/uploads/progress). Создаётся при обращении."""
+    target = _data_dir() / "uploads" / "progress"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 def videos_dir(achievement_id: int) -> Path:
     """Каталог видео-пруфов ачивки (data/videos/<achievement_id>). Создаётся при обращении."""
     target = _data_dir() / "videos" / str(achievement_id)

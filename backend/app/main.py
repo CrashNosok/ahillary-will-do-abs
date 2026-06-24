@@ -10,6 +10,7 @@ from app.api import (
     activity,
     auth,
     body,
+    body_photos,
     dashboard,
     exercises,
     food,
@@ -20,6 +21,7 @@ from app.api import (
     recommendations,
     snapshot,
     sports,
+    weight,
     workouts,
 )
 from app.core.config import CORS_ORIGINS
@@ -52,6 +54,8 @@ app.include_router(food.router)
 app.include_router(activity.router)
 app.include_router(dashboard.router)
 app.include_router(body.router)
+app.include_router(weight.router)
+app.include_router(body_photos.router)
 app.include_router(progress.router)
 app.include_router(inbody.router)
 app.include_router(sports.router)
