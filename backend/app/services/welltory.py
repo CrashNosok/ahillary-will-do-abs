@@ -237,3 +237,28 @@ def save_activity_day_values(
     модели из шага превью (для аудита: что увидела модель против того, что сохранили).
     """
     return _upsert_day(image_bytes, date, session, fields=fields, raw=raw)
+
+
+def save_activity_day_manual(
+    date: dt.date,
+    session: Session,
+    *,
+    fields: dict[str, int | None],
+) -> ActivityDay:
+    """Ручной ввод дня активности (без скрина): upsert значений, vision не дёргаем.
+
+    Файл-исходник не пишем (source_image_path=None), raw помечаем как ручной ввод.
+    Идемпотентно по дню; дефицит дня пересчитывается. Дублирует логику _upsert_day,
+    но без записи изображения — отдельный путь без файла.
+    """
+    day = session.get(ActivityDay, date) or ActivityDay(date=date)
+    for name in FIELD_NAMES:
+        setattr(day, name, fields.get(name))
+    day.raw_json = {"manual": True}
+    day.source_image_path = None
+    day.parsed_at = utcnow()
+    session.add(day)
+    session.commit()
+    deficit.recompute(date, session)
+    session.refresh(day)
+    return day

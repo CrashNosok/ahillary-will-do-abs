@@ -52,6 +52,12 @@ class ActivityPreview(ActivityFields):
     saved: bool = False
 
 
+class ManualActivityIn(ActivityFields):
+    """Ручной ввод дня активности: восемь метрик + дата (без скрина)."""
+
+    date: dt.date
+
+
 async def _read_image(file: UploadFile) -> bytes:
     image_bytes = await file.read()
     if not image_bytes:
@@ -86,6 +92,18 @@ async def preview_activity(
         date=date or dt.date.today(),
         raw_json=vision.raw,
         **{name: getattr(vision, name) for name in welltory.FIELD_NAMES},
+    )
+
+
+@router.post("/activity/manual", status_code=status.HTTP_201_CREATED)
+def import_activity_manual(
+    payload: ManualActivityIn,
+    session: SessionDep,
+    _: CurrentUser,
+) -> ActivityDay:
+    """Ручной ввод активности (без скрина): upsert дня по `date`. Vision не дёргаем."""
+    return welltory.save_activity_day_manual(
+        payload.date, session, fields=payload.model_dump(exclude={"date"})
     )
 
 

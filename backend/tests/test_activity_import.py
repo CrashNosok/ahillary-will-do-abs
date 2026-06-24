@@ -124,6 +124,22 @@ def test_import_saves_day_with_image_path(client, engine, uploads):
     assert rows[0].parsed_at is not None
 
 
+def test_manual_entry_saves_day_without_image(client, engine):
+    # ручной ввод (без скрина): день сохранён, source_image_path пуст, vision не дёргался
+    resp = client.post(
+        "/import/activity/manual",
+        json={"date": "2026-06-21", "total_kcal": 1123, "active_kcal": 24, "steps": 775},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["date"] == "2026-06-21"
+    assert body["total_kcal"] == 1123 and body["active_kcal"] == 24 and body["steps"] == 775
+    assert body["source_image_path"] is None
+    rows = _days(engine)
+    assert len(rows) == 1 and str(rows[0].date) == "2026-06-21"
+    assert rows[0].raw_json == {"manual": True}
+
+
 def test_raw_json_stores_full_parse(client, engine, uploads):
     # критерий: raw_json хранит полный разбор (все восемь плиток как вернула модель)
     resp = _upload(client, date="2026-06-20")
