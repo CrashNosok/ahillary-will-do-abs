@@ -145,12 +145,13 @@ def _get_or_404(session: Session, workout_id: int) -> WorkoutSession:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def create_workout(payload: WorkoutCreate, session: SessionDep, _: CurrentUser) -> WorkoutRead:
+def create_workout(payload: WorkoutCreate, session: SessionDep, user: CurrentUser) -> WorkoutRead:
     if payload.sport_id is not None:
         _require_sport(session, payload.sport_id)
     _require_exercises(session, {s.exercise_id for s in payload.sets})
 
     ws = WorkoutSession(
+        user_id=user.id,
         date=payload.date,
         activity_date=_link_activity_date(session, payload.date),
         sport_id=payload.sport_id,
@@ -166,7 +167,7 @@ def create_workout(payload: WorkoutCreate, session: SessionDep, _: CurrentUser) 
     session.commit()
 
     # PR-движок (S3.10): фиксируем новые рекорды (макс вес / лучший 1ПМ) по сессии
-    new_prs = apply_prs(session, strength_candidates(payload.sets), payload.date)
+    new_prs = apply_prs(session, strength_candidates(payload.sets), payload.date, user.id)
     return _read(session, ws).model_copy(update={"personal_records": _pr_reads(new_prs)})
 
 
@@ -213,7 +214,7 @@ class SimpleWorkoutRead(BaseModel):
 @router.post("/simple", status_code=status.HTTP_201_CREATED)
 async def create_simple_workout(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     kind: Annotated[str, Form()],
     date: Annotated[dt.date | None, Form()] = None,
     duration_min: Annotated[float | None, Form()] = None,
@@ -249,6 +250,7 @@ async def create_simple_workout(
 
     day = date or dt.date.today()
     ws = WorkoutSession(
+        user_id=user.id,
         date=day,
         activity_date=_link_activity_date(session, day),
         sport_id=sport_id,
@@ -471,13 +473,14 @@ def _read_cardio(ws: WorkoutSession, log: CardioLog) -> CardioRead:
 
 
 @router.post("/cardio", status_code=status.HTTP_201_CREATED)
-def create_cardio(payload: CardioIn, session: SessionDep, _: CurrentUser) -> CardioRead:
+def create_cardio(payload: CardioIn, session: SessionDep, user: CurrentUser) -> CardioRead:
     if payload.sport_id is not None:
         _require_sport(session, payload.sport_id)
     if payload.exercise_id is not None:
         _require_exercises(session, {payload.exercise_id})
 
     ws = WorkoutSession(
+        user_id=user.id,
         date=payload.date,
         activity_date=_link_activity_date(session, payload.date),
         sport_id=payload.sport_id,
@@ -502,7 +505,7 @@ def create_cardio(payload: CardioIn, session: SessionDep, _: CurrentUser) -> Car
     session.refresh(log)
 
     # PR-движок (S3.10): фиксируем лучший темп / макс дистанцию по упражнению
-    new_prs = apply_prs(session, cardio_candidates(log), payload.date)
+    new_prs = apply_prs(session, cardio_candidates(log), payload.date, user.id)
     return _read_cardio(ws, log).model_copy(update={"personal_records": _pr_reads(new_prs)})
 
 
@@ -580,12 +583,13 @@ def _read_skill(session: Session, ws: WorkoutSession) -> SkillRead:
 
 
 @router.post("/skill", status_code=status.HTTP_201_CREATED)
-def create_skill(payload: SkillCreate, session: SessionDep, _: CurrentUser) -> SkillRead:
+def create_skill(payload: SkillCreate, session: SessionDep, user: CurrentUser) -> SkillRead:
     if payload.sport_id is not None:
         _require_sport(session, payload.sport_id)
     _require_exercises(session, {e.exercise_id for e in payload.entries})
 
     ws = WorkoutSession(
+        user_id=user.id,
         date=payload.date,
         activity_date=_link_activity_date(session, payload.date),
         sport_id=payload.sport_id,

@@ -107,7 +107,9 @@ def _current_best(session: Session, exercise_id: int, metric: str, higher: bool)
     return max(rows) if higher else min(rows)
 
 
-def apply_prs(session: Session, candidates: Iterable[PRCandidate], date) -> list[PersonalRecord]:
+def apply_prs(
+    session: Session, candidates: Iterable[PRCandidate], date, user_id: int
+) -> list[PersonalRecord]:
     """Записать те кандидаты, что реально побили текущий рекорд. Возвращает новые записи."""
     new_records: list[PersonalRecord] = []
     for c in candidates:
@@ -116,7 +118,12 @@ def apply_prs(session: Session, candidates: Iterable[PRCandidate], date) -> list
         if not _is_improvement(c.value, current, higher):
             continue
         rec = PersonalRecord(
-            exercise_id=c.exercise_id, metric=c.metric, date=date, value=c.value, unit=unit
+            user_id=user_id,
+            exercise_id=c.exercise_id,
+            metric=c.metric,
+            date=date,
+            value=c.value,
+            unit=unit,
         )
         session.add(rec)
         new_records.append(rec)

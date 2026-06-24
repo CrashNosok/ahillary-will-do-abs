@@ -20,6 +20,8 @@ class WorkoutSession(SQLModel, table=True):
     __tablename__ = "workout_session"
 
     id: int | None = Field(default=None, primary_key=True)
+    # Владелец записи (M0·B3): изоляция данных по пользователю. NOT NULL + FK на user.id.
+    user_id: int = Field(foreign_key="user.id", index=True)
     sport_id: int | None = Field(default=None, foreign_key="sport.id", index=True)
     date: dt.date = Field(index=True)
     # Связь с Welltory-днём (S3.9): FK на activity_day.date. Проставляется автолинком
@@ -93,6 +95,8 @@ class PersonalRecord(SQLModel, table=True):
     __tablename__ = "personal_record"
 
     id: int | None = Field(default=None, primary_key=True)
+    # Владелец рекорда (M0·B3): изоляция данных по пользователю. NOT NULL + FK на user.id.
+    user_id: int = Field(foreign_key="user.id", index=True)
     exercise_id: int = Field(foreign_key="exercise.id", index=True)
     # тип рекорда (S3.10): max_weight | best_1rm | best_pace | max_distance —
     # дискриминатор, чтобы сравнивать новый результат с лучшим того же рода.
