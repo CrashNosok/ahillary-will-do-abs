@@ -91,3 +91,33 @@ def test_sign_roundtrips_and_rejects_tampering():
     assert unsign(signed) == "42"
     assert unsign("42.deadbeef") is None  # битая подпись
     assert unsign("42") is None  # нет подписи
+
+
+NEW_EMAIL = "new@example.com"
+NEW_PASSWORD = "fresh-password"
+
+
+def test_register_creates_user_who_can_login(client):
+    resp = client.post("/auth/register", json={"email": NEW_EMAIL, "password": NEW_PASSWORD})
+    assert resp.status_code == 201  # критерий: создан юзер
+    assert resp.json()["email"] == NEW_EMAIL
+    assert "password_hash" not in resp.json()  # хэш не утёк в ответ
+    # критерий: пароль хэшируется (reuse hash_password) — новым юзером можно залогиниться
+    login = client.post("/auth/login", json={"email": NEW_EMAIL, "password": NEW_PASSWORD})
+    assert login.status_code == 200
+
+
+def test_register_duplicate_email_returns_409(client):
+    resp = client.post("/auth/register", json={"email": EMAIL, "password": "whatever"})
+    assert resp.status_code == 409  # критерий: дубль email → 409
+
+
+def test_register_sets_signed_session_cookie_like_login(client):
+    resp = client.post("/auth/register", json={"email": NEW_EMAIL, "password": NEW_PASSWORD})
+    set_cookie = resp.headers["set-cookie"].lower()
+    assert "httponly" in set_cookie  # критерий: signed-cookie как /login (HttpOnly)
+    assert "session=" in set_cookie
+    # подписанная сессия аутентифицирует нового юзера (TestClient переносит cookie)
+    me = client.get("/auth/me")
+    assert me.status_code == 200
+    assert me.json()["email"] == NEW_EMAIL
