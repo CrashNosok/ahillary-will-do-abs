@@ -6,6 +6,7 @@ import AppShell from './components/AppShell';
 import BodyMeasurementsPage from './components/BodyMeasurementsPage';
 import CoachPhrasesPage from './components/CoachPhrasesPage';
 import Dashboard from './components/Dashboard';
+import DataEntryPage from './components/DataEntryPage';
 import GoalPage from './components/GoalPage';
 import ImportPage from './components/ImportPage';
 import InbodyImportPage from './components/InbodyImportPage';
@@ -35,6 +36,7 @@ export default function App() {
             }
           >
             <Route index element={<Dashboard />} />
+            <Route path="data-entry" element={<DataEntryPage />} />
             <Route path="progress" element={<ProgressPage />} />
             <Route path="sports" element={<SportsPage />} />
             <Route path="achievements" element={<AchievementsPage />} />

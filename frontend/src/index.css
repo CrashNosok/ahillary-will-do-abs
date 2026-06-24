@@ -147,3 +147,36 @@
     transform: translateY(0) scale(1);
   }
 }
+
+/* «Заряд дня» (Ввод данных): пустые дуги мягко пульсируют-приглашают заполнить,
+ * на 100% кольцо празднично подсвечивается. Только opacity/filter → на компоновщике;
+ * reduced-motion гасит сверху. */
+.charge-invite {
+  animation: charge-invite 2.4s ease-in-out infinite;
+}
+
+.charge-celebrate {
+  animation: charge-celebrate 1.4s var(--ease-out-expo);
+}
+
+@keyframes charge-invite {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes charge-celebrate {
+  0% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  40% {
+    filter: drop-shadow(0 0 18px var(--color-accent));
+  }
+  100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}

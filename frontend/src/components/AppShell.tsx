@@ -1,20 +1,17 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useLogout, useMe } from '../lib/auth';
 
-/** Защищённые маршруты приложения. Метки — для UI, пути — для роутера. */
+/** Защищённые маршруты приложения. Метки — для UI, пути — для роутера.
+ *  Весь ввод данных собран в один пункт «Ввод данных» (вкладки внутри): еда, активность,
+ *  тренировки, замеры, вес, InBody, фото, виды спорта, цель. Их прямые маршруты остаются
+ *  рабочими (см. App.tsx) для старых ссылок — просто не дублируются в меню. */
 const NAV = [
   { to: '/', label: 'Дашборд', end: true },
+  { to: '/data-entry', label: 'Ввод данных', end: false },
   { to: '/progress', label: 'Прогресс', end: false },
-  { to: '/sports', label: 'Виды спорта', end: false },
   { to: '/achievements', label: 'Достижения', end: false },
-  { to: '/coach-phrases', label: 'Фразы коуча', end: false },
-  { to: '/workouts', label: 'Тренировки', end: false },
   { to: '/recommendations', label: 'Рекомендации', end: false },
-  { to: '/goal', label: 'Цель', end: false },
-  { to: '/body', label: 'Замеры', end: false },
-  { to: '/import', label: 'Импорт еды', end: false },
-  { to: '/import-activity', label: 'Импорт активности', end: false },
-  { to: '/import-inbody', label: 'InBody', end: false },
+  { to: '/coach-phrases', label: 'Фразы коуча', end: false },
   { to: '/settings', label: 'Настройки', end: false },
 ] as const;
 

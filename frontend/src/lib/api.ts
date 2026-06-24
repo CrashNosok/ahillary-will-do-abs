@@ -237,6 +237,17 @@ export type BodyMeasurement = {
 /** Поля формы замеров (S2.3) — то, что задаёт пользователь (без id/notes). */
 export type BodyMeasurementInput = Omit<BodyMeasurement, 'id' | 'notes'>;
 
+/** Ввод веса (вкладка «Вес»): дата + вес (кг). Бэкенд апсёртит в inbody_measurement по дню. */
+export type WeightInput = { date: string; weight_kg: number };
+
+/** Фото прогресса тела (вкладка «Фото»): метаданные; сам файл — по bodyPhotoUrl(id). */
+export type ProgressPhoto = {
+  id: number;
+  date: string; // ISO YYYY-MM-DD
+  notes: string | null;
+  uploaded_at: string;
+};
+
 /** Точка временного ряда прогресса (S2.4): дата ISO + значение. */
 export type SeriesPoint = { date: string; value: number };
 
@@ -565,6 +576,11 @@ export type AchievementProof = {
 export const achievementThumbnailUrl = (achievementId: number, v?: string | number): string =>
   `${API_BASE}/achievements/${achievementId}/proof/thumbnail${v != null ? `?v=${v}` : ''}`;
 
+/** URL файла фото прогресса для <img>. Грузится с сессионной cookie (same-site localhost).
+ *  Cache-bust (`v`) — чтобы после новой загрузки бралась свежая картинка, а не из кеша. */
+export const bodyPhotoUrl = (photoId: number, v?: string | number): string =>
+  `${API_BASE}/body-photos/${photoId}${v != null ? `?v=${v}` : ''}`;
+
 export const api = {
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) =>
@@ -648,6 +664,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+
+  // Вес (вкладка «Вес»): ручной ввод числа без фото; бэкенд апсёртит по дню в inbody_measurement.
+  createWeight: (input: WeightInput) =>
+    request<InbodyMeasurement>('/body/weight', { method: 'POST', body: JSON.stringify(input) }),
+
+  // Фото прогресса (вкладка «Фото»): загрузка (multipart) + список для галереи (новые сверху).
+  uploadBodyPhoto: (file: File, date?: string, notes?: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (date) form.append('date', date);
+    if (notes) form.append('notes', notes);
+    return postForm<ProgressPhoto>('/body-photos', form);
+  },
+  listBodyPhotos: (start?: string, end?: string) => {
+    const qs = new URLSearchParams();
+    if (start) qs.set('start', start);
+    if (end) qs.set('end', end);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request<ProgressPhoto[]>(`/body-photos${suffix}`);
+  },
 
   // Импорт еды: превью разбирает CSV без записи; save пишет идемпотентно по дню.
   previewImport: (file: File) => upload<DiaryPreview>('/import/food/preview', file),
