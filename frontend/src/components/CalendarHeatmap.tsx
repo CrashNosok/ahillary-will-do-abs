@@ -4,7 +4,8 @@
  *  сливает стаканы в чашу, раскрывает медаль (mystery-ball при идеальной неделе) и открывает
  *  отчёт с планом. Данные — GET /dashboard. */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type DayFlags } from '../lib/api';
 import { useDashboard } from '../lib/dashboard';
 import { DAILY, WEEKLY, chunkWeeks, weekFill, type MonthCell } from '../lib/weekly';
@@ -23,6 +24,7 @@ const fmtShort = (iso: string) => weekRangeFmt.format(new Date(iso + 'T00:00:00'
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
 
 const pad = (n: number) => String(n).padStart(2, '0');
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Локальный ISO (без UTC-сдвига): new Date(iso) трактует строку как UTC и теряет день.
 const toISO = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -66,6 +68,24 @@ export default function CalendarHeatmap() {
 
   const [report, setReport] = useState<ReportTarget | null>(null);
   const [editDay, setEditDay] = useState<EditDay | null>(null);
+
+  // Возврат из «Расширенного ввода» (S3.11): /?day=ISO переоткрывает попап этого дня. Параметр
+  // «съедаем» один раз — как только данные нужного месяца загрузились (флаги уже свежие).
+  const [params, setParams] = useSearchParams();
+  const [pendingDay, setPendingDay] = useState<string | null>(() => {
+    const d = params.get('day');
+    return d && ISO_RE.test(d) ? d : null;
+  });
+  useEffect(() => {
+    if (pendingDay) setMonthStart(firstOfMonth(new Date(pendingDay + 'T00:00:00')));
+  }, [pendingDay]);
+  useEffect(() => {
+    if (!pendingDay || isPending) return;
+    if (pendingDay < start || pendingDay > end) return; // ждём данных нужного месяца
+    setEditDay({ iso: pendingDay, flags: flagsByDate.get(pendingDay), rows: 'daily' });
+    setPendingDay(null);
+    if (params.get('day')) setParams({}, { replace: true });
+  }, [pendingDay, isPending, start, end, flagsByDate, params, setParams]);
 
   const shiftMonth = (delta: number) =>
     setMonthStart((d) => new Date(d.getFullYear(), d.getMonth() + delta, 1));

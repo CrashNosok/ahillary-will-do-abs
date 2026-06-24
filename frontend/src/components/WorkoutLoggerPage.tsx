@@ -3,9 +3,12 @@
  *  свою сессию на бэкенд (POST /workouts, /workouts/cardio, /workouts/skill). */
 
 import { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import CardioLoggerForm from './CardioLoggerForm';
 import SkillLoggerForm from './SkillLoggerForm';
 import StrengthLoggerForm from './StrengthLoggerForm';
+
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 type Tab = 'strength' | 'cardio' | 'skill';
 
@@ -39,6 +42,15 @@ const TABS: { id: Tab; label: string; title: string; intro: string }[] = [
 export default function WorkoutLoggerPage({ initialDate }: { initialDate?: string }) {
   const [tab, setTab] = useState<Tab>('strength');
   const active = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const navigate = useNavigate();
+
+  // День берём из ?day= (его прокидывает «Расширенный ввод» из попапа календаря), с запасным
+  // initialDate-пропом (когда страница встроена во вкладку «Ввод данных»). Если пришли из попапа —
+  // показываем «Готово, вернуться ко дню»: /?day=ISO переоткроет попап с уже внесённой тренировкой.
+  const [params] = useSearchParams();
+  const dayParam = params.get('day');
+  const fromDay = dayParam && ISO_RE.test(dayParam) ? dayParam : null;
+  const date = initialDate ?? fromDay ?? undefined;
 
   return (
     <section aria-labelledby="workout-heading" className="flex flex-col gap-[var(--space-section)]">
@@ -73,9 +85,20 @@ export default function WorkoutLoggerPage({ initialDate }: { initialDate?: strin
         ))}
       </div>
 
-      {tab === 'strength' && <StrengthLoggerForm initialDate={initialDate} />}
-      {tab === 'cardio' && <CardioLoggerForm initialDate={initialDate} />}
-      {tab === 'skill' && <SkillLoggerForm initialDate={initialDate} />}
+      {tab === 'strength' && <StrengthLoggerForm initialDate={date} />}
+      {tab === 'cardio' && <CardioLoggerForm initialDate={date} />}
+      {tab === 'skill' && <SkillLoggerForm initialDate={date} />}
+
+      {/* Возврат в попап дня — рядом с «Сохранить» формы, чтобы после записи сессии сразу выйти. */}
+      {fromDay && (
+        <button
+          type="button"
+          onClick={() => navigate(`/?day=${fromDay}`)}
+          className="self-start rounded-xl border border-line px-5 py-3 font-display font-medium text-fg transition-colors duration-[var(--duration-fast)] hover:border-accent/60 hover:text-accent"
+        >
+          ← Готово, вернуться ко дню
+        </button>
+      )}
     </section>
   );
 }

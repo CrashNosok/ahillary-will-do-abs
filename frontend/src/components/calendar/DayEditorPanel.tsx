@@ -11,7 +11,7 @@ import { useScrollLock } from '../../lib/useScrollLock';
 import { FoodQuickImport } from './FoodQuickImport';
 import { ActivityForm } from './ActivityForm';
 import { WeekWeightForm, WeekMeasurementsForm, WeekPhotoForm } from './WeeklyForms';
-import WorkoutLoggerPage from '../WorkoutLoggerPage';
+import { WorkoutForm } from './WorkoutForm';
 
 const dateFmt = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
@@ -44,7 +44,7 @@ function renderForm(tab: string, iso: string, onSaved: () => void) {
     case 'activity':
       return <ActivityForm date={iso} onSaved={onSaved} />;
     case 'training':
-      return <WorkoutLoggerPage initialDate={iso} />;
+      return <WorkoutForm date={iso} onSaved={onSaved} />;
     case 'weight':
       return <WeekWeightForm date={iso} onSaved={onSaved} />;
     case 'measurements':

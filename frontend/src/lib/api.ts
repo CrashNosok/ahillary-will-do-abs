@@ -194,6 +194,35 @@ export type SkillSession = {
   entries: SkillEntry[];
 };
 
+/** Тип тренировки в минимальном («быстром») логе (S3.11). */
+export type WorkoutKind = 'cardio' | 'strength' | 'skill' | 'other';
+
+export type SimpleWorkoutMedia = { id: number; media_type: 'image' | 'video' };
+
+/** Минимальный лог тренировки — ответ POST /workouts/simple (S3.11). */
+export type SimpleWorkout = {
+  id: number;
+  date: string; // ISO YYYY-MM-DD
+  kind: WorkoutKind;
+  sport_id: number | null;
+  duration_min: number | null;
+  rpe: number | null;
+  notes: string | null;
+  created_at: string;
+  media: SimpleWorkoutMedia[];
+};
+
+/** Ввод минимального лога: тип, длительность, усилие, заметка и медиа (фото/видео).
+ *  Длительность опциональна — для видео рекорда/трюка минуты не нужны. */
+export type SimpleWorkoutInput = {
+  date: string;
+  kind: WorkoutKind;
+  durationMin: number | null;
+  rpe: number | null;
+  note: string | null;
+  files: File[];
+};
+
 /** SMART-цель: ответ бэкенда (см. backend SmartGoal). Даты — ISO `YYYY-MM-DD`. */
 export type Goal = {
   id: number;
@@ -587,6 +616,9 @@ export const achievementThumbnailUrl = (achievementId: number, v?: string | numb
 export const bodyPhotoUrl = (photoId: number, v?: string | number): string =>
   `${API_BASE}/body-photos/${photoId}${v != null ? `?v=${v}` : ''}`;
 
+/** URL файла медиа тренировки (S3.11) — для <img>/<video src>. */
+export const workoutMediaUrl = (mediaId: number): string => `${API_BASE}/workouts/media/${mediaId}`;
+
 export const api = {
   me: () => request<User>('/auth/me'),
   login: (email: string, password: string) =>
@@ -628,6 +660,18 @@ export const api = {
   // Скилл-сессия (S3.8): шапка + элементы (попытки/приземления) одним POST.
   createSkill: (input: SkillInput) =>
     request<SkillSession>('/workouts/skill', { method: 'POST', body: JSON.stringify(input) }),
+
+  // Минимальный («быстрый») лог тренировки (S3.11): multipart — поля + опц. медиа (фото/видео).
+  createSimpleWorkout: (input: SimpleWorkoutInput) => {
+    const form = new FormData();
+    form.append('date', input.date);
+    form.append('kind', input.kind);
+    if (input.durationMin != null) form.append('duration_min', String(input.durationMin));
+    if (input.rpe != null) form.append('rpe', String(input.rpe));
+    if (input.note) form.append('note', input.note);
+    for (const file of input.files) form.append('files', file);
+    return postForm<SimpleWorkout>('/workouts/simple', form);
+  },
 
   // Дашборд-хитмап: флаги данных по дням месяца (start/end — ISO YYYY-MM-DD).
   getDashboard: (start: string, end: string) =>
