@@ -32,6 +32,18 @@ export function useLogin() {
   });
 }
 
+/** Регистрация: как useLogin — бэкенд создаёт юзера и выставляет ту же сессию,
+ *  поэтому успех сразу кладёт нового юзера в кэш /me. 409 (email занят) прилетит
+ *  как ApiError в mutation.error. */
+export function useRegister() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ email, password }: { email: string; password: string }) =>
+      api.register(email, password),
+    onSuccess: (user) => qc.setQueryData(ME_KEY, user),
+  });
+}
+
 export function useLogout() {
   const qc = useQueryClient();
   return useMutation({

@@ -632,6 +632,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+  // Регистрация (M0·B1): создаёт юзера и выставляет ту же сессию, что login → возвращает User.
+  // 409, если email уже занят (ApiError.status === 409).
+  register: (email: string, password: string) =>
+    request<User>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
   logout: () => request<{ status: string }>('/auth/logout', { method: 'POST' }),
 
   // Виды спорта (S3.1): каталог дисциплин (бэкенд сортирует по имени).
