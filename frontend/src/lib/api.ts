@@ -51,7 +51,13 @@ function upload<T>(path: string, file: File): Promise<T> {
   return postForm<T>(path, form);
 }
 
-export type User = { id: number; email: string };
+/** Пользователь (M0·B2): + опц. отображаемое имя и флаг активности. */
+export type User = {
+  id: number;
+  email: string;
+  display_name: string | null;
+  is_active: boolean;
+};
 
 /** Тип дисциплины (S3.1): силовая / кардио / навыковая. */
 export type SportType = 'strength' | 'cardio' | 'skill';

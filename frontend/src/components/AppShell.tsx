@@ -61,7 +61,7 @@ export default function AppShell() {
         <div className="flex items-center gap-3">
           {user && (
             <span className="hidden text-sm text-muted sm:inline" title={user.email}>
-              {user.email}
+              {user.display_name || user.email}
             </span>
           )}
           <button
