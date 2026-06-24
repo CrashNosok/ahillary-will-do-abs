@@ -48,6 +48,13 @@ def progress_dir() -> Path:
     return target
 
 
+def workout_media_dir() -> Path:
+    """Каталог медиа тренировок (data/uploads/workouts). Создаётся при обращении."""
+    target = _data_dir() / "uploads" / "workouts"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 def videos_dir(achievement_id: int) -> Path:
     """Каталог видео-пруфов ачивки (data/videos/<achievement_id>). Создаётся при обращении."""
     target = _data_dir() / "videos" / str(achievement_id)

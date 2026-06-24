@@ -14,6 +14,7 @@ from app.models.workout import (
     PersonalRecord,
     SkillLog,
     StrengthSet,
+    WorkoutMedia,
     WorkoutSession,
 )
 
@@ -38,5 +39,6 @@ __all__ = [
     "SmartGoal",
     "StrengthSet",
     "User",
+    "WorkoutMedia",
     "WorkoutSession",
 ]

@@ -17,13 +17,17 @@ GET /workouts/skill/{id} читает сессию обратно; GET /workouts
 """
 
 import datetime as dt
+import uuid
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
+from app.core import db
 from app.core.db import get_session
 from app.models.activity import ActivityDay
 from app.models.sport import Exercise, Sport
@@ -32,6 +36,7 @@ from app.models.workout import (
     PersonalRecord,
     SkillLog,
     StrengthSet,
+    WorkoutMedia,
     WorkoutSession,
 )
 from app.services.workout_metrics import (
@@ -163,6 +168,154 @@ def create_workout(payload: WorkoutCreate, session: SessionDep, _: CurrentUser) 
     # PR-движок (S3.10): фиксируем новые рекорды (макс вес / лучший 1ПМ) по сессии
     new_prs = apply_prs(session, strength_candidates(payload.sets), payload.date)
     return _read(session, ws).model_copy(update={"personal_records": _pr_reads(new_prs)})
+
+
+# --- Минимальный («быстрый») лог тренировки (S3.11) -------------------------------------
+# Тип/длительность/усилие пишутся прямо в workout_session (kind/duration_min/rpe), без таблиц
+# подходов. Опционально прикрепляются медиа (фото зала / видео трюка) — файл на диск, путь в БД.
+
+_SIMPLE_KINDS = {"cardio", "strength", "skill", "other"}
+# Принимаем любые image/* и video/* (как и фронт: accept="image/*,video/*") — телефонные HEIC/HEVC
+# тоже проходят. Расширение для файла на диске берём из имени, иначе дефолт по типу.
+_IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".avif", ".bmp"}
+_VID_EXT = {".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv", ".hevc", ".3gp", ".ogv"}
+
+
+def _media_kind(file: UploadFile) -> tuple[str, str] | None:
+    """(media_type, suffix). Тип — по MIME-префиксу image/|video/, иначе по расширению имени.
+    suffix — исходное расширение (сохраняем .heic/.mov и пр.), иначе дефолт. None → не медиа."""
+    ct = (file.content_type or "").lower()
+    ext = Path(file.filename or "").suffix.lower()
+    if ct.startswith("image/") or ext in _IMG_EXT:
+        return "image", ext or ".jpg"
+    if ct.startswith("video/") or ext in _VID_EXT:
+        return "video", ext or ".mp4"
+    return None
+
+
+class SimpleMediaRead(BaseModel):
+    id: int
+    media_type: str  # image | video
+
+
+class SimpleWorkoutRead(BaseModel):
+    id: int
+    date: dt.date
+    kind: str
+    sport_id: int | None
+    duration_min: float | None
+    rpe: float | None
+    notes: str | None
+    created_at: dt.datetime
+    media: list[SimpleMediaRead]
+
+
+@router.post("/simple", status_code=status.HTTP_201_CREATED)
+async def create_simple_workout(
+    session: SessionDep,
+    _: CurrentUser,
+    kind: Annotated[str, Form()],
+    date: Annotated[dt.date | None, Form()] = None,
+    duration_min: Annotated[float | None, Form()] = None,
+    sport_id: Annotated[int | None, Form()] = None,
+    rpe: Annotated[float | None, Form()] = None,
+    note: Annotated[str | None, Form()] = None,
+    files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 — FastAPI-зависимость, не мутируется
+) -> SimpleWorkoutRead:
+    if kind not in _SIMPLE_KINDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Неизвестный тип тренировки"
+        )
+    if duration_min is not None and duration_min <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Длительность — положительное число минут",
+        )
+    if rpe is not None and not (0 <= rpe <= 10):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Усилие (RPE) — число от 0 до 10",
+        )
+    # Тип сам по себе ничего не фиксирует — нужна хоть какая-то «начинка»: время, заметка или медиа.
+    note_clean = note.strip() if note else ""
+    has_media = any(f and f.filename for f in files)
+    if duration_min is None and not note_clean and not has_media:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Заполните хотя бы одно: длительность, заметку или фото/видео",
+        )
+    if sport_id is not None:
+        _require_sport(session, sport_id)
+
+    day = date or dt.date.today()
+    ws = WorkoutSession(
+        date=day,
+        activity_date=_link_activity_date(session, day),
+        sport_id=sport_id,
+        kind=kind,
+        duration_min=duration_min,
+        rpe=rpe,
+        notes=note_clean or None,
+    )
+    session.add(ws)
+    session.commit()
+    session.refresh(ws)
+
+    media: list[WorkoutMedia] = []
+    for file in files:
+        if not file or not file.filename:
+            continue  # пустой слот формы (браузер шлёт его, когда файл не выбран)
+        data = await file.read()
+        if not data:
+            continue
+        resolved = _media_kind(file)
+        if resolved is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Поддерживаются изображения (JPEG/PNG/WebP/GIF) и видео (MP4/MOV/WebM)",
+            )
+        media_type, suffix = resolved
+        dest = db.workout_media_dir() / f"{day.isoformat()}_{uuid.uuid4().hex[:8]}{suffix}"
+        dest.write_bytes(data)
+        media.append(
+            WorkoutMedia(
+                session_id=ws.id,
+                media_path=str(dest.relative_to(db.BACKEND_DIR)),
+                media_type=media_type,
+            )
+        )
+    if media:
+        for m in media:
+            session.add(m)
+        session.commit()
+        for m in media:
+            session.refresh(m)
+
+    return SimpleWorkoutRead(
+        id=ws.id,
+        date=ws.date,
+        kind=kind,
+        sport_id=ws.sport_id,
+        duration_min=ws.duration_min,
+        rpe=ws.rpe,
+        notes=ws.notes,
+        created_at=ws.created_at,
+        media=[SimpleMediaRead(id=m.id, media_type=m.media_type) for m in media],
+    )
+
+
+@router.get("/media/{media_id}")
+def get_workout_media(media_id: int, session: SessionDep, _: CurrentUser) -> FileResponse:
+    """Отдаёт сам файл медиа тренировки (media_type выводится из расширения)."""
+    m = session.get(WorkoutMedia, media_id)
+    if m is None or not m.media_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Медиа не найдено")
+    path = Path(m.media_path)
+    if not path.is_absolute():
+        path = db.BACKEND_DIR / path
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Файл медиа отсутствует")
+    return FileResponse(path)
 
 
 @router.get("")

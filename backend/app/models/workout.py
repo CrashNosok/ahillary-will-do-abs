@@ -27,6 +27,11 @@ class WorkoutSession(SQLModel, table=True):
     activity_date: dt.date | None = Field(default=None, foreign_key="activity_day.date", index=True)
     title: str | None = None
     notes: str | None = None
+    # Минимальный ручной ввод («быстрый лог», S3.11): тип/длительность/усилие живут прямо в
+    # сессии — без таблиц подходов. kind: cardio|strength|skill|other. У детальных сессий kind=None.
+    kind: str | None = None
+    duration_min: float | None = None  # длительность тренировки, мин
+    rpe: float | None = None  # субъективное усилие 0–10
     created_at: dt.datetime = Field(default_factory=utcnow)
 
 
@@ -68,6 +73,20 @@ class SkillLog(SQLModel, table=True):
     reps: int | None = None
     quality: str | None = None  # субъективная оценка / прогресс
     notes: str | None = None
+
+
+class WorkoutMedia(SQLModel, table=True):
+    """Медиа тренировки (S3.11): фото с зала / видео рекорда трюка. Байты не храним — только
+    путь к файлу на диске (data/uploads/workouts/), как progress_photo. media_type: image|video
+    (по MIME). Несколько медиа на сессию разрешено (по id)."""
+
+    __tablename__ = "workout_media"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="workout_session.id", index=True)
+    media_path: str
+    media_type: str  # image | video
+    uploaded_at: dt.datetime = Field(default_factory=utcnow)
 
 
 class PersonalRecord(SQLModel, table=True):
