@@ -307,18 +307,21 @@ def build_prompt(cards: list[dict], branch_hint: str, cfg: Config, pw_mode: str,
 
     if pw_mode == "full":
         verify = (
-            f"Шаг 3 (проверка) — как в плейбуке, ПЛЮС живой UI-прогон: если у карточки есть видимый "
-            f"результат и фронт поднят на {web}, прогони сценарии через Playwright MCP (browser_navigate "
-            "только на этот адрес, дальше клики; browser_close НЕ вызывай). Обязательный гейт всё равно — "
-            "ruff/pytest для backend и tsc/eslint(/vitest) для frontend. Максимум 3 цикла фиксов; если после "
-            "3 циклов всё ещё FAIL — стоп и FAILED."
+            "Полный цикл из плейбука целиком, НИ ОДИН шаг не пропускать: Шаг 2 ПЛАН (изучи код, "
+            "сформулируй подход + 5-7 UI-сценариев) → Шаг 3 реализация + зелёные гейты "
+            "(ruff/pytest backend, tsc/eslint(/vitest) frontend, миграции round-trip) → "
+            "Шаг 4 РЕВЬЮ: запусти `/code-review` и `ecc:security-review` на дифе и почини ВСЕ их "
+            "находки любого severity (повтор пока не CLEAN) → Шаг 5 живой Playwright: пройди ВСЕ "
+            f"5-7 сценариев через UI на {web} или /login (browser_navigate ТОЛЬКО на эти адреса, "
+            "дальше только клики; НИКАКИХ url/curl вместо UI; browser_close НЕ вызывай). "
+            "Циклы фиксов на Шагах 4 и 5 — по ≤3; если не сходится — стоп и FAILED."
         )
     else:
         verify = (
-            "Шаг 3 (проверка): положись на гейт качества — ruff + pytest (backend) и "
-            "tsc --noEmit + eslint (+ vitest если есть) (frontend). Живой Playwright ПРОПУСТИ; для "
-            "наблюдаемых через HTTP карточек при поднятых серверах можно один curl-смоук. Сделай результат "
-            "наблюдаемым. Шаг 5 (сценарии для ручной проверки) всё равно собери. Максимум 3 цикла фиксов."
+            "Гейт качества — ruff + pytest (backend) и tsc --noEmit + eslint (+ vitest) (frontend) — "
+            "и ОБЯЗАТЕЛЬНО Шаг 4 ревью (`/code-review` + `ecc:security-review`, починить все находки). "
+            "Живой Playwright можно пропустить только если у карточки реально нет UI-поверхности; иначе "
+            "гоняй сценарии через UI как в full. Шаг 6 (финальные сценарии) собери всегда."
         )
 
     if done_mode == "pr":
