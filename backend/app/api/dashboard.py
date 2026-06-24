@@ -30,6 +30,9 @@ class DayFlags(BaseModel):
     has_activity: bool
     has_training: bool
     has_measurement: bool
+    has_weight: bool
+    has_body: bool
+    has_photo: bool
 
 
 class TodaySummary(BaseModel):

@@ -16,20 +16,28 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.models.activity import ActivityDay
-from app.models.body import BodyMeasurement, InbodyMeasurement
+from app.models.body import BodyMeasurement, InbodyMeasurement, ProgressPhoto
 from app.models.nutrition import FoodEntry
 from app.models.workout import WorkoutSession
 
 
 @dataclass(frozen=True)
 class DayFlag:
-    """Флаги наличия данных за один день (для ячейки хитмапа)."""
+    """Флаги наличия данных за один день (для ячейки хитмапа).
+
+    Ежедневные категории (дневной «стакан»): food/activity/training.
+    Недельные (наливаются в «общую чашу» недели): weight/body/photo.
+    has_measurement (body|inbody) оставлен для легаси-потребителей (Заряд дня).
+    """
 
     date: dt.date
     has_food: bool
     has_activity: bool
     has_training: bool
     has_measurement: bool
+    has_weight: bool
+    has_body: bool
+    has_photo: bool
 
 
 @dataclass(frozen=True)
@@ -56,9 +64,10 @@ def day_flags(start: dt.date, end: dt.date, session: Session) -> list[DayFlag]:
     food = _dates(session, FoodEntry.date, start, end)
     activity = _dates(session, ActivityDay.date, start, end)
     training = _dates(session, WorkoutSession.date, start, end)
-    measurement = _dates(session, BodyMeasurement.date, start, end) | _dates(
-        session, InbodyMeasurement.date, start, end
-    )
+    weight = _dates(session, InbodyMeasurement.date, start, end)  # вес/InBody
+    body = _dates(session, BodyMeasurement.date, start, end)  # обхваты-«замеры»
+    photo = _dates(session, ProgressPhoto.date, start, end)
+    measurement = body | weight  # легаси-флаг (Заряд дня)
 
     days: list[DayFlag] = []
     day = start
@@ -70,6 +79,9 @@ def day_flags(start: dt.date, end: dt.date, session: Session) -> list[DayFlag]:
                 has_activity=day in activity,
                 has_training=day in training,
                 has_measurement=day in measurement,
+                has_weight=day in weight,
+                has_body=day in body,
+                has_photo=day in photo,
             )
         )
         day += dt.timedelta(days=1)

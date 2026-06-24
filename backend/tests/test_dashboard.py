@@ -18,7 +18,7 @@ from app.core.db import get_session
 from app.core.security import hash_password
 from app.main import app
 from app.models.activity import ActivityDay
-from app.models.body import BodyMeasurement, InbodyMeasurement
+from app.models.body import BodyMeasurement, InbodyMeasurement, ProgressPhoto
 from app.models.nutrition import FoodEntry
 from app.models.user import User
 from app.models.workout import WorkoutSession
@@ -96,6 +96,22 @@ def test_measurement_flag_covers_inbody(session):
     [d] = dashboard.day_flags(day, day, session)
     assert d.has_measurement is True
     assert d.has_food is False
+
+
+def test_weekly_flags_split_weight_body_photo(session):
+    # Недельные категории раздельны: вес(inbody)/замеры(body)/фото — каждый сам по себе.
+    w, b, p = dt.date(2026, 6, 1), dt.date(2026, 6, 2), dt.date(2026, 6, 3)
+    session.add(InbodyMeasurement(date=w, weight_kg=88))
+    session.add(BodyMeasurement(date=b, waist_cm=80))
+    session.add(ProgressPhoto(date=p, source_image_path="x.jpg"))
+    session.commit()
+
+    days = {d.date: d for d in dashboard.day_flags(w, p, session)}
+    assert (days[w].has_weight, days[w].has_body, days[w].has_photo) == (True, False, False)
+    assert (days[b].has_weight, days[b].has_body, days[b].has_photo) == (False, True, False)
+    assert (days[p].has_weight, days[p].has_body, days[p].has_photo) == (False, False, True)
+    # легаси has_measurement = body|inbody (фото в него не входит)
+    assert days[w].has_measurement and days[b].has_measurement and not days[p].has_measurement
 
 
 def test_flags_isolated_per_day(session):
