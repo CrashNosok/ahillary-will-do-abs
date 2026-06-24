@@ -127,7 +127,7 @@ def _seed_full(engine) -> None:
         s.refresh(press)
         s.refresh(run)
         # Силовая сессия с двумя подходами.
-        strength_session = WorkoutSession(sport_id=strength_sport.id, date=_d(3))
+        strength_session = WorkoutSession(user_id=1, sport_id=strength_sport.id, date=_d(3))
         s.add(strength_session)
         s.commit()
         s.refresh(strength_session)
@@ -138,7 +138,7 @@ def _seed_full(engine) -> None:
             StrengthSet(session_id=strength_session.id, exercise_id=press.id, weight_kg=90, reps=8)
         )
         # Кардио сессия.
-        cardio_session = WorkoutSession(sport_id=cardio_sport.id, date=_d(4))
+        cardio_session = WorkoutSession(user_id=1, sport_id=cardio_sport.id, date=_d(4))
         s.add(cardio_session)
         s.commit()
         s.refresh(cardio_session)
@@ -154,12 +154,22 @@ def _seed_full(engine) -> None:
         # PR: текущий рекорд по жиму перебивает старый.
         s.add(
             PersonalRecord(
-                exercise_id=press.id, metric="max_weight", date=_d(20), value=95, unit="кг"
+                user_id=1,
+                exercise_id=press.id,
+                metric="max_weight",
+                date=_d(20),
+                value=95,
+                unit="кг",
             )
         )
         s.add(
             PersonalRecord(
-                exercise_id=press.id, metric="max_weight", date=_d(3), value=100, unit="кг"
+                user_id=1,
+                exercise_id=press.id,
+                metric="max_weight",
+                date=_d(3),
+                value=100,
+                unit="кг",
             )
         )
         s.commit()

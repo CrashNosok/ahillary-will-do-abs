@@ -80,6 +80,7 @@ _EXPECTED_FKS = {
     ("exercise", "sport_id"): "sport",
     ("workout_session", "sport_id"): "sport",
     ("workout_session", "activity_date"): "activity_day",  # связь с Welltory-днём (S3.9)
+    ("workout_session", "user_id"): "user",  # владелец сессии (M0·B3)
     ("strength_set", "session_id"): "workout_session",
     ("strength_set", "exercise_id"): "exercise",
     ("cardio_log", "session_id"): "workout_session",
@@ -87,6 +88,7 @@ _EXPECTED_FKS = {
     ("skill_log", "session_id"): "workout_session",
     ("skill_log", "exercise_id"): "exercise",
     ("personal_record", "exercise_id"): "exercise",
+    ("personal_record", "user_id"): "user",  # владелец рекорда (M0·B3)
     ("achievement", "sport_id"): "sport",
     ("achievement_proof", "achievement_id"): "achievement",
     ("recommendation", "goal_id"): "smart_goal",

@@ -51,7 +51,7 @@ def _activity(session, date, total_kcal=500):
 
 
 def _training(session, date):
-    session.add(WorkoutSession(date=date, title="т"))
+    session.add(WorkoutSession(user_id=1, date=date, title="т"))
     session.commit()
 
 

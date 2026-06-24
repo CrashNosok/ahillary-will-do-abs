@@ -71,7 +71,7 @@ def _exercise(engine, sport_id: int, name: str) -> int:
 def _strength_session(engine, date: str, sets: list[tuple[int, float, int]]) -> None:
     """Силовая сессия: sets = [(exercise_id, weight_kg, reps), …]."""
     with Session(engine) as session:
-        ws = WorkoutSession(date=dt.date.fromisoformat(date))
+        ws = WorkoutSession(user_id=1, date=dt.date.fromisoformat(date))
         session.add(ws)
         session.commit()
         session.refresh(ws)
@@ -89,7 +89,7 @@ def _cardio_session(
     avg_hr: int | None,
 ) -> None:
     with Session(engine) as session:
-        ws = WorkoutSession(date=dt.date.fromisoformat(date))
+        ws = WorkoutSession(user_id=1, date=dt.date.fromisoformat(date))
         session.add(ws)
         session.commit()
         session.refresh(ws)
