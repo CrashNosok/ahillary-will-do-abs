@@ -180,7 +180,7 @@ def main() -> int:
             raw = llm.text(prompt)
         except llm.LLMError as exc:
             print(f"[ENV] Живой прогон недоступен: {exc}")
-            print("Нужен валидный ANTHROPIC_API_KEY. Офлайн-eval ниже не зависит от сети.")
+            print("Нужен валидный OPENROUTER_API_KEY. Офлайн-eval ниже не зависит от сети.")
         else:
             try:
                 live_output = json.loads(raw)

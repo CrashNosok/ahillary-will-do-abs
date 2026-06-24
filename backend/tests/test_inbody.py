@@ -8,7 +8,7 @@
 - невалидный (не-JSON) ответ модели поднимает контролируемую InbodyParseError.
 
 Сеть не дёргаем — llm.vision мокаем. Реальный вызов по настоящему скрину InBody
-проверяется вручную по smoke-guide (требует ANTHROPIC_API_KEY и картинку).
+проверяется вручную по smoke-guide (требует OPENROUTER_API_KEY и картинку).
 """
 
 import json

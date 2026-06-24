@@ -7,7 +7,7 @@
   а не роняет процесс.
 
 Сеть не дёргаем — llm.vision мокаем. Реальный вызов по IMG_9605.PNG проверяется
-вручную по smoke-guide (требует настоящий ANTHROPIC_API_KEY).
+вручную по smoke-guide (требует настоящий OPENROUTER_API_KEY).
 """
 
 import json

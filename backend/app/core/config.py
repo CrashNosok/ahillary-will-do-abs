@@ -26,11 +26,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- Anthropic / LLM (через ProxyAPI-совместимый base_url) ---
-    anthropic_api_key: str
-    anthropic_base_url: str = "https://api.proxyapi.ru/anthropic"
-    model_vision: str = "claude-sonnet-4-6"
-    model_reco: str = "claude-opus-4-8"
+    # --- LLM через OpenRouter (OpenAI-совместимый; модель выбирается через env) ---
+    openrouter_api_key: str
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    model_vision: str = "anthropic/claude-sonnet-4.6"  # распознавание скринов (vision)
+    model_reco: str = "anthropic/claude-opus-4.8"  # рекомендации/план (текст)
 
     # --- Сессии (подпись cookie) ---
     secret_key: str

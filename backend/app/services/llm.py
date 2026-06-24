@@ -1,15 +1,15 @@
-"""Обёртка над Anthropic SDK для текстовых и vision-запросов через ProxyAPI.
+"""Обёртка над OpenRouter (OpenAI-совместимый API) для текстовых и vision-запросов.
 
-api_key и base_url берутся из конфига (см. app.core.config) — в коде их нет.
-Модель по умолчанию: text() → MODEL_RECO, vision() → MODEL_VISION.
-Ошибки сети/API заворачиваются в LLMError, чтобы вызывающий код не зависел от
-внутренних классов SDK.
+api_key и base_url берутся из конфига (см. app.core.config) — в коде их нет. Модель
+выбирается через env: text() → MODEL_RECO, vision() → MODEL_VISION (любая модель
+OpenRouter, напр. `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`). Запрос идёт по
+OpenAI-формату /chat/completions. Ошибки сети/API заворачиваются в LLMError, чтобы
+вызывающий код не зависел от транспорта.
 """
 
 import base64
-from functools import lru_cache
 
-import anthropic
+import httpx
 
 from app.core.config import settings
 
@@ -23,16 +23,6 @@ class LLMError(RuntimeError):
     """Не удалось получить ответ от LLM (сеть, авторизация, ошибка API)."""
 
 
-@lru_cache(maxsize=1)
-def _client() -> anthropic.Anthropic:
-    """Singleton-клиент Anthropic с base_url/api_key из конфига и таймаутом."""
-    return anthropic.Anthropic(
-        api_key=settings.anthropic_api_key,
-        base_url=settings.anthropic_base_url,
-        timeout=LLM_TIMEOUT_SECONDS,
-    )
-
-
 def text(prompt: str, model: str | None = None) -> str:
     """Текстовый запрос. По умолчанию модель MODEL_RECO."""
     return _create(model or settings.model_reco, [{"type": "text", "text": prompt}])
@@ -40,33 +30,40 @@ def text(prompt: str, model: str | None = None) -> str:
 
 def vision(image_bytes: bytes, prompt: str, model: str | None = None) -> str:
     """Vision-запрос: изображение + текстовый вопрос. По умолчанию модель MODEL_VISION."""
-    image_block = {
-        "type": "image",
-        "source": {
-            "type": "base64",
-            "media_type": _media_type(image_bytes),
-            "data": base64.standard_b64encode(image_bytes).decode("ascii"),
-        },
-    }
-    content = [image_block, {"type": "text", "text": prompt}]
+    encoded = base64.standard_b64encode(image_bytes).decode("ascii")
+    data_url = f"data:{_media_type(image_bytes)};base64,{encoded}"
+    content = [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": data_url}},
+    ]
     return _create(model or settings.model_vision, content)
 
 
 def _create(model: str, content: list[dict]) -> str:
-    """Шлёт один user-message и возвращает склеенный текст ответа."""
+    """Шлёт один user-message в OpenRouter /chat/completions и возвращает текст ответа."""
     try:
-        message = _client().messages.create(
-            model=model,
-            max_tokens=_MAX_TOKENS,
-            messages=[{"role": "user", "content": content}],
+        resp = httpx.post(
+            f"{settings.openrouter_base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+            json={
+                "model": model,
+                "max_tokens": _MAX_TOKENS,
+                "messages": [{"role": "user", "content": content}],
+            },
+            timeout=LLM_TIMEOUT_SECONDS,
         )
-    except anthropic.APIError as exc:
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPError as exc:
         raise LLMError(f"Запрос к LLM не удался: {exc}") from exc
-    return "".join(block.text for block in message.content if block.type == "text")
+    try:
+        return data["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError) as exc:
+        raise LLMError(f"Неожиданный ответ LLM: {data!r}") from exc
 
 
 def _media_type(image_bytes: bytes) -> str:
-    """Определяет MIME картинки по сигнатуре. Anthropic принимает png/jpeg/gif/webp."""
+    """Определяет MIME картинки по сигнатуре (png/jpeg/gif/webp) для data-URL."""
     if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
     if image_bytes.startswith(b"\xff\xd8\xff"):
