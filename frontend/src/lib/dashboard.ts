@@ -9,5 +9,7 @@ export function useDashboard(start: string, end: string) {
     queryKey: ['dashboard', start, end],
     queryFn: () => api.getDashboard(start, end),
     staleTime: 30_000,
+    // Возврат на дашборд после ввода данных должен показывать свежие флаги.
+    refetchOnMount: 'always',
   });
 }

@@ -1,22 +1,26 @@
-/** Календарь-хитмап дашборда (S1.14): CSS-grid без либы, 4 типа данных раздельно.
- *  По каждому дню месяца — цветные точки наличия данных (еда/активность/тренировки/
- *  замеры), навигация по месяцам и выделение сегодня. Данные — GET /dashboard. */
+/** Календарь-«стаканы» (S1.14, переработка): каждый день — стакан, наполняемый 3 ежедневными
+ *  категориями (еда/активность/тренировки). Под каждой неделей — «общая чаша» (вес/замеры/фото
+ *  + слияние дневных стаканов), а 8-я колонка «Итог» держит медаль недели. «Получить отчёт»
+ *  сливает стаканы в чашу, раскрывает медаль (mystery-ball при идеальной неделе) и открывает
+ *  отчёт с планом. Данные — GET /dashboard. */
 
 import { useMemo, useState } from 'react';
 import { type DayFlags } from '../lib/api';
 import { useDashboard } from '../lib/dashboard';
+import { DAILY, WEEKLY, chunkWeeks, weekFill, type MonthCell } from '../lib/weekly';
+import { DaySquare } from './calendar/DaySquare';
+import { WeeklyCell } from './calendar/WeeklyCell';
+import { DayEditorPanel, type EditorRows } from './calendar/DayEditorPanel';
+import { WeekMedal } from './calendar/WeekMedal';
+import { WeeklyReportPanel, type ReportTarget } from './WeeklyReportPanel';
 
-// Неделя с понедельника (ru). Порядок задаёт раскладку CSS-grid из 7 колонок.
+type EditDay = { iso: string; flags: DayFlags | undefined; title?: string; rows?: EditorRows };
+
+const weekRangeFmt = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' });
+const fmtShort = (iso: string) => weekRangeFmt.format(new Date(iso + 'T00:00:00'));
+
+// Неделя с понедельника (ru) + «Нед.» (вес/замеры/фото) + «Итог» (медаль) → сетка из 9 колонок.
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
-
-// 4 типа данных: ключ флага → ярлык + класс цвета (токены из index.css). Один
-// источник правды и для легенды, и для точек на ячейке — добавить тип = одна строка.
-const TYPES = [
-  { key: 'has_food', label: 'Еда', dot: 'bg-cat-food' },
-  { key: 'has_activity', label: 'Активность', dot: 'bg-cat-activity' },
-  { key: 'has_training', label: 'Тренировки', dot: 'bg-cat-training' },
-  { key: 'has_measurement', label: 'Замеры', dot: 'bg-cat-measurement' },
-] as const satisfies ReadonlyArray<{ key: keyof DayFlags; label: string; dot: string }>;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -26,16 +30,15 @@ const toISO = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.
 const firstOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 
 const monthTitleFmt = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' });
-const dayLabelFmt = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' });
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Ячейки месяца: ведущие null под смещение первого дня (Пн=0), затем 1..N. */
-export function buildMonthCells(monthStart: Date): ({ day: number; iso: string } | null)[] {
+export function buildMonthCells(monthStart: Date): MonthCell[] {
   const year = monthStart.getFullYear();
   const month = monthStart.getMonth();
   const offset = (new Date(year, month, 1).getDay() + 6) % 7; // Вс(0)→6, Пн(1)→0
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: ({ day: number; iso: string } | null)[] = Array(offset).fill(null);
+  const cells: MonthCell[] = Array(offset).fill(null);
   for (let day = 1; day <= daysInMonth; day += 1) {
     cells.push({ day, iso: toISO(new Date(year, month, day)) });
   }
@@ -56,7 +59,13 @@ export default function CalendarHeatmap() {
     return map;
   }, [data]);
 
-  const cells = useMemo(() => buildMonthCells(monthStart), [monthStart]);
+  const weeks = useMemo(
+    () => chunkWeeks<MonthCell>(buildMonthCells(monthStart), null),
+    [monthStart],
+  );
+
+  const [report, setReport] = useState<ReportTarget | null>(null);
+  const [editDay, setEditDay] = useState<EditDay | null>(null);
 
   const shiftMonth = (delta: number) =>
     setMonthStart((d) => new Date(d.getFullYear(), d.getMonth() + delta, 1));
@@ -66,14 +75,14 @@ export default function CalendarHeatmap() {
   return (
     <section
       aria-labelledby="heatmap-heading"
-      className="rounded-[var(--radius-card)] border border-line bg-surface p-6"
+      className="rounded-[var(--radius-card)] border border-line bg-surface p-4 sm:p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 id="heatmap-heading" className="text-display">
             Календарь
           </h2>
-          <p className="mt-1 text-sm text-muted">Что загружено по дням</p>
+          <p className="mt-1 text-sm text-muted">Жидкости дней · недельная медаль</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -112,25 +121,36 @@ export default function CalendarHeatmap() {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-7 gap-1.5" role="grid" aria-label="Дни месяца">
+      <div
+        className="mt-6 grid grid-cols-[repeat(8,minmax(0,1fr))_1.7fr] items-start gap-1 sm:gap-1.5"
+        role="grid"
+        aria-label="Дни месяца"
+      >
         {WEEKDAYS.map((w) => (
           <div key={w} className="pb-1 text-center text-xs font-medium uppercase text-muted">
             {w}
           </div>
         ))}
-        {cells.map((cell, i) =>
-          cell === null ? (
-            <div key={`pad-${i}`} aria-hidden="true" />
-          ) : (
-            <DayCell
-              key={cell.iso}
-              day={cell.day}
-              iso={cell.iso}
-              flags={flagsByDate.get(cell.iso)}
-              isToday={cell.iso === todayIso}
-            />
-          ),
-        )}
+        <div
+          className="pb-1 text-center text-[0.6rem] font-medium uppercase text-muted sm:text-xs"
+          title="Вес · Замеры · Фото"
+        >
+          Нед.
+        </div>
+        <div className="pb-1 text-center text-[0.6rem] font-medium uppercase text-accent sm:text-xs">
+          Итог
+        </div>
+
+        {weeks.map((week, wi) => (
+          <WeekRow
+            key={week.find((c) => c)?.iso ?? `w-${wi}`}
+            week={week}
+            flagsByDate={flagsByDate}
+            todayIso={todayIso}
+            onOpenReport={setReport}
+            onOpenDay={setEditDay}
+          />
+        ))}
       </div>
 
       {error && (
@@ -141,65 +161,136 @@ export default function CalendarHeatmap() {
       {isPending && !error && <p className="mt-4 text-sm text-muted">Загрузка…</p>}
 
       <Legend />
+
+      {report && <WeeklyReportPanel target={report} onClose={() => setReport(null)} />}
+      {editDay && (
+        <DayEditorPanel
+          iso={editDay.iso}
+          flags={editDay.flags}
+          title={editDay.title}
+          rows={editDay.rows}
+          onClose={() => setEditDay(null)}
+        />
+      )}
     </section>
   );
 }
 
-function DayCell({
-  day,
-  iso,
-  flags,
-  isToday,
+/** Строка одной недели: 7 дневных ячеек-жидкостей + недельная ячейка (вес/замеры/фото) +
+ *  колонка «Итог» с медалью и кнопкой «Получить отчёт». Медаль завершившейся недели крутится;
+ *  клик по ней или по кнопке открывает отчёт. Возвращает фрагмент grid-детей. */
+function WeekRow({
+  week,
+  flagsByDate,
+  todayIso,
+  onOpenReport,
+  onOpenDay,
 }: {
-  day: number;
-  iso: string;
-  flags: DayFlags | undefined;
-  isToday: boolean;
+  week: MonthCell[];
+  flagsByDate: Map<string, DayFlags>;
+  todayIso: string;
+  onOpenReport: (t: ReportTarget) => void;
+  onOpenDay: (d: EditDay) => void;
 }) {
-  const active = flags ? TYPES.filter((t) => flags[t.key]) : [];
-  const summary = active.length
-    ? active.map((t) => t.label.toLowerCase()).join(', ')
-    : 'нет данных';
-  const dateLabel = cap(dayLabelFmt.format(new Date(iso + 'T00:00:00')));
+  const realCells = week.filter((c): c is { day: number; iso: string } => c !== null);
+  const flagsList = realCells
+    .map((c) => flagsByDate.get(c.iso))
+    .filter((f): f is DayFlags => f !== undefined);
+
+  const fill = weekFill(flagsList);
+  const weekStart = realCells[0]?.iso ?? '';
+  const weekEnd = realCells[realCells.length - 1]?.iso ?? '';
+  const weekEnded = weekEnd !== '' && weekEnd < todayIso; // неделя завершилась → медаль крутится
+
+  // Недельная ячейка «раз в неделю»: есть ли за неделю вес/замеры/фото.
+  const weeklyFlags = {
+    has_weight: flagsList.some((d) => d.has_weight),
+    has_body: flagsList.some((d) => d.has_body),
+    has_photo: flagsList.some((d) => d.has_photo),
+  };
+  const isCurrentWeek = weekStart !== '' && weekStart <= todayIso && todayIso <= weekEnd;
+  const weeklyDate = weekStart === '' ? todayIso : weekEnd <= todayIso ? weekEnd : todayIso;
+  const weekRangeLabel =
+    weekStart && weekEnd ? `Неделя ${fmtShort(weekStart)} – ${fmtShort(weekEnd)}` : 'Неделя';
+  const weekShort = weekStart && weekEnd ? `${fmtShort(weekStart)}–${fmtShort(weekEnd)}` : '';
+
+  const openReport = () => onOpenReport({ weekStart, weekEnd, days: flagsList, fill });
+  const openWeekly = () =>
+    onOpenDay({
+      iso: weeklyDate,
+      title: weekRangeLabel,
+      rows: 'weekly',
+      flags: {
+        date: weeklyDate,
+        has_food: false,
+        has_activity: false,
+        has_training: false,
+        has_measurement: weeklyFlags.has_weight || weeklyFlags.has_body,
+        has_weight: weeklyFlags.has_weight,
+        has_body: weeklyFlags.has_body,
+        has_photo: weeklyFlags.has_photo,
+      },
+    });
 
   return (
-    <div
-      role="gridcell"
-      data-testid={`day-${iso}`}
-      aria-label={`${dateLabel}: ${summary}`}
-      aria-current={isToday ? 'date' : undefined}
-      title={`${dateLabel} — ${summary}`}
-      className={`relative flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border text-sm transition-colors duration-[var(--duration-fast)] ${
-        isToday
-          ? 'border-accent font-semibold text-accent'
-          : active.length
-            ? 'border-line bg-panel text-fg'
-            : 'border-line text-muted'
-      }`}
-    >
-      <span>{day}</span>
-      <span className="flex h-1.5 items-center gap-0.5" aria-hidden="true">
-        {active.map((t) => (
-          <span key={t.key} className={`size-1.5 rounded-full ${t.dot}`} />
-        ))}
-      </span>
-    </div>
+    <>
+      {week.map((cell, i) =>
+        cell === null ? (
+          <div key={`pad-${weekStart}-${i}`} aria-hidden="true" />
+        ) : (
+          <DaySquare
+            key={cell.iso}
+            day={cell.day}
+            iso={cell.iso}
+            flags={flagsByDate.get(cell.iso)}
+            isToday={cell.iso === todayIso}
+            onSelect={() =>
+              onOpenDay({ iso: cell.iso, flags: flagsByDate.get(cell.iso), rows: 'daily' })
+            }
+          />
+        ),
+      )}
+      <WeeklyCell
+        weeklyFlags={weeklyFlags}
+        isCurrentWeek={isCurrentWeek}
+        onSelect={realCells.length > 0 ? openWeekly : undefined}
+      />
+      <WeekMedal
+        overall={fill.overall}
+        ended={weekEnded}
+        short={weekShort}
+        id={weekStart || `w-${weekEnd}`}
+        onOpenReport={openReport}
+      />
+    </>
   );
 }
 
 function Legend() {
   return (
     <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-4 text-sm text-muted">
-      {TYPES.map((t) => (
-        <span key={t.key} className="flex items-center gap-1.5">
-          <span className={`size-2.5 rounded-full ${t.dot}`} aria-hidden="true" />
-          {t.label}
+      <span className="text-xs font-semibold uppercase tracking-wide text-fg">День:</span>
+      {DAILY.map((c) => (
+        <span key={c.key} className="flex items-center gap-1.5">
+          <span
+            className="size-2.5 rounded-full"
+            style={{ background: c.color }}
+            aria-hidden="true"
+          />
+          {c.label}
         </span>
       ))}
-      <span className="flex items-center gap-1.5">
-        <span className="size-2.5 rounded-full border border-accent" aria-hidden="true" />
-        Сегодня
-      </span>
+      <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-fg">Неделя:</span>
+      {WEEKLY.map((c) => (
+        <span key={c.key} className="flex items-center gap-1.5">
+          <span
+            className="size-2.5 rounded-full"
+            style={{ background: c.color }}
+            aria-hidden="true"
+          />
+          {c.label}
+        </span>
+      ))}
     </div>
   );
 }

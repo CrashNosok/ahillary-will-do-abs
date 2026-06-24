@@ -180,3 +180,205 @@
     filter: drop-shadow(0 0 0 transparent);
   }
 }
+
+/* Календарь: премиум-«жидкости» в квадратах (S1.14). Тело — градиент из спектров категорий
+ * (смешиваются), поверх — iridescence/sheen-перелив и волны-пена у поверхности. Уровень меняется
+ * через clip-path (налив/слияние). reduced-motion гасит CSS-анимации (волны не рендерим в JS). */
+
+/* Слой-обёртка clip'ает форму ячейки (родитель: overflow-hidden + border-radius). */
+.liquid-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+/* Уровень всех слоёв задаёт clip-path (inset сверху) с плавным переходом — налив/слияние. */
+.liquid-body,
+.liquid-irid,
+.liquid-sheen {
+  position: absolute;
+  inset: 0;
+  will-change: clip-path;
+  transition: clip-path var(--duration-normal) var(--ease-out-expo);
+}
+
+/* Иридесцентный перелив поверх жидкости (диагональ ползёт) — «премиум, не однотонно». */
+.liquid-irid {
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    oklch(88% 0.16 320 / 0.4) 50%,
+    transparent 70%
+  );
+  background-size: 300% 100%;
+  mix-blend-mode: overlay;
+  animation: irid-shift 6.5s linear infinite;
+}
+@keyframes irid-shift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 300% 0;
+  }
+}
+
+/* Глянцевый блик, проходящий по поверхности — «переливается». */
+.liquid-sheen {
+  background: linear-gradient(
+    120deg,
+    transparent 42%,
+    rgb(255 255 255 / 0.22) 50%,
+    transparent 58%
+  );
+  background-size: 260% 100%;
+  mix-blend-mode: screen;
+  animation: sheen-sweep 4.8s ease-in-out infinite;
+}
+@keyframes sheen-sweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -90% 0;
+  }
+}
+
+/* Полная идеальная чаша/жидкость мягко пульсирует свечением. */
+.liquid-mystery {
+  animation: liquid-mystery 2.6s ease-in-out infinite;
+}
+@keyframes liquid-mystery {
+  0%,
+  100% {
+    filter: saturate(1.05) brightness(1);
+  }
+  50% {
+    filter: saturate(1.3) brightness(1.12);
+  }
+}
+
+/* Поверхность: волны-пена (SMIL-сдвиг в JS) у текущего уровня жидкости. */
+.liquid-surface {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 12px;
+  overflow: visible;
+  pointer-events: none;
+  will-change: top;
+  transition: top var(--duration-normal) var(--ease-out-expo);
+}
+.wave-front {
+  fill: rgb(255 255 255 / 0.16);
+}
+.wave-back {
+  fill: rgb(255 255 255 / 0.1);
+}
+.wave-line {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.5);
+  stroke-width: 0.9;
+}
+
+/* Медаль-гексагон с 3D-оборотом: завершившаяся неделя крутится, показывая лицо и оборот
+ * (на обороте — «за что получена»). backface-visibility прячет нелицевую сторону. */
+.medal-flip {
+  perspective: 420px;
+}
+.medal-spin {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform var(--duration-normal) var(--ease-out-expo);
+}
+.medal-spin--on {
+  animation: medal-spin 7s linear infinite;
+}
+.medal-flip:hover .medal-spin:not(.medal-spin--on) {
+  transform: rotateY(180deg);
+}
+@keyframes medal-spin {
+  to {
+    transform: rotateY(360deg);
+  }
+}
+.medal-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  backface-visibility: hidden;
+}
+.medal-back {
+  transform: rotateY(180deg);
+}
+.medal-svg {
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.35));
+}
+
+/* Искры: общий слой-контейнер + частица. */
+.sparkles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+/* Искра: ярко вспыхивает у точки старта и РАЗЛЕТАЕТСЯ наружу (--dx/--dy), гаснет в полёте,
+ * крутится-мерцает. Длительность/задержка/направление задаются на каждую искру → хаос. */
+.sparkle {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow:
+    0 0 6px 1px oklch(82% 0.22 345),
+    0 0 2px 0 #fff;
+  opacity: 0;
+  animation: sparkle var(--dur, 1.4s) ease-out infinite;
+  animation-delay: var(--delay, 0ms);
+  will-change: transform, opacity;
+}
+@keyframes sparkle {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.2) rotate(0deg);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(calc(var(--dx, 0px) * 0.3), calc(var(--dy, 0px) * 0.3)) scale(1.45)
+      rotate(40deg);
+  }
+  55% {
+    opacity: 0.85;
+    transform: translate(calc(var(--dx, 0px) * 0.7), calc(var(--dy, 0px) * 0.7)) scale(0.9)
+      rotate(95deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(0.2) rotate(160deg);
+  }
+}
+
+/* reduced-motion: искры и переливы скрываем; уровень жидкости остаётся статичным. */
+@media (prefers-reduced-motion: reduce) {
+  .sparkle {
+    display: none !important;
+  }
+}
+
+/* Формы ввода, встроенные инлайн в попап дня: ужимаем «страничные» отступы и заголовки,
+ * чтобы существующие страницы аккуратно жили внутри модалки. */
+.entry-embed > section {
+  gap: 1.25rem;
+}
+.entry-embed h1 {
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+.entry-embed .max-w-2xl {
+  max-width: none;
+}

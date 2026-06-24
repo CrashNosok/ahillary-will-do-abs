@@ -422,13 +422,19 @@ export type InbodyMeasurement = InbodyFields & {
   parsed_at: string;
 };
 
-/** Дашборд (S1.13): по каждому дню диапазона — флаги наличия данных 4 типов. */
+/** Дашборд (S1.13): по каждому дню диапазона — флаги наличия данных.
+ *  Ежедневные (дневной «стакан»): food/activity/training.
+ *  Недельные (наливаются в «общую чашу» недели): weight/body/photo.
+ *  has_measurement (body|inbody) — легаси-флаг для «Заряда дня». */
 export type DayFlags = {
   date: string; // ISO YYYY-MM-DD
   has_food: boolean;
   has_activity: boolean;
   has_training: boolean;
   has_measurement: boolean;
+  has_weight: boolean;
+  has_body: boolean;
+  has_photo: boolean;
 };
 
 /** Сводка энергобаланса за сегодня (S1.15). deficit = kcal_out − kcal_in. */
@@ -686,8 +692,14 @@ export const api = {
   },
 
   // Импорт еды: превью разбирает CSV без записи; save пишет идемпотентно по дню.
+  // date — записать дневник на выбранный день (из попапа календаря), а не из файла.
   previewImport: (file: File) => upload<DiaryPreview>('/import/food/preview', file),
-  saveImport: (file: File) => upload<DiaryPreview>('/import/food', file),
+  saveImport: (file: File, date?: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (date) form.append('date', date);
+    return postForm<DiaryPreview>('/import/food', form);
+  },
 
   // Импорт активности Welltory: превью распознаёт скрин без записи; save пишет
   // выверенные пользователем поля (vision не дёргается) идемпотентно по дню.
@@ -705,6 +717,12 @@ export const api = {
     form.append('raw_json', JSON.stringify(rawJson ?? {}));
     return postForm<ActivityDay>('/import/activity', form);
   },
+  // Ручной ввод активности (без скрина): дата + 8 метрик, upsert по дню.
+  saveActivityManual: (date: string, fields: ActivityFields) =>
+    request<ActivityDay>('/import/activity/manual', {
+      method: 'POST',
+      body: JSON.stringify({ date, ...fields }),
+    }),
 
   // Рекомендации (S4.5): генерация по кнопке (снапшот → Opus → план), история списком,
   // деталь по id. Генерация может вернуть 502, если апстрим LLM недоступен.
