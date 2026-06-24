@@ -227,6 +227,8 @@ data/
 
 # Frontend (npm)
 node_modules/
+# Инкрементальный кэш tsc (build mode пишет его даже при noEmit) — артефакт сборки.
+*.tsbuildinfo
 # Python-шаблон выше игнорит `lib/` (пакеджинг) — но это и наш фронтовый src/lib/ (живой код).
 !frontend/src/lib/
 
