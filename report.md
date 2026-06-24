@@ -2,6 +2,12 @@
 
 Что сделано по каждой карточке и как это влияет на проект.
 
+## Запланировано (отдельные батчи)
+
+- **Голосовые вопросы недели → корректировка плана** — спецификация:
+  [docs/batch-voice-weekly-questions.md](docs/batch-voice-weekly-questions.md).
+  Маркер в коде: `frontend/src/components/WeeklyReportPanel.tsx` (`TODO(batch: voice-weekly-questions)`).
+
 ## 20260620-220655 UTC · S0.2 — FastAPI-скелет + /health
 
 **Статус:** ✅ Готово
