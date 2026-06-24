@@ -249,6 +249,7 @@ def import_food_diary(
     filename: str | None = None,
     import_id: str | None = None,
     replace_day: bool = False,
+    override_date: dt.date | None = None,
 ) -> DiaryImport:
     """Разобрать дневник и записать продукты в food_entry под общим import_id.
 
@@ -260,8 +261,15 @@ def import_food_diary(
     `replace_day=True` — идемпотентность по дню: перед записью удаляем прежние
     food_entry той же даты, поэтому повторный импорт того же дня заменяет записи,
     а не дублирует их (критерий приёмки S1.8). По умолчанию False — append.
+
+    `override_date` — записать дневник на ЭТУ дату вместо даты из файла (для ввода
+    «за выбранный день» из календаря); replace_day и пересчёт дефицита идут по ней.
     """
     parsed = parse_diary(raw, filename)
+    if override_date is not None:
+        parsed.date = override_date
+        for entry in parsed.entries:
+            entry.date = override_date
     if replace_day:
         for stale in session.exec(select(FoodEntry).where(FoodEntry.date == parsed.date)).all():
             session.delete(stale)

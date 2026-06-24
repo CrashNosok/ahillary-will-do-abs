@@ -97,6 +97,20 @@ def test_import_creates_day_records(client, engine):
     assert len({r.import_id for r in rows}) == 1
 
 
+def test_import_with_date_override_saves_to_that_day(client, engine):
+    # дата из попапа календаря (форм-поле date) переопределяет дату файла (2026-06-20)
+    resp = client.post(
+        "/import/food",
+        files={"file": (_SAMPLE.name, _SAMPLE.read_bytes(), "text/csv")},
+        data={"date": "2026-06-21"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["date"] == "2026-06-21"
+    rows = _rows(engine)
+    assert len(rows) == 7
+    assert all(str(r.date) == "2026-06-21" for r in rows)
+
+
 def test_reimport_same_day_does_not_duplicate(client, engine):
     # критерий приёмки: повторная загрузка не дублирует день
     _upload(client, "/import/food")

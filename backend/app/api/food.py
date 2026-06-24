@@ -13,7 +13,7 @@
 import datetime as dt
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlmodel import Session
 
@@ -136,11 +136,15 @@ async def import_food(
     session: SessionDep,
     _: CurrentUser,
     file: Annotated[UploadFile, File()],
+    # Необязательная дата: записать дневник на выбранный в календаре день, а не из файла.
+    date: Annotated[dt.date | None, Form()] = None,
 ) -> DiaryPreview:
     # import_food_diary сам парсит и пишет; идемпотентно по дню (replace_day).
     raw = await file.read()
     try:
-        parsed = import_food_diary(raw, session, filename=file.filename, replace_day=True)
+        parsed = import_food_diary(
+            raw, session, filename=file.filename, replace_day=True, override_date=date
+        )
     except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
