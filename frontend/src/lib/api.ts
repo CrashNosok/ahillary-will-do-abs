@@ -72,8 +72,9 @@ export type SportCategory =
   | 'other';
 
 /** Категории дисциплины с русскими ярлыками (S3.3) — единый источник для форм и бейджей.
- *  value уходит на бэкенд (== SportCategory), label рисуется в UI. */
-export const SPORT_CATEGORIES: { value: SportCategory; label: string }[] = [
+ *  value уходит на бэкенд (== SportCategory), label рисуется в UI.
+ *  `satisfies` валидирует value/label, `as const` даёт литералы для гарда полноты ниже. */
+export const SPORT_CATEGORIES = [
   { value: 'strength', label: 'Силовая' },
   { value: 'endurance', label: 'Выносливость' },
   { value: 'combat', label: 'Единоборства' },
@@ -83,7 +84,14 @@ export const SPORT_CATEGORIES: { value: SportCategory; label: string }[] = [
   { value: 'precision', label: 'Точность' },
   { value: 'artistic', label: 'Артистическая' },
   { value: 'other', label: 'Другое' },
-];
+] as const satisfies readonly { value: SportCategory; label: string }[];
+
+/** Полнота каталога (M1·F3): tsc падает здесь, если в SportCategory появилось значение,
+ *  которого нет в SPORT_CATEGORIES — иначе категория тихо пропала бы из фильтра и формы.
+ *  Без привязки к переменной (иначе noUnusedLocals); проверяет, что «недостающих» нет. */
+true satisfies [Exclude<SportCategory, (typeof SPORT_CATEGORIES)[number]['value']>] extends [never]
+  ? true
+  : false;
 
 /** Русский ярлык категории дисциплины; неизвестное значение возвращаем как есть. */
 export const sportCategoryLabel = (category: SportCategory): string =>
