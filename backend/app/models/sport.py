@@ -88,6 +88,26 @@ class SportEvent(SQLModel, table=True):
     url: str | None = None  # ссылка на страницу события/регистрацию
 
 
+class SportMentor(SQLModel, table=True):
+    """Наставник/тренер по виду спорта (M5·B25): кто ведёт по дисциплине.
+
+    Привязан к дисциплине через FK sport_id. name — обязательное имя наставника.
+    bio (описание/регалии), contact (телефон/мессенджер), url (профиль/сайт),
+    photo_path (путь к фото на диске, файл вне БД) — необязательны (None).
+    Глобальный каталог без user-скоупа — как sport/sport_level/sport_event. Роутера пока нет.
+    """
+
+    __tablename__ = "sport_mentor"
+
+    id: int | None = Field(default=None, primary_key=True)
+    sport_id: int = Field(foreign_key="sport.id", index=True)
+    name: str  # имя наставника, обязательно
+    bio: str | None = None  # описание/регалии/специализация
+    contact: str | None = None  # телефон/мессенджер/email
+    url: str | None = None  # ссылка на профиль/сайт
+    photo_path: str | None = None  # путь к фото на диске (файл вне БД)
+
+
 class Exercise(SQLModel, table=True):
     __tablename__ = "exercise"
 
