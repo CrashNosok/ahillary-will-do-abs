@@ -71,6 +71,7 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
 
   const [kind, setKind] = useState<WorkoutKind>('strength');
   const [category, setCategory] = useState<SportCategory | null>(null);
+  const [sportId, setSportId] = useState<number | null>(null);
   const [duration, setDuration] = useState('');
   const [rpe, setRpe] = useState<number | null>(null);
   const [note, setNote] = useState('');
@@ -99,12 +100,20 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
     const have = new Set((mySports ?? []).map((s) => s.category));
     return SPORT_CATEGORIES.filter((c) => have.has(c.value));
   }, [mySports]);
-  // Выбранная категория тегирует тренировку видом спорта: первой привязанной дисциплиной этой
-  // категории. ponytail: берём первую — для личного трекера обычно одна дисциплина на категорию;
-  // если их несколько, точечный выбор вида спорта — это «Расширенный ввод».
-  const sportId = category
-    ? ((mySports ?? []).find((s) => s.category === category)?.sport_id ?? null)
-    : null;
+  // Виды спорта выбранной категории (M2·F7): фильтруем привязанные дисциплины по категории —
+  // в дропдауне можно выбрать конкретный вид, а не только первый.
+  const categorySports = useMemo(
+    () => (category ? (mySports ?? []).filter((s) => s.category === category) : []),
+    [mySports, category],
+  );
+  // Auto-select первого вида (паттерн CardioLoggerForm): нет привязок категории → сброс в null;
+  // выбранный вид выпал из списка (сменили/сняли категорию) → встаём на первый доступный.
+  useEffect(() => {
+    setSportId((prev) => {
+      if (categorySports.length === 0) return null;
+      return categorySports.some((s) => s.sport_id === prev) ? prev : categorySports[0].sport_id;
+    });
+  }, [categorySports]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -221,6 +230,29 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
           </div>
         )}
       </div>
+
+      {/* Вид спорта — конкретная дисциплина выбранной категории (M2·F7). Виден только при выбранной
+          категории с привязками; первый вид авто-выбран (паттерн CardioLoggerForm). */}
+      {category && categorySports.length > 0 && (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-muted">Вид спорта</span>
+          <select
+            aria-label="Вид спорта"
+            value={sportId == null ? '' : String(sportId)}
+            onChange={(e) => {
+              setSportId(e.target.value ? Number(e.target.value) : null);
+              reset();
+            }}
+            className={inputCls}
+          >
+            {categorySports.map((s) => (
+              <option key={s.sport_id} value={String(s.sport_id)}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <label className="flex max-w-[10rem] flex-col gap-1">
         <span className="text-xs text-muted">Длительность, мин</span>
