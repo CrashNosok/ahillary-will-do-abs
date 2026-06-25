@@ -63,7 +63,7 @@ def client(engine):
 
 def _seed_goal(engine) -> int:
     with Session(engine) as s:
-        goal = SmartGoal(target_weight_kg=75.0, status="active")
+        goal = SmartGoal(user_id=1, target_weight_kg=75.0, status="active")
         s.add(goal)
         s.commit()
         s.refresh(goal)
@@ -89,12 +89,13 @@ def test_generate_persists_parsed_plan_and_raw(engine, monkeypatch):
     monkeypatch.setattr(llm, "text", _reply(VALID_RAW))
 
     with Session(engine) as session:
-        rec = reco_service.generate_recommendation(session)
+        rec = reco_service.generate_recommendation(session, user_id=1)
 
     assert rec.id is not None
     assert rec.model == settings.model_reco
     assert rec.raw_text == VALID_RAW  # сырой ответ хранится для отладки
     assert rec.goal_id == goal_id  # привязка к активной цели из снапшота
+    assert rec.user_id == 1  # владелец рекомендации проставлен (M0·B5)
     # Ответ распарсен по схеме S4.3 и сохранён структурой.
     assert rec.output_json["meal_plan"]["training_day"]["calories"] == 2400
     assert rec.output_json["workout_plan"]["days_per_week"] == 3
@@ -110,7 +111,7 @@ def test_generate_retries_invalid_then_valid(engine, monkeypatch):
     monkeypatch.setattr(llm, "text", _reply(BAD_RAW, VALID_RAW))
 
     with Session(engine) as session:
-        rec = reco_service.generate_recommendation(session)
+        rec = reco_service.generate_recommendation(session, user_id=1)
         rows = session.exec(select(Recommendation)).all()
 
     assert len(rows) == 1
@@ -124,7 +125,7 @@ def test_generate_all_invalid_raises_and_persists_nothing(engine, monkeypatch):
 
     with Session(engine) as session:
         with pytest.raises(InvalidPlanError):
-            reco_service.generate_recommendation(session, attempts=3)
+            reco_service.generate_recommendation(session, user_id=1, attempts=3)
         assert session.exec(select(Recommendation)).all() == []
 
 
@@ -138,7 +139,7 @@ def test_generate_llm_error_propagates_and_persists_nothing(engine, monkeypatch)
 
     with Session(engine) as session:
         with pytest.raises(llm.LLMError):
-            reco_service.generate_recommendation(session)
+            reco_service.generate_recommendation(session, user_id=1)
         assert session.exec(select(Recommendation)).all() == []
 
 

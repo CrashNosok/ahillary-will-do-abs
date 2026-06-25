@@ -93,26 +93,27 @@ def test_totals_match_within_rounding_tolerance():
 
 def test_import_persists_products_with_shared_import_id():
     session = _memory_session()
-    import_food_diary(_raw(), session, filename=_SAMPLE.name)
+    import_food_diary(_raw(), session, user_id=1, filename=_SAMPLE.name)
     rows = session.exec(select(FoodEntry)).all()
     assert len(rows) == 7  # 7 продуктов записаны (пустой приём не даёт строк)
     import_ids = {r.import_id for r in rows}
     assert len(import_ids) == 1 and None not in import_ids  # один import_id на импорт
     assert all(r.id is not None for r in rows)  # PK проставлен после commit
     assert all(r.date == dt.date(2026, 6, 20) for r in rows)
+    assert all(r.user_id == 1 for r in rows)  # владелец проставлен импортом (M0·B5)
 
 
 def test_import_uses_provided_import_id():
     session = _memory_session()
-    import_food_diary(_raw(), session, filename=_SAMPLE.name, import_id="imp-123")
+    import_food_diary(_raw(), session, user_id=1, filename=_SAMPLE.name, import_id="imp-123")
     rows = session.exec(select(FoodEntry)).all()
     assert {r.import_id for r in rows} == {"imp-123"}
 
 
 def test_two_imports_get_distinct_ids():
     session = _memory_session()
-    import_food_diary(_raw(), session, filename=_SAMPLE.name)
-    import_food_diary(_raw(), session, filename=_SAMPLE.name)
+    import_food_diary(_raw(), session, user_id=1, filename=_SAMPLE.name)
+    import_food_diary(_raw(), session, user_id=1, filename=_SAMPLE.name)
     rows = session.exec(select(FoodEntry)).all()
     assert len(rows) == 14
     assert len({r.import_id for r in rows}) == 2  # каждый импорт — свой id

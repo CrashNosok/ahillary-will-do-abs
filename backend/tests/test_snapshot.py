@@ -70,6 +70,7 @@ def _seed_full(engine) -> None:
         # Цель: вес 75, %жира 15, обхват талии 80.
         s.add(
             SmartGoal(
+                user_id=1,
                 target_weight_kg=75.0,
                 target_body_fat_pct=15.0,
                 target_measurements_json={"waist": 80},
@@ -86,6 +87,7 @@ def _seed_full(engine) -> None:
         # Питание: два дня.
         s.add(
             FoodEntry(
+                user_id=1,
                 date=_d(1),
                 meal="Обед",
                 product_name="A",
@@ -97,6 +99,7 @@ def _seed_full(engine) -> None:
         )
         s.add(
             FoodEntry(
+                user_id=1,
                 date=_d(2),
                 meal="Обед",
                 product_name="B",
@@ -109,8 +112,8 @@ def _seed_full(engine) -> None:
         # Активность + дефицит.
         s.add(ActivityDay(date=_d(1), total_kcal=2500, steps=10000, moving_min=60))
         s.add(ActivityDay(date=_d(2), total_kcal=2300, steps=8000, moving_min=50))
-        s.add(DeficitDay(date=_d(1), eaten_kcal=2000, burn_kcal=2500, deficit_kcal=500))
-        s.add(DeficitDay(date=_d(2), eaten_kcal=1800, burn_kcal=2300, deficit_kcal=500))
+        s.add(DeficitDay(date=_d(1), user_id=1, eaten_kcal=2000, burn_kcal=2500, deficit_kcal=500))
+        s.add(DeficitDay(date=_d(2), user_id=1, eaten_kcal=1800, burn_kcal=2300, deficit_kcal=500))
         # Спорт/упражнения.
         strength_sport = Sport(name="Силовая", type=SportType.strength)
         cardio_sport = Sport(name="Бег", type=SportType.cardio)
@@ -289,7 +292,7 @@ def test_goal_without_measurements_is_resilient(ctx):
     """Цель есть, замеров нет: прогресс отдаёт None, а не падает."""
     _, engine = ctx
     with Session(engine) as s:
-        s.add(SmartGoal(target_weight_kg=75.0, status="active"))
+        s.add(SmartGoal(user_id=1, target_weight_kg=75.0, status="active"))
         s.commit()
         snap = snapshot_service.build_snapshot(s, end=TODAY)
     metric = snap["goal"]["progress"][0]

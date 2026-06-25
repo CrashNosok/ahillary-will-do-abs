@@ -213,6 +213,7 @@ def _add_food(engine, date: str, *, kcal=None, protein=None, fat=None, carb=None
     with Session(engine) as session:
         session.add(
             FoodEntry(
+                user_id=1,
                 date=dt.date.fromisoformat(date),
                 meal=meal,
                 product_name="x",
@@ -242,6 +243,7 @@ def _add_deficit(engine, date: str, *, eaten=None, burn=None, deficit=None):
     with Session(engine) as session:
         session.add(
             DeficitDay(
+                user_id=1,
                 date=dt.date.fromisoformat(date),
                 eaten_kcal=eaten,
                 burn_kcal=burn,

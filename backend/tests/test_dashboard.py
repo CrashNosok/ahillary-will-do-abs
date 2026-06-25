@@ -41,7 +41,7 @@ def session():
 
 
 def _food(session, date, kcal=100.0):
-    session.add(FoodEntry(date=date, meal="Обед", product_name="x", kcal=kcal))
+    session.add(FoodEntry(user_id=1, date=date, meal="Обед", product_name="x", kcal=kcal))
     session.commit()
 
 
@@ -220,7 +220,7 @@ def client():
     with Session(engine) as s:
         s.add(User(email=EMAIL, password_hash=hash_password(PASSWORD)))
         today = dt.date.today()
-        s.add(FoodEntry(date=today, meal="Обед", product_name="x", kcal=100))
+        s.add(FoodEntry(user_id=1, date=today, meal="Обед", product_name="x", kcal=100))
         s.add(ActivityDay(date=today, total_kcal=500))
         s.commit()
 

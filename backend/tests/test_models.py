@@ -92,6 +92,7 @@ _EXPECTED_FKS = {
     ("achievement", "sport_id"): "sport",
     ("achievement_proof", "achievement_id"): "achievement",
     ("recommendation", "goal_id"): "smart_goal",
+    ("recommendation", "user_id"): "user",  # владелец рекомендации (M0·B5)
 }
 
 
@@ -121,6 +122,23 @@ def test_body_cluster_tables_have_user_id_fk():
     # критерий M0·B4: у каждой таблицы body-кластера user_id ссылается на user
     insp = inspect(_memory_engine())
     for table in _B4_USER_FK_TABLES:
+        fks = {
+            col: fk["referred_table"]
+            for fk in insp.get_foreign_keys(table)
+            for col in fk["constrained_columns"]
+        }
+        assert fks.get("user_id") == "user", table
+
+
+# --- M0·B5: владелец данных в nutrition-кластере ---
+# food_entry, smart_goal, recommendation, deficit_day получают user_id FK -> user.
+_B5_USER_FK_TABLES = ("food_entry", "smart_goal", "recommendation", "deficit_day")
+
+
+def test_nutrition_cluster_tables_have_user_id_fk():
+    # критерий M0·B5: у каждой таблицы кластера питания/целей user_id ссылается на user
+    insp = inspect(_memory_engine())
+    for table in _B5_USER_FK_TABLES:
         fks = {
             col: fk["referred_table"]
             for fk in insp.get_foreign_keys(table)

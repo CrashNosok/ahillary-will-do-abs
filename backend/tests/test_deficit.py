@@ -39,7 +39,7 @@ def session():
 
 def _add_food(session: Session, date: dt.date, *kcals: float | None) -> None:
     for k in kcals:
-        session.add(FoodEntry(date=date, meal="Обед", product_name="x", kcal=k))
+        session.add(FoodEntry(user_id=1, date=date, meal="Обед", product_name="x", kcal=k))
     session.commit()
 
 
@@ -49,7 +49,7 @@ def test_deficit_is_eaten_minus_burn(session):
     session.add(ActivityDay(date=DAY, total_kcal=BURN))
     session.commit()
 
-    row = deficit.recompute(DAY, session)
+    row = deficit.recompute(DAY, session, 1)
     assert row.eaten_kcal == 3250
     assert row.burn_kcal == BURN
     assert row.deficit_kcal == 3250 - BURN
@@ -59,7 +59,7 @@ def test_deficit_is_eaten_minus_burn(session):
 def test_missing_activity_is_incomplete_without_false_zero(session):
     # критерий: нет источника активности → «неполный день», deficit не 0, а None
     _add_food(session, DAY, 3250.0)
-    row = deficit.recompute(DAY, session)
+    row = deficit.recompute(DAY, session, 1)
     assert row.eaten_kcal == 3250
     assert row.burn_kcal is None
     assert row.deficit_kcal is None  # без ложного нуля
@@ -70,7 +70,7 @@ def test_missing_food_is_incomplete_without_false_zero(session):
     # критерий: нет источника еды → «неполный день», deficit None
     session.add(ActivityDay(date=DAY, total_kcal=BURN))
     session.commit()
-    row = deficit.recompute(DAY, session)
+    row = deficit.recompute(DAY, session, 1)
     assert row.eaten_kcal is None
     assert row.burn_kcal == BURN
     assert row.deficit_kcal is None
@@ -82,7 +82,7 @@ def test_zero_kcal_entries_are_not_a_missing_source(session):
     _add_food(session, DAY, 0.0, None)
     session.add(ActivityDay(date=DAY, total_kcal=BURN))
     session.commit()
-    row = deficit.recompute(DAY, session)
+    row = deficit.recompute(DAY, session, 1)
     assert row.eaten_kcal == 0
     assert row.deficit_kcal == -BURN
     assert row.status == STATUS_COMPLETE
@@ -92,10 +92,10 @@ def test_recompute_is_idempotent_upsert(session):
     _add_food(session, DAY, 1000.0)
     session.add(ActivityDay(date=DAY, total_kcal=400))
     session.commit()
-    deficit.recompute(DAY, session)
+    deficit.recompute(DAY, session, 1)
 
     _add_food(session, DAY, 250.0)  # еда поменялась → новый пересчёт
-    row = deficit.recompute(DAY, session)
+    row = deficit.recompute(DAY, session, 1)
     assert row.eaten_kcal == 1250
     assert row.deficit_kcal == 1250 - 400
     assert len(session.exec(select(DeficitDay)).all()) == 1  # один день — одна запись
@@ -103,7 +103,9 @@ def test_recompute_is_idempotent_upsert(session):
 
 def test_food_import_triggers_recompute(session):
     # пересчёт при изменении еды: импорт сэмпла сам пишет deficit_day (eaten=3250)
-    import_food_diary(_SAMPLE.read_bytes(), session, filename=_SAMPLE.name, replace_day=True)
+    import_food_diary(
+        _SAMPLE.read_bytes(), session, user_id=1, filename=_SAMPLE.name, replace_day=True
+    )
     row = session.get(DeficitDay, DAY)
     assert row is not None
     assert row.eaten_kcal == 3250
@@ -118,7 +120,7 @@ def test_activity_save_triggers_recompute(session, tmp_path, monkeypatch):
     monkeypatch.setattr(db, "welltory_dir", lambda: tmp_path)
     _add_food(session, DAY, 3250.0)
     welltory.save_activity_day_values(
-        b"\x89PNG fake", DAY, session, fields={"total_kcal": BURN}, raw={}
+        b"\x89PNG fake", DAY, session, user_id=1, fields={"total_kcal": BURN}, raw={}
     )
     row = session.get(DeficitDay, DAY)
     assert row is not None
