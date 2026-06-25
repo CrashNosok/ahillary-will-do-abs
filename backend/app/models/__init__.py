@@ -7,6 +7,7 @@ from app.models.deficit import DeficitDay
 from app.models.goal import GoalStatus, SmartGoal
 from app.models.nutrition import FoodEntry
 from app.models.recommendation import Recommendation
+from app.models.sponsor import Sponsor
 from app.models.sport import (
     Exercise,
     Sport,
@@ -50,6 +51,7 @@ __all__ = [
     "SportMentor",
     "SportRecommendation",
     "SmartGoal",
+    "Sponsor",
     "StrengthSet",
     "User",
     "UserSport",
