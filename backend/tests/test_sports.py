@@ -54,6 +54,60 @@ def test_create_sport_returns_201_with_fields(client):
     assert body["description"] == "Длительные кроссы"
 
 
+def test_create_sport_adds_rich_fields(client):
+    # M5·B22: slug авто из name, long_description/is_global берутся из payload.
+    resp = client.post(
+        "/sports",
+        json={
+            "name": "Силовая тренировка",
+            "category": "strength",
+            "long_description": "Базовые движения: присед, жим, тяга.",
+            "is_global": True,
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["slug"] == "силовая-тренировка"
+    assert body["long_description"] == "Базовые движения: присед, жим, тяга."
+    assert body["is_global"] is True
+
+
+def test_create_sport_rich_fields_default(client):
+    # Без rich-полей: long_description=None, is_global=False, slug всё равно проставлен.
+    body = client.post("/sports", json={"name": "Бег", "category": "endurance"}).json()
+    assert body["slug"] == "бег"
+    assert body["long_description"] is None
+    assert body["is_global"] is False
+
+
+def test_create_sport_slug_is_unique_on_collision(client):
+    # Два разных name, чей слаг совпадает после нормализации → суффикс -2.
+    first = client.post("/sports", json={"name": "Кросс-фит", "category": "strength"}).json()
+    second = client.post("/sports", json={"name": "Кросс фит", "category": "strength"}).json()
+    assert first["slug"] == "кросс-фит"
+    assert second["slug"] == "кросс-фит-2"  # коллизия слага разведена
+
+
+def test_update_sport_sets_rich_fields(client):
+    created = client.post("/sports", json={"name": "Йога", "category": "artistic"}).json()
+    resp = client.patch(
+        f"/sports/{created['id']}",
+        json={"long_description": "Хатха и виньяса.", "is_global": True},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["long_description"] == "Хатха и виньяса."
+    assert body["is_global"] is True
+    assert body["slug"] == created["slug"]  # слаг стабилен, апдейтом не трогается
+
+
+def test_update_sport_rename_keeps_slug(client):
+    created = client.post("/sports", json={"name": "Плавание", "category": "endurance"}).json()
+    renamed = client.patch(f"/sports/{created['id']}", json={"name": "Плавание в бассейне"}).json()
+    assert renamed["name"] == "Плавание в бассейне"
+    assert renamed["slug"] == "плавание"  # переименование не пересобирает слаг
+
+
 def test_create_sport_rejects_invalid_category(client):
     resp = client.post("/sports", json={"name": "Йога", "category": "flexibility"})
     assert resp.status_code == 422  # category вне таксономии SportCategory
@@ -193,3 +247,19 @@ def test_duplicate_name_returns_409(client):
 def test_sports_require_auth():
     app.dependency_overrides.clear()
     assert TestClient(app).get("/sports").status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Бег", "бег"),  # кириллица сохраняется (не пустеет)
+        ("Силовая тренировка", "силовая-тренировка"),  # пробел → дефис
+        ("Кросс-фит!", "кросс-фит"),  # пунктуация убрана, дефис схлопнут
+        ("  Trail  Run  ", "trail-run"),  # обрезка и схлопывание пробелов
+        ("!!!", "sport"),  # пустой результат → запасной слаг
+    ],
+)
+def test_slugify(name, expected):
+    from app.api.sports import slugify
+
+    assert slugify(name) == expected
