@@ -17,7 +17,14 @@ from sqlmodel import Session, select
 from app.api.deps import CurrentUser
 from app.core.db import get_session
 from app.models.achievement import Achievement, AchievementProof
-from app.models.sport import Sport, SportCategory
+from app.models.sport import (
+    Sport,
+    SportCategory,
+    SportEvent,
+    SportLevel,
+    SportMentor,
+    SportRecommendation,
+)
 from app.services import achievement as achievement_service
 from app.services import sport as sport_service
 from app.services.achievement_schema import AthleteLevel, InvalidAchievementSetError
@@ -165,6 +172,36 @@ def get_sport_overview(
     """
     sport = _get_or_404(session, sport_id)
     return sport_service.sport_overview(session, sport, user_id=user.id)
+
+
+@router.get("/{sport_id}/levels")
+def list_sport_levels(sport_id: int, session: SessionDep, _: CurrentUser) -> list[SportLevel]:
+    """Ступени дисциплины по rank (M5·B28). 404 — для неизвестного вида спорта."""
+    _get_or_404(session, sport_id)
+    return sport_service.list_levels(session, sport_id)
+
+
+@router.get("/{sport_id}/events")
+def list_sport_events(sport_id: int, session: SessionDep, _: CurrentUser) -> list[SportEvent]:
+    """События дисциплины по дате старта (M5·B28). 404 — для неизвестного вида спорта."""
+    _get_or_404(session, sport_id)
+    return sport_service.list_events(session, sport_id)
+
+
+@router.get("/{sport_id}/mentors")
+def list_sport_mentors(sport_id: int, session: SessionDep, _: CurrentUser) -> list[SportMentor]:
+    """Наставники дисциплины по имени (M5·B28). 404 — для неизвестного вида спорта."""
+    _get_or_404(session, sport_id)
+    return sport_service.list_mentors(session, sport_id)
+
+
+@router.get("/{sport_id}/recommendations")
+def list_sport_recommendations(
+    sport_id: int, session: SessionDep, _: CurrentUser
+) -> list[SportRecommendation]:
+    """Рекомендации дисциплины по id (M5·B28). 404 — для неизвестного вида спорта."""
+    _get_or_404(session, sport_id)
+    return sport_service.list_recommendations(session, sport_id)
 
 
 @router.get("/{sport_id}/achievements")

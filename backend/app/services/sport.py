@@ -32,27 +32,55 @@ class SportOverview(BaseModel):
     achievement_count: int
 
 
+# Секции каталога дисциплины (M5·B28). Порядок задан здесь один раз и переиспользуется
+# и сводкой /overview, и отдельными список-эндпоинтами /sports/{id}/<секция> — чтобы UI
+# видел одинаковую сортировку в обоих местах. Каталог глобален (без user-скоупа).
+
+
+def list_levels(session: Session, sport_id: int) -> list[SportLevel]:
+    """Ступени дисциплины по возрастанию rank (1 — низшая)."""
+    return list(
+        session.exec(
+            select(SportLevel).where(SportLevel.sport_id == sport_id).order_by(SportLevel.rank)
+        ).all()
+    )
+
+
+def list_events(session: Session, sport_id: int) -> list[SportEvent]:
+    """События дисциплины по дате старта (ближайшие раньше)."""
+    return list(
+        session.exec(
+            select(SportEvent).where(SportEvent.sport_id == sport_id).order_by(SportEvent.starts_on)
+        ).all()
+    )
+
+
+def list_mentors(session: Session, sport_id: int) -> list[SportMentor]:
+    """Наставники дисциплины по имени (алфавит)."""
+    return list(
+        session.exec(
+            select(SportMentor).where(SportMentor.sport_id == sport_id).order_by(SportMentor.name)
+        ).all()
+    )
+
+
+def list_recommendations(session: Session, sport_id: int) -> list[SportRecommendation]:
+    """Рекомендации дисциплины в порядке создания (по id)."""
+    return list(
+        session.exec(
+            select(SportRecommendation)
+            .where(SportRecommendation.sport_id == sport_id)
+            .order_by(SportRecommendation.id)
+        ).all()
+    )
+
+
 def sport_overview(session: Session, sport: Sport, *, user_id: int) -> SportOverview:
     """Сводка по дисциплине: ступени/события/менторы/рекомендации + число ачивок владельца.
 
-    Каталожные таблицы глобальны — отдаём как есть, упорядочивая для предсказуемого UI
-    (уровни по rank, события по дате старта, менторы по имени, рекомендации по id).
-    achievement_count — COUNT(*) ачивок дисциплины со скоупом по user_id.
+    Секции каталога глобальны — отдаём упорядоченно теми же хелперами, что и список-эндпоинты
+    (B28), чтобы порядок совпадал. achievement_count — COUNT(*) ачивок дисциплины по user_id.
     """
-    levels = session.exec(
-        select(SportLevel).where(SportLevel.sport_id == sport.id).order_by(SportLevel.rank)
-    ).all()
-    events = session.exec(
-        select(SportEvent).where(SportEvent.sport_id == sport.id).order_by(SportEvent.starts_on)
-    ).all()
-    mentors = session.exec(
-        select(SportMentor).where(SportMentor.sport_id == sport.id).order_by(SportMentor.name)
-    ).all()
-    recommendations = session.exec(
-        select(SportRecommendation)
-        .where(SportRecommendation.sport_id == sport.id)
-        .order_by(SportRecommendation.id)
-    ).all()
     achievement_count = session.exec(
         select(func.count())
         .select_from(Achievement)
@@ -60,9 +88,9 @@ def sport_overview(session: Session, sport: Sport, *, user_id: int) -> SportOver
     ).one()
     return SportOverview(
         sport=sport,
-        levels=list(levels),
-        events=list(events),
-        mentors=list(mentors),
-        recommendations=list(recommendations),
+        levels=list_levels(session, sport.id),
+        events=list_events(session, sport.id),
+        mentors=list_mentors(session, sport.id),
+        recommendations=list_recommendations(session, sport.id),
         achievement_count=achievement_count,
     )
