@@ -1,8 +1,9 @@
 /** Детальная страница вида спорта (M5·F20/F21): открывается из карточки каталога по /sports/:id.
  *  Каркас (M5·F21): шапка (имя/категория-чип/описания) рендерится из useSport(id) — лёгкий
  *  GET /sports/{id}; not-found/loading/error страницы тоже на нём. Тело (секции каталога:
- *  ступени/события/менторы/рекомендации + счётчик ачивок владельца) — из useSportOverview(id)
- *  (M5·B27). Read-only, глобальный каталог. */
+ *  ступени/события/менторы/рекомендации) — из useSportOverview(id) (M5·B27). M5·F23: события/
+ *  менторы/рекомендации показываются read-only карточками, а ачивки — отдельной карточкой со
+ *  счётчиком владельца и deep-link на общий экран /achievements. Read-only, глобальный каталог. */
 
 import { type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -20,6 +21,15 @@ function formatDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : eventDateFmt.format(d);
 }
+
+/** Внешняя ссылка из каталога — рендерим только http(s), чтобы не отдать в href
+ *  javascript:/data:-схему из данных, которыми мы не управляем напрямую. */
+function externalHref(url: string | null): string | null {
+  return url && /^https?:\/\//i.test(url) ? url : null;
+}
+
+// Общий вид read-only карточки секции (события/менторы/рекомендации) — один источник правды.
+const itemCardCls = 'flex flex-col gap-1 rounded-xl border border-line bg-panel p-4';
 
 const backLink = (
   <Link to="/sports" className="text-sm font-medium text-accent hover:underline">
@@ -77,11 +87,27 @@ export default function SportDetailPage() {
         {sport.long_description && (
           <p className="mt-3 leading-relaxed text-muted">{sport.long_description}</p>
         )}
-        {overview && (
-          <p className="mt-4 text-sm font-medium text-muted">
-            Ачивок: {overview.achievement_count}
+      </div>
+
+      {/* Достижения (M5·F23): счётчик ачивок дисциплины (скоуп пользователя) + deep-link на
+          общий экран достижений. Read-only — генерация/разблокировка живут на /achievements. */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-6">
+        <div className="flex flex-col gap-1">
+          <h2 className="font-display text-xl font-semibold tracking-tight">Достижения</h2>
+          <p className="text-muted">
+            {overviewPending
+              ? 'Загрузка…'
+              : overviewError
+                ? 'Не удалось загрузить.'
+                : `Ачивок по дисциплине: ${overview?.achievement_count ?? 0}`}
           </p>
-        )}
+        </div>
+        <Link
+          to="/achievements"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition-all duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-0.5 active:translate-y-0"
+        >
+          Все достижения →
+        </Link>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -103,7 +129,7 @@ export default function SportDetailPage() {
           emptyText="Событий пока нет."
         >
           {events.map((ev) => (
-            <li key={ev.id} className="flex flex-col gap-0.5">
+            <li key={ev.id} className={itemCardCls}>
               <span className="font-medium">{ev.title}</span>
               <span className="text-sm text-muted">
                 {formatDate(ev.starts_on)}
@@ -111,6 +137,16 @@ export default function SportDetailPage() {
                 {ev.location ? ` · ${ev.location}` : ''}
               </span>
               {ev.description && <span className="text-sm text-muted">{ev.description}</span>}
+              {externalHref(ev.url) && (
+                <a
+                  href={externalHref(ev.url)!}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-sm font-medium text-accent hover:underline"
+                >
+                  Открыть ↗
+                </a>
+              )}
             </li>
           ))}
         </Section>
@@ -123,10 +159,20 @@ export default function SportDetailPage() {
           emptyText="Наставников пока нет."
         >
           {mentors.map((m) => (
-            <li key={m.id} className="flex flex-col gap-0.5">
+            <li key={m.id} className={itemCardCls}>
               <span className="font-medium">{m.name}</span>
               {m.bio && <span className="text-sm text-muted">{m.bio}</span>}
               {m.contact && <span className="text-sm text-muted">{m.contact}</span>}
+              {externalHref(m.url) && (
+                <a
+                  href={externalHref(m.url)!}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-sm font-medium text-accent hover:underline"
+                >
+                  Профиль ↗
+                </a>
+              )}
             </li>
           ))}
         </Section>
@@ -139,7 +185,7 @@ export default function SportDetailPage() {
           emptyText="Рекомендаций пока нет."
         >
           {recommendations.map((r) => (
-            <li key={r.id} className="flex flex-col gap-0.5">
+            <li key={r.id} className={itemCardCls}>
               <span className="font-medium">{r.title}</span>
               <span className="text-sm text-muted">{r.body}</span>
             </li>
