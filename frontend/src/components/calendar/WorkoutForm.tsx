@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, SPORT_CATEGORIES, type SportCategory, type WorkoutKind } from '../../lib/api';
 import { useMySports } from '../../lib/sports';
 import { inputCls, SaveButton, errText } from './formKit';
+import { MediaThumb, useFilePreviews } from './mediaKit';
 
 const KINDS: { id: WorkoutKind; label: string }[] = [
   { id: 'strength', label: 'Сила' },
@@ -17,51 +18,6 @@ const KINDS: { id: WorkoutKind; label: string }[] = [
 ];
 const chip =
   'rounded-full px-3 py-1 text-xs font-medium transition-colors duration-[var(--duration-fast)]';
-
-/** Превью одного медиа. Если миниатюра не строится (HEIC/HEVC браузер не рисует) — показываем
- *  иконку и имя файла, чтобы было видно, что файл прикреплён, а не «ничего не загрузилось». */
-function MediaThumb({
-  file,
-  url,
-  isVideo,
-  onRemove,
-}: {
-  file: File;
-  url: string;
-  isVideo: boolean;
-  onRemove: () => void;
-}) {
-  const [broken, setBroken] = useState(false);
-  return (
-    <li className="relative size-16 overflow-hidden rounded-lg border border-line bg-panel">
-      {broken ? (
-        <span className="grid size-full place-items-center text-lg" title={file.name}>
-          {isVideo ? '🎬' : '🖼️'}
-        </span>
-      ) : isVideo ? (
-        <video src={url} className="size-full object-cover" muted onError={() => setBroken(true)} />
-      ) : (
-        <img
-          src={url}
-          alt={file.name}
-          className="size-full object-cover"
-          onError={() => setBroken(true)}
-        />
-      )}
-      <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 text-[9px] text-white">
-        {file.name}
-      </span>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label={`Убрать ${file.name}`}
-        className="absolute right-0.5 top-0.5 grid size-4 place-items-center rounded-full bg-black/60 text-[10px] text-white hover:bg-amber"
-      >
-        ✕
-      </button>
-    </li>
-  );
-}
 
 export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => void }) {
   const qc = useQueryClient();
@@ -78,19 +34,8 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Превью медиа (objectURL): пересоздаём при смене files, старые URL чистим. Видео — по MIME или
-  // расширению (телефонные .mov иногда без корректного type).
-  const previews = useMemo(
-    () =>
-      files.map((f) => ({
-        file: f,
-        url: URL.createObjectURL(f),
-        isVideo:
-          f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|hevc)$/i.test(f.name),
-      })),
-    [files],
-  );
-  useEffect(() => () => previews.forEach((p) => URL.revokeObjectURL(p.url)), [previews]);
+  // Превью медиа (objectURL + fallback HEIC/HEVC) — общий хук из mediaKit (M2·F10).
+  const previews = useFilePreviews(files);
 
   // Категории — только у привязанных дисциплин (M2·F6). Берём из /me/sports, оставляем уникальные
   // и упорядочиваем по канону SPORT_CATEGORIES (стабильный порядок чипов, без дублей).
