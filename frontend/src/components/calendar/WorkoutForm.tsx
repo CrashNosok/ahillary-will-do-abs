@@ -9,6 +9,7 @@ import { api, SPORT_CATEGORIES, type SportCategory, type WorkoutKind } from '../
 import { useMySports } from '../../lib/sports';
 import { inputCls, SaveButton, errText } from './formKit';
 import { MediaThumb, useFilePreviews } from './mediaKit';
+import { MediaLightbox } from './MediaLightbox';
 
 const KINDS: { id: WorkoutKind; label: string }[] = [
   { id: 'strength', label: 'Сила' },
@@ -31,6 +32,7 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   const [surpassedSelf, setSurpassedSelf] = useState(false);
   const [note, setNote] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [lightboxAt, setLightboxAt] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -319,6 +321,7 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
                 file={p.file}
                 url={p.url}
                 isVideo={p.isVideo}
+                onOpen={() => setLightboxAt(i)}
                 onRemove={() => {
                   setFiles((prev) => prev.filter((_, j) => j !== i));
                   reset();
@@ -341,6 +344,15 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
       >
         Расширенный ввод →
       </button>
+
+      {lightboxAt !== null && previews[lightboxAt] && (
+        <MediaLightbox
+          items={previews.map((p) => ({ src: p.url, isVideo: p.isVideo, name: p.file.name }))}
+          index={lightboxAt}
+          onIndexChange={setLightboxAt}
+          onClose={() => setLightboxAt(null)}
+        />
+      )}
     </form>
   );
 }

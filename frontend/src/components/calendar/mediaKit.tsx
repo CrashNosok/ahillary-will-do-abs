@@ -25,34 +25,49 @@ export function useFilePreviews(files: File[]): MediaPreview[] {
 }
 
 /** Превью одного медиа. Если миниатюра не строится (HEIC/HEVC браузер не рисует) — показываем
- *  иконку и имя файла, чтобы было видно, что файл прикреплён, а не «ничего не загрузилось». */
+ *  иконку и имя файла, чтобы было видно, что файл прикреплён, а не «ничего не загрузилось».
+ *  onOpen (если задан) делает область превью кнопкой — клик открывает лайтбокс на этом кадре. */
 export function MediaThumb({
   file,
   url,
   isVideo,
   onRemove,
+  onOpen,
 }: {
   file: File;
   url: string;
   isVideo: boolean;
   onRemove: () => void;
+  onOpen?: () => void;
 }) {
   const [broken, setBroken] = useState(false);
+  const media = broken ? (
+    <span className="grid size-full place-items-center text-lg" title={file.name}>
+      {isVideo ? '🎬' : '🖼️'}
+    </span>
+  ) : isVideo ? (
+    <video src={url} className="size-full object-cover" muted onError={() => setBroken(true)} />
+  ) : (
+    <img
+      src={url}
+      alt={file.name}
+      className="size-full object-cover"
+      onError={() => setBroken(true)}
+    />
+  );
   return (
     <li className="relative size-16 overflow-hidden rounded-lg border border-line bg-panel">
-      {broken ? (
-        <span className="grid size-full place-items-center text-lg" title={file.name}>
-          {isVideo ? '🎬' : '🖼️'}
-        </span>
-      ) : isVideo ? (
-        <video src={url} className="size-full object-cover" muted onError={() => setBroken(true)} />
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Открыть ${file.name}`}
+          className="block size-full cursor-zoom-in focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none"
+        >
+          {media}
+        </button>
       ) : (
-        <img
-          src={url}
-          alt={file.name}
-          className="size-full object-cover"
-          onError={() => setBroken(true)}
-        />
+        media
       )}
       <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 text-[9px] text-white">
         {file.name}
