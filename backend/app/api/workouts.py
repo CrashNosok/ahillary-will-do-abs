@@ -344,6 +344,44 @@ def list_workout_media(
     return [SimpleMediaRead(id=m.id, media_type=m.media_type) for m in rows]
 
 
+@router.get("/simple")
+def list_simple_workouts(
+    date: dt.date, session: SessionDep, user: CurrentUser
+) -> list[SimpleWorkoutRead]:
+    """Простые («быстрые») логи владельца за день + их медиа — для предзаполнения попапа дня.
+    Детальные сессии (силовые/кардио/скилл) имеют kind=None и сюда не попадают.
+    Объявлено до /{workout_id}, иначе «simple» уйдёт в catch-all как workout_id."""
+    sessions = session.exec(
+        select(WorkoutSession)
+        .where(
+            WorkoutSession.user_id == user.id,
+            WorkoutSession.date == date,
+            WorkoutSession.kind.is_not(None),
+        )
+        .order_by(WorkoutSession.id)
+    ).all()
+    out: list[SimpleWorkoutRead] = []
+    for ws in sessions:
+        media = session.exec(
+            select(WorkoutMedia).where(WorkoutMedia.session_id == ws.id).order_by(WorkoutMedia.id)
+        ).all()
+        out.append(
+            SimpleWorkoutRead(
+                id=ws.id,
+                date=ws.date,
+                kind=ws.kind,
+                sport_id=ws.sport_id,
+                duration_min=ws.duration_min,
+                rpe=ws.rpe,
+                notes=ws.notes,
+                surpassed_self=ws.surpassed_self,
+                created_at=ws.created_at,
+                media=[SimpleMediaRead(id=m.id, media_type=m.media_type) for m in media],
+            )
+        )
+    return out
+
+
 @router.get("")
 def list_workouts(session: SessionDep, user: CurrentUser) -> list[WorkoutRead]:
     sessions = session.exec(

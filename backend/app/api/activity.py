@@ -95,6 +95,17 @@ async def preview_activity(
     )
 
 
+@router.get("/activity/{activity_date}")
+def get_activity_day(
+    activity_date: dt.date, session: SessionDep, user: CurrentUser
+) -> ActivityDay | None:
+    """День активности владельца по дате (для предзаполнения формы в попапе дня).
+
+    Нет записи за день → 200 c `null` (а не 404): открытие формы на пустом дне не должно
+    шуметь 4xx в сети. PK составной (user_id, date) — берём строго свою строку (M0·B7)."""
+    return session.get(ActivityDay, (user.id, activity_date))
+
+
 @router.post("/activity/manual", status_code=status.HTTP_201_CREATED)
 def import_activity_manual(
     payload: ManualActivityIn,
