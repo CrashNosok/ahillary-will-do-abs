@@ -210,6 +210,7 @@ class SimpleWorkoutRead(BaseModel):
     duration_min: float | None
     rpe: float | None
     notes: str | None
+    surpassed_self: bool  # «превзошёл себя» (M2·B16/B17): отмечен ли личный рекорд в сессии
     created_at: dt.datetime
     media: list[SimpleMediaRead]
 
@@ -223,6 +224,7 @@ async def create_simple_workout(
     duration_min: Annotated[float | None, Form()] = None,
     sport_id: Annotated[int | None, Form()] = None,
     rpe: Annotated[float | None, Form()] = None,
+    surpassed_self: Annotated[bool, Form()] = False,  # отметка «превзошёл себя» (M2·B17)
     note: Annotated[str | None, Form()] = None,
     files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 — FastAPI-зависимость, не мутируется
 ) -> SimpleWorkoutRead:
@@ -260,6 +262,7 @@ async def create_simple_workout(
         kind=kind,
         duration_min=duration_min,
         rpe=rpe,
+        surpassed_self=surpassed_self,
         notes=note_clean or None,
     )
     session.add(ws)
@@ -304,6 +307,7 @@ async def create_simple_workout(
         duration_min=ws.duration_min,
         rpe=ws.rpe,
         notes=ws.notes,
+        surpassed_self=ws.surpassed_self,
         created_at=ws.created_at,
         media=[SimpleMediaRead(id=m.id, media_type=m.media_type) for m in media],
     )

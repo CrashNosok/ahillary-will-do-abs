@@ -139,5 +139,30 @@ def test_simple_workout_validation(client):
     assert note_only.status_code == 201, note_only.text
 
 
+def test_simple_workout_surpassed_self(client):
+    """M2·B17: surpassed_self принимается формой, сохраняется и возвращается в ответе."""
+    # по умолчанию (поле не прислано) — False
+    default = client.post("/workouts/simple", data={"kind": "other", "note": "обычный день"})
+    assert default.status_code == 201, default.text
+    assert default.json()["surpassed_self"] is False
+
+    # явный true — сохраняется и читается обратно
+    flagged = client.post(
+        "/workouts/simple",
+        data={"kind": "skill", "note": "новый трюк", "surpassed_self": "true"},
+    )
+    assert flagged.status_code == 201, flagged.text
+    body = flagged.json()
+    assert body["surpassed_self"] is True
+
+    # явный false — тоже уважается
+    off = client.post(
+        "/workouts/simple",
+        data={"kind": "cardio", "duration_min": "20", "surpassed_self": "false"},
+    )
+    assert off.status_code == 201, off.text
+    assert off.json()["surpassed_self"] is False
+
+
 def test_media_404(client):
     assert client.get("/workouts/media/999").status_code == 404
