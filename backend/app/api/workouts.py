@@ -101,9 +101,11 @@ class WorkoutRead(BaseModel):
     personal_records: list[PersonalRecordRead] = []
 
 
-def _link_activity_date(session: Session, date: dt.date) -> dt.date | None:
-    """Автолинк к Welltory-дню (S3.9): дата, если за этот день есть activity_day, иначе None."""
-    return date if session.get(ActivityDay, date) is not None else None
+def _link_activity_date(session: Session, date: dt.date, user_id: int) -> dt.date | None:
+    """Автолинк к Welltory-дню (S3.9): дата, если за этот день у пользователя есть
+    activity_day, иначе None. Ключ составной (user_id, date) после M0·B7 — линкуемся
+    только на день того же владельца, чтобы композитный FK был валиден."""
+    return date if session.get(ActivityDay, (user_id, date)) is not None else None
 
 
 def _require_sport(session: Session, sport_id: int) -> None:
@@ -153,7 +155,7 @@ def create_workout(payload: WorkoutCreate, session: SessionDep, user: CurrentUse
     ws = WorkoutSession(
         user_id=user.id,
         date=payload.date,
-        activity_date=_link_activity_date(session, payload.date),
+        activity_date=_link_activity_date(session, payload.date, user.id),
         sport_id=payload.sport_id,
         title=payload.title,
         notes=payload.notes,
@@ -252,7 +254,7 @@ async def create_simple_workout(
     ws = WorkoutSession(
         user_id=user.id,
         date=day,
-        activity_date=_link_activity_date(session, day),
+        activity_date=_link_activity_date(session, day, user.id),
         sport_id=sport_id,
         kind=kind,
         duration_min=duration_min,
@@ -482,7 +484,7 @@ def create_cardio(payload: CardioIn, session: SessionDep, user: CurrentUser) -> 
     ws = WorkoutSession(
         user_id=user.id,
         date=payload.date,
-        activity_date=_link_activity_date(session, payload.date),
+        activity_date=_link_activity_date(session, payload.date, user.id),
         sport_id=payload.sport_id,
         title=payload.title,
         notes=payload.notes,
@@ -591,7 +593,7 @@ def create_skill(payload: SkillCreate, session: SessionDep, user: CurrentUser) -
     ws = WorkoutSession(
         user_id=user.id,
         date=payload.date,
-        activity_date=_link_activity_date(session, payload.date),
+        activity_date=_link_activity_date(session, payload.date, user.id),
         sport_id=payload.sport_id,
         title=payload.title,
         notes=payload.notes,

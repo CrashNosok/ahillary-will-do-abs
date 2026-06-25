@@ -28,9 +28,9 @@ def _eaten_kcal(date: dt.date, session: Session) -> int | None:
     return round(sum(k or 0.0 for k in kcals))
 
 
-def _burn_kcal(date: dt.date, session: Session) -> int | None:
-    """burn = activity_day.total_kcal за день. Нет записи или total_kcal=None → None."""
-    day = session.get(ActivityDay, date)
+def _burn_kcal(date: dt.date, session: Session, user_id: int) -> int | None:
+    """burn = activity_day.total_kcal за день владельца. Нет записи или total_kcal=None → None."""
+    day = session.get(ActivityDay, (user_id, date))  # составной PK (user_id, date), M0·B7
     return day.total_kcal if day else None
 
 
@@ -43,7 +43,7 @@ def recompute(date: dt.date, session: Session, user_id: int) -> DeficitDay:
     проставляется на запись (NOT NULL FK на user.id).
     """
     eaten = _eaten_kcal(date, session)
-    burn = _burn_kcal(date, session)
+    burn = _burn_kcal(date, session, user_id)
     deficit = eaten - burn if eaten is not None and burn is not None else None
 
     row = session.get(DeficitDay, date) or DeficitDay(date=date, user_id=user_id)

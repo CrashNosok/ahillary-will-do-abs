@@ -18,7 +18,10 @@ from app.models._time import utcnow
 class ActivityDay(SQLModel, table=True):
     __tablename__ = "activity_day"
 
-    date: dt.date = Field(primary_key=True)  # один агрегат на день
+    # Владелец дня (M0·B7): изоляция по пользователю. Составной PK (user_id, date) —
+    # один агрегат на день у каждого пользователя; user_id ещё и FK на user.id.
+    user_id: int = Field(foreign_key="user.id", primary_key=True, index=True)
+    date: dt.date = Field(primary_key=True)  # один агрегат на день (в пределах user_id)
     total_kcal: int | None = None
     active_kcal: int | None = None
     steps: int | None = None

@@ -191,7 +191,8 @@ def _upsert_day(
     except ValueError:  # каталог данных вне backend/ (абсолютный DATA_DIR) — храним как есть
         source_image_path = str(dest)
 
-    day = session.get(ActivityDay, date) or ActivityDay(date=date)
+    # Составной PK (user_id, date) после M0·B7 — ищем/создаём день в пределах владельца.
+    day = session.get(ActivityDay, (user_id, date)) or ActivityDay(user_id=user_id, date=date)
     for name in FIELD_NAMES:
         setattr(day, name, fields.get(name))
     day.raw_json = raw
@@ -256,7 +257,7 @@ def save_activity_day_manual(
     Идемпотентно по дню; дефицит дня пересчитывается. Дублирует логику _upsert_day,
     но без записи изображения — отдельный путь без файла.
     """
-    day = session.get(ActivityDay, date) or ActivityDay(date=date)
+    day = session.get(ActivityDay, (user_id, date)) or ActivityDay(user_id=user_id, date=date)
     for name in FIELD_NAMES:
         setattr(day, name, fields.get(name))
     day.raw_json = {"manual": True}

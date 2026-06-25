@@ -117,7 +117,9 @@ def today_summary(session: Session, today: dt.date | None = None) -> TodaySummar
     kcal_in = session.exec(
         select(func.coalesce(func.sum(FoodEntry.kcal), 0.0)).where(FoodEntry.date == today)
     ).one()
-    activity = session.get(ActivityDay, today)
+    # activity_day теперь с составным PK (user_id, date) — берём день запросом по дате
+    # (сводка пока не фильтруется по пользователю: read-изоляция вне scope M0·B7).
+    activity = session.exec(select(ActivityDay).where(ActivityDay.date == today)).first()
     kcal_out = activity.total_kcal if activity and activity.total_kcal is not None else 0
     kcal_in = round(kcal_in)
     return TodaySummary(date=today, kcal_in=kcal_in, kcal_out=kcal_out, deficit=kcal_out - kcal_in)
