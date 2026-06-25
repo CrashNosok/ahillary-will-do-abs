@@ -52,9 +52,10 @@ class BodyMeasurementUpdate(BaseModel):
     notes: str | None = None
 
 
-def _get_or_404(session: Session, measurement_id: int) -> BodyMeasurement:
+def _get_or_404(session: Session, measurement_id: int, user_id: int) -> BodyMeasurement:
+    """Замер по id, но только свой (M0·B9): чужой → 404, чтобы не раскрывать его существование."""
     measurement = session.get(BodyMeasurement, measurement_id)
-    if measurement is None:
+    if measurement is None or measurement.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Замер не найден")
     return measurement
 
@@ -72,17 +73,21 @@ def create_measurement(
 
 @router.get("")
 def list_measurements(
-    session: SessionDep, _: CurrentUser, date: dt.date | None = None
+    session: SessionDep, user: CurrentUser, date: dt.date | None = None
 ) -> list[BodyMeasurement]:
-    stmt = select(BodyMeasurement).order_by(BodyMeasurement.date, BodyMeasurement.id)
+    stmt = (
+        select(BodyMeasurement)
+        .where(BodyMeasurement.user_id == user.id)
+        .order_by(BodyMeasurement.date, BodyMeasurement.id)
+    )
     if date is not None:
         stmt = stmt.where(BodyMeasurement.date == date)
     return session.exec(stmt).all()
 
 
 @router.get("/{measurement_id}")
-def get_measurement(measurement_id: int, session: SessionDep, _: CurrentUser) -> BodyMeasurement:
-    return _get_or_404(session, measurement_id)
+def get_measurement(measurement_id: int, session: SessionDep, user: CurrentUser) -> BodyMeasurement:
+    return _get_or_404(session, measurement_id, user.id)
 
 
 @router.patch("/{measurement_id}")
@@ -90,9 +95,9 @@ def update_measurement(
     measurement_id: int,
     payload: BodyMeasurementUpdate,
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
 ) -> BodyMeasurement:
-    measurement = _get_or_404(session, measurement_id)
+    measurement = _get_or_404(session, measurement_id, user.id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(measurement, key, value)
     session.add(measurement)
@@ -102,7 +107,7 @@ def update_measurement(
 
 
 @router.delete("/{measurement_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_measurement(measurement_id: int, session: SessionDep, _: CurrentUser) -> None:
-    measurement = _get_or_404(session, measurement_id)
+def delete_measurement(measurement_id: int, session: SessionDep, user: CurrentUser) -> None:
+    measurement = _get_or_404(session, measurement_id, user.id)
     session.delete(measurement)
     session.commit()

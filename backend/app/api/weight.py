@@ -37,8 +37,12 @@ def create_weight(
     payload: WeightCreate, session: SessionDep, user: CurrentUser
 ) -> InbodyMeasurement:
     """Апсёрт веса за день в inbody_measurement (трогаем только weight_kg)."""
+    # Апсёрт ищем только в СВОИХ замерах (M0·B9): иначе перетёрли бы чужую строку того же дня.
     existing = session.exec(
-        select(InbodyMeasurement).where(InbodyMeasurement.date == payload.date)
+        select(InbodyMeasurement).where(
+            InbodyMeasurement.date == payload.date,
+            InbodyMeasurement.user_id == user.id,
+        )
     ).first()
     measurement = existing or InbodyMeasurement(date=payload.date, user_id=user.id)
     measurement.weight_kg = payload.weight_kg

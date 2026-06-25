@@ -88,7 +88,7 @@ class BodyProgressOut(BaseModel):
 @router.get("/body")
 def get_body_progress(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     start: dt.date | None = None,
     end: dt.date | None = None,
 ) -> BodyProgressOut:
@@ -100,9 +100,14 @@ def get_body_progress(
             detail="Начало диапазона позже конца",
         )
 
+    # Ряды считаем только по своим замерам (M0·B9).
     inbody = session.exec(
         select(InbodyMeasurement)
-        .where(InbodyMeasurement.date >= start, InbodyMeasurement.date <= end)
+        .where(
+            InbodyMeasurement.user_id == user.id,
+            InbodyMeasurement.date >= start,
+            InbodyMeasurement.date <= end,
+        )
         .order_by(InbodyMeasurement.date, InbodyMeasurement.id)
     ).all()
     weight = [
@@ -111,7 +116,11 @@ def get_body_progress(
 
     body = session.exec(
         select(BodyMeasurement)
-        .where(BodyMeasurement.date >= start, BodyMeasurement.date <= end)
+        .where(
+            BodyMeasurement.user_id == user.id,
+            BodyMeasurement.date >= start,
+            BodyMeasurement.date <= end,
+        )
         .order_by(BodyMeasurement.date, BodyMeasurement.id)
     ).all()
     circumferences = {
@@ -145,7 +154,7 @@ class InbodyProgressOut(BaseModel):
 @router.get("/inbody")
 def get_inbody_progress(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     start: dt.date | None = None,
     end: dt.date | None = None,
 ) -> InbodyProgressOut:
@@ -165,7 +174,11 @@ def get_inbody_progress(
 
     measurements = session.exec(
         select(InbodyMeasurement)
-        .where(InbodyMeasurement.date >= start, InbodyMeasurement.date <= end)
+        .where(
+            InbodyMeasurement.user_id == user.id,
+            InbodyMeasurement.date >= start,
+            InbodyMeasurement.date <= end,
+        )
         .order_by(InbodyMeasurement.date, InbodyMeasurement.id)
     ).all()
     composition = {
@@ -313,11 +326,19 @@ def _baseline_lookup(baseline_json: dict[str, Any] | None, *keys: str) -> float 
 
 
 def _dated_values(
-    session: Session, model, col_name: str, start_date: dt.date | None, today: dt.date
+    session: Session,
+    model,
+    col_name: str,
+    start_date: dt.date | None,
+    today: dt.date,
+    user_id: int,
 ) -> list[tuple[dt.date, float]]:
-    """Хронологический ряд (date, value) метрики из модели, пропуская null и будущее."""
+    """Хронологический ряд (date, value) метрики из модели, пропуская null и будущее.
+
+    Только свои замеры (M0·B9): model — BodyMeasurement/InbodyMeasurement, у обеих есть user_id.
+    """
     column = getattr(model, col_name)
-    conds = [column.is_not(None), model.date <= today]
+    conds = [model.user_id == user_id, column.is_not(None), model.date <= today]
     if start_date is not None:
         conds.append(model.date >= start_date)
     rows = session.exec(
@@ -373,8 +394,9 @@ def _metric_progress(
     model,
     col: str,
     baseline_keys: tuple[str, ...],
+    user_id: int,
 ) -> GoalMetricProgress:
-    points = _dated_values(session, model, col, goal.start_date, today)
+    points = _dated_values(session, model, col, goal.start_date, today, user_id)
     # baseline_json@start_date — синтетический самый ранний замер (точнее темп/процент),
     # но только если есть хотя бы один реальный замер и старт раньше него.
     bjson = _baseline_lookup(goal.baseline_json, *baseline_keys)
@@ -405,7 +427,9 @@ def _metric_progress(
 
 
 @router.get("/goal")
-def get_goal_progress(session: SessionDep, _: CurrentUser) -> GoalProgressOut:
+def get_goal_progress(session: SessionDep, user: CurrentUser) -> GoalProgressOut:
+    # ponytail: SmartGoal-строку здесь НЕ скоупим — это кластер целей (своя карточка);
+    # B9 изолирует только чтения body/inbody-замеров внутри расчёта (через user_id ниже).
     goal = session.exec(select(SmartGoal).where(SmartGoal.status == GoalStatus.active)).first()
     if goal is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Активной цели нет")
@@ -424,6 +448,7 @@ def get_goal_progress(session: SessionDep, _: CurrentUser) -> GoalProgressOut:
                 model=InbodyMeasurement,
                 col="weight_kg",
                 baseline_keys=("weight_kg",),
+                user_id=user.id,
             )
         )
     if goal.target_body_fat_pct is not None:
@@ -437,6 +462,7 @@ def get_goal_progress(session: SessionDep, _: CurrentUser) -> GoalProgressOut:
                 model=InbodyMeasurement,
                 col="body_fat_pct",
                 baseline_keys=("body_fat_pct",),
+                user_id=user.id,
             )
         )
     for key, raw_target in (goal.target_measurements_json or {}).items():
@@ -459,6 +485,7 @@ def get_goal_progress(session: SessionDep, _: CurrentUser) -> GoalProgressOut:
                 model=BodyMeasurement,
                 col=col,
                 baseline_keys=(key, col),
+                user_id=user.id,
             )
         )
 

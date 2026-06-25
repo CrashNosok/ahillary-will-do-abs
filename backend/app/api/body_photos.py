@@ -93,12 +93,12 @@ async def upload_photo(
 @router.get("")
 def list_photos(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     start: dt.date | None = None,
     end: dt.date | None = None,
 ) -> list[ProgressPhotoOut]:
     """Список фото для галереи (новые сверху). Опциональный диапазон дат."""
-    stmt = select(ProgressPhoto)
+    stmt = select(ProgressPhoto).where(ProgressPhoto.user_id == user.id)
     if start is not None:
         stmt = stmt.where(ProgressPhoto.date >= start)
     if end is not None:
@@ -111,10 +111,11 @@ def list_photos(
 
 
 @router.get("/{photo_id}")
-def get_photo(photo_id: int, session: SessionDep, _: CurrentUser) -> FileResponse:
+def get_photo(photo_id: int, session: SessionDep, user: CurrentUser) -> FileResponse:
     """Отдаёт сам файл фото (media_type выводится из расширения)."""
     photo = session.get(ProgressPhoto, photo_id)
-    if photo is None or not photo.source_image_path:
+    # Чужое фото → 404 (M0·B9): не раскрываем существование чужой записи.
+    if photo is None or not photo.source_image_path or photo.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Фото не найдено")
     path = Path(photo.source_image_path)
     if not path.is_absolute():

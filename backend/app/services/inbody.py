@@ -178,7 +178,12 @@ def _upsert_measurement(
     except ValueError:  # каталог данных вне backend/ (абсолютный DATA_DIR) — храним как есть
         source_image_path = str(dest)
 
-    existing = session.exec(select(InbodyMeasurement).where(InbodyMeasurement.date == date)).first()
+    # Апсёрт по дню — только в СВОИХ замерах (M0·B9): иначе перетёрли бы чужую строку того же дня.
+    existing = session.exec(
+        select(InbodyMeasurement).where(
+            InbodyMeasurement.date == date, InbodyMeasurement.user_id == user_id
+        )
+    ).first()
     measurement = existing or InbodyMeasurement(date=date, user_id=user_id)
     for name in KEY_FIELD_NAMES:
         setattr(measurement, name, fields.get(name))
