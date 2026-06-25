@@ -92,7 +92,7 @@ async def preview_inbody(
 @router.post("/inbody", status_code=status.HTTP_201_CREATED)
 async def import_inbody(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     file: Annotated[UploadFile, File()],
     date: Annotated[dt.date | None, Form()] = None,
     fields: Annotated[str | None, Form()] = None,
@@ -114,12 +114,17 @@ async def import_inbody(
         if not isinstance(metrics, dict):
             metrics = {}
         return inbody.save_inbody_values(
-            image_bytes, day, session, fields=parsed_fields.model_dump(), metrics_json=metrics
+            image_bytes,
+            day,
+            session,
+            user_id=user.id,
+            fields=parsed_fields.model_dump(),
+            metrics_json=metrics,
         )
 
     # Полей нет — разбираем скрин и сохраняем разбор (прямой путь для curl/smoke).
     try:
-        return inbody.save_inbody_measurement(image_bytes, day, session)
+        return inbody.save_inbody_measurement(image_bytes, day, session, user_id=user.id)
     except inbody.InbodyParseError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

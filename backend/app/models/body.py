@@ -18,6 +18,8 @@ class BodyMeasurement(SQLModel, table=True):
     __tablename__ = "body_measurement"
 
     id: int | None = Field(default=None, primary_key=True)
+    # Владелец замера (M0·B4): изоляция данных по пользователю. NOT NULL + FK на user.id.
+    user_id: int = Field(foreign_key="user.id", index=True)
     date: dt.date = Field(index=True)
     height_cm: float | None = None
     waist_cm: float | None = None
@@ -36,6 +38,8 @@ class InbodyMeasurement(SQLModel, table=True):
     __tablename__ = "inbody_measurement"
 
     id: int | None = Field(default=None, primary_key=True)
+    # Владелец замера (M0·B4): изоляция данных по пользователю. NOT NULL + FK на user.id.
+    user_id: int = Field(foreign_key="user.id", index=True)
     date: dt.date = Field(index=True)
     weight_kg: float | None = None
     body_fat_pct: float | None = None
@@ -57,6 +61,8 @@ class ProgressPhoto(SQLModel, table=True):
     __tablename__ = "progress_photo"
 
     id: int | None = Field(default=None, primary_key=True)
+    # Владелец фото (M0·B4): изоляция данных по пользователю. NOT NULL + FK на user.id.
+    user_id: int = Field(foreign_key="user.id", index=True)
     date: dt.date = Field(index=True)
     source_image_path: str
     notes: str | None = None

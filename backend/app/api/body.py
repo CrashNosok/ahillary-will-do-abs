@@ -61,9 +61,9 @@ def _get_or_404(session: Session, measurement_id: int) -> BodyMeasurement:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_measurement(
-    payload: BodyMeasurementCreate, session: SessionDep, _: CurrentUser
+    payload: BodyMeasurementCreate, session: SessionDep, user: CurrentUser
 ) -> BodyMeasurement:
-    measurement = BodyMeasurement(**payload.model_dump())
+    measurement = BodyMeasurement(**payload.model_dump(), user_id=user.id)
     session.add(measurement)
     session.commit()
     session.refresh(measurement)

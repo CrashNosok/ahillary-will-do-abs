@@ -36,6 +36,8 @@ class HrZones(SQLModel, table=True):
     __tablename__ = "hr_zones"
 
     id: int | None = Field(default=None, primary_key=True)
+    # Владелец записи (M0·B4): изоляция данных по пользователю. NOT NULL + FK на user.id.
+    user_id: int = Field(foreign_key="user.id", index=True)
     date: dt.date = Field(index=True)
     zones_json: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     source_image_path: str | None = None

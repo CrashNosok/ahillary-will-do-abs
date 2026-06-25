@@ -33,12 +33,14 @@ class WeightCreate(BaseModel):
 
 
 @router.post("/weight", status_code=status.HTTP_201_CREATED)
-def create_weight(payload: WeightCreate, session: SessionDep, _: CurrentUser) -> InbodyMeasurement:
+def create_weight(
+    payload: WeightCreate, session: SessionDep, user: CurrentUser
+) -> InbodyMeasurement:
     """Апсёрт веса за день в inbody_measurement (трогаем только weight_kg)."""
     existing = session.exec(
         select(InbodyMeasurement).where(InbodyMeasurement.date == payload.date)
     ).first()
-    measurement = existing or InbodyMeasurement(date=payload.date)
+    measurement = existing or InbodyMeasurement(date=payload.date, user_id=user.id)
     measurement.weight_kg = payload.weight_kg
     session.add(measurement)
     session.commit()

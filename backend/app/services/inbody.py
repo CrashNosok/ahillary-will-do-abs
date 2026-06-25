@@ -160,6 +160,7 @@ def _upsert_measurement(
     date: dt.date,
     session: Session,
     *,
+    user_id: int,
     fields: dict[str, float | None],
     metrics_json: dict[str, Any],
 ) -> InbodyMeasurement:
@@ -178,7 +179,7 @@ def _upsert_measurement(
         source_image_path = str(dest)
 
     existing = session.exec(select(InbodyMeasurement).where(InbodyMeasurement.date == date)).first()
-    measurement = existing or InbodyMeasurement(date=date)
+    measurement = existing or InbodyMeasurement(date=date, user_id=user_id)
     for name in KEY_FIELD_NAMES:
         setattr(measurement, name, fields.get(name))
     measurement.metrics_json = metrics_json
@@ -195,6 +196,7 @@ def save_inbody_measurement(
     date: dt.date,
     session: Session,
     *,
+    user_id: int,
     model: str | None = None,
 ) -> InbodyMeasurement:
     """Разобрать скрин InBody и сохранить замер + исходник (S2.11).
@@ -206,7 +208,7 @@ def save_inbody_measurement(
     vision = parse_inbody_screen(image_bytes, model=model)
     fields = {name: getattr(vision, name) for name in KEY_FIELD_NAMES}
     return _upsert_measurement(
-        image_bytes, date, session, fields=fields, metrics_json=vision.metrics_json
+        image_bytes, date, session, user_id=user_id, fields=fields, metrics_json=vision.metrics_json
     )
 
 
@@ -215,6 +217,7 @@ def save_inbody_values(
     date: dt.date,
     session: Session,
     *,
+    user_id: int,
     fields: dict[str, float | None],
     metrics_json: dict[str, Any],
 ) -> InbodyMeasurement:
@@ -223,4 +226,6 @@ def save_inbody_values(
     vision НЕ дёргается: пять промо-полей приходят с экрана сверки (пользователь
     подтвердил/поправил их), а metrics_json — прочие показатели из шага превью.
     """
-    return _upsert_measurement(image_bytes, date, session, fields=fields, metrics_json=metrics_json)
+    return _upsert_measurement(
+        image_bytes, date, session, user_id=user_id, fields=fields, metrics_json=metrics_json
+    )

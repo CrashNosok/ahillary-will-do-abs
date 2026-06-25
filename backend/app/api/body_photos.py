@@ -57,7 +57,7 @@ def _resolve_suffix(file: UploadFile) -> str | None:
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def upload_photo(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     file: Annotated[UploadFile, File()],
     date: Annotated[dt.date | None, Form()] = None,
     notes: Annotated[str | None, Form()] = None,
@@ -82,6 +82,7 @@ async def upload_photo(
         date=day,
         source_image_path=str(dest.relative_to(db.BACKEND_DIR)),
         notes=notes,
+        user_id=user.id,
     )
     session.add(photo)
     session.commit()
