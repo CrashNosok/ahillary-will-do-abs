@@ -2,7 +2,7 @@
  *  Каждый вид спорта — свой запрос (useQueries), параллельно и без N+1-водопада;
  *  экран зипует результаты со списком спортов по индексу (порядок сохраняется). */
 
-import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Achievement, type Sport } from './api';
 
 const sportAchievementsKey = (sportId: number) => ['sport-achievements', sportId] as const;
@@ -14,6 +14,15 @@ export function useSportAchievements(sports: Sport[] | undefined) {
       queryKey: sportAchievementsKey(sport.id),
       queryFn: (): Promise<Achievement[]> => api.listAchievements(sport.id),
     })),
+  });
+}
+
+/** Ачивки одного вида спорта (для детальной страницы спорта — там же открытие через пруф). */
+export function useAchievementsForSport(sportId: number) {
+  return useQuery({
+    queryKey: sportAchievementsKey(sportId),
+    queryFn: (): Promise<Achievement[]> => api.listAchievements(sportId),
+    enabled: Number.isFinite(sportId),
   });
 }
 

@@ -52,7 +52,7 @@ const STATUS_META: Record<AchievementStatus, { label: string; chip: string; dot:
 const isTier = (level: string | null): level is AchievementTier =>
   level != null && level in TIER_ORDER;
 
-const tierRank = (level: string | null): number => (isTier(level) ? TIER_ORDER[level] : 99);
+export const tierRank = (level: string | null): number => (isTier(level) ? TIER_ORDER[level] : 99);
 
 const tierLabel = (level: string | null): string =>
   isTier(level) ? TIER_LABEL[level] : (level ?? '—');
@@ -140,7 +140,13 @@ function errorText(error: unknown): string {
   return 'Что-то пошло не так. Проверьте, что сервер запущен.';
 }
 
-function AchievementCard({ achievement, sportId }: { achievement: Achievement; sportId: number }) {
+export function AchievementCard({
+  achievement,
+  sportId,
+}: {
+  achievement: Achievement;
+  sportId: number;
+}) {
   const upload = useUploadProof(sportId);
   const unlock = useUnlockAchievement(sportId);
 

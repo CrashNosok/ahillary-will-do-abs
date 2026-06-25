@@ -1,15 +1,17 @@
 /** Детальная страница вида спорта (M5·F20/F21): открывается из карточки каталога по /sports/:id.
  *  Каркас (M5·F21): шапка (имя/категория-чип/описания) рендерится из useSport(id) — лёгкий
  *  GET /sports/{id}; not-found/loading/error страницы тоже на нём. Тело (секции каталога:
- *  ступени/события/менторы/рекомендации) — из useSportOverview(id) (M5·B27). M5·F23: события/
- *  менторы/рекомендации показываются read-only карточками, а ачивки — отдельной карточкой со
- *  счётчиком владельца и deep-link на общий экран /achievements. Read-only, глобальный каталог. */
+ *  ступени/события/менторы/рекомендации) — из useSportOverview(id) (M5·B27), read-only карточками.
+ *  Ачивки — рабочий список дисциплины (все статусы): здесь открываем новые через загрузку
+ *  видео-пруфа → «Разблокировать» (AchievementCard). Витрина заработанного — на /achievements. */
 
 import { type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, type Sponsor, sportCategoryLabel } from '../lib/api';
 import { useMySports, useSport, useSportOverview } from '../lib/sports';
+import { useAchievementsForSport } from '../lib/achievements';
 import { useSponsors } from '../lib/sponsors';
+import { AchievementCard, tierRank } from './AchievementsPage';
 import LevelLadder from './LevelLadder';
 
 const eventDateFmt = new Intl.DateTimeFormat('ru-RU', {
@@ -50,6 +52,16 @@ export default function SportDetailPage() {
   const currentLevelId = mySports?.find((s) => s.sport_id === id)?.current_level_id ?? null;
   // Полоса спонсоров (M6·F29) — глобальный каталог партнёров, общий для всех дисциплин.
   const { data: sponsors, isPending: sponsorsPending, error: sponsorsError } = useSponsors();
+  // Ачивки дисциплины: здесь же открываем новые (загрузка видео-пруфа → разблокировка). Витрина
+  // заработанного — на /achievements; здесь — рабочий список со всеми статусами.
+  const {
+    data: achievements,
+    isPending: achPending,
+    error: achError,
+  } = useAchievementsForSport(id);
+  const sortedAchievements = [...(achievements ?? [])].sort(
+    (a, b) => tierRank(a.level) - tierRank(b.level) || a.id - b.id,
+  );
 
   if (!Number.isFinite(id) || (error instanceof ApiError && error.status === 404)) {
     return <StateScreen message="Вид спорта не найден." />;
@@ -96,25 +108,30 @@ export default function SportDetailPage() {
           к дисциплине). Read-only — карточки-пилюли с именем и внешней ссылкой при http(s) url. */}
       <SponsorStrip sponsors={sponsors} isLoading={sponsorsPending} isError={!!sponsorsError} />
 
-      {/* Достижения (M5·F23): счётчик ачивок дисциплины (скоуп пользователя) + deep-link на
-          общий экран достижений. Read-only — генерация/разблокировка живут на /achievements. */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-6">
-        <div className="flex flex-col gap-1">
+      {/* Достижения: рабочий список дисциплины — здесь открываем новые (загрузка видео-пруфа →
+          «Разблокировать»). Подтверждённые подсвечены; витрина заработанного — на /achievements. */}
+      <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-display text-xl font-semibold tracking-tight">Достижения</h2>
-          <p className="text-muted">
-            {overviewPending
-              ? 'Загрузка…'
-              : overviewError
-                ? 'Не удалось загрузить.'
-                : `Ачивок по дисциплине: ${overview?.achievement_count ?? 0}`}
-          </p>
+          <Link to="/achievements" className="text-sm font-medium text-accent hover:underline">
+            Витрина заработанного →
+          </Link>
         </div>
-        <Link
-          to="/achievements"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink transition-all duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-0.5 active:translate-y-0"
-        >
-          Все достижения →
-        </Link>
+        {achPending ? (
+          <p className="text-muted">Загрузка…</p>
+        ) : achError ? (
+          <p className="text-muted">Не удалось загрузить.</p>
+        ) : sortedAchievements.length === 0 ? (
+          <p className="text-muted">Ачивок по дисциплине пока нет.</p>
+        ) : (
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {sortedAchievements.map((a) => (
+              <li key={a.id}>
+                <AchievementCard achievement={a} sportId={id} />
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
