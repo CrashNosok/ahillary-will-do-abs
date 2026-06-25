@@ -230,6 +230,7 @@ def _add_activity(engine, date: str, *, total_kcal=None, steps=None, moving_min=
     with Session(engine) as session:
         session.add(
             ActivityDay(
+                user_id=1,
                 date=dt.date.fromisoformat(date),
                 total_kcal=total_kcal,
                 steps=steps,

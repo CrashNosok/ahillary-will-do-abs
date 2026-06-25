@@ -52,7 +52,7 @@ def test_json_column_roundtrips_dict():
     engine = _memory_engine()
     payload = {"всего_ккал": 1218, "tiles": {"steps": 4459}}
     with Session(engine) as session:
-        session.add(ActivityDay(date=date(2026, 6, 20), raw_json=payload))
+        session.add(ActivityDay(user_id=1, date=date(2026, 6, 20), raw_json=payload))
         session.commit()
     with Session(engine) as session:
         row = session.exec(select(ActivityDay)).one()
@@ -74,26 +74,29 @@ _S12_TABLES = {
     "achievement_proof",
 }
 
-# (таблица, колонка) -> таблица, на которую FK обязан ссылаться. Критерий приёмки:
-# FK на sport/exercise/session согласованы.
+# (таблица, кортеж колонок) -> таблица, на которую FK обязан ссылаться. Ключ — кортеж
+# (а не одна колонка), потому что после M0·B7 у workout_session появился композитный FK
+# (user_id, activity_date) → activity_day, и та же колонка user_id участвует ещё и в FK на
+# user — по одной колонке такие FK не различить. Кортежи отсортированы для устойчивости.
 _EXPECTED_FKS = {
-    ("exercise", "sport_id"): "sport",
-    ("workout_session", "sport_id"): "sport",
-    ("workout_session", "activity_date"): "activity_day",  # связь с Welltory-днём (S3.9)
-    ("workout_session", "user_id"): "user",  # владелец сессии (M0·B3)
-    ("strength_set", "session_id"): "workout_session",
-    ("strength_set", "exercise_id"): "exercise",
-    ("cardio_log", "session_id"): "workout_session",
-    ("cardio_log", "exercise_id"): "exercise",
-    ("skill_log", "session_id"): "workout_session",
-    ("skill_log", "exercise_id"): "exercise",
-    ("personal_record", "exercise_id"): "exercise",
-    ("personal_record", "user_id"): "user",  # владелец рекорда (M0·B3)
-    ("achievement", "sport_id"): "sport",
-    ("achievement", "user_id"): "user",  # владелец ачивки (M0·B6)
-    ("achievement_proof", "achievement_id"): "achievement",
-    ("recommendation", "goal_id"): "smart_goal",
-    ("recommendation", "user_id"): "user",  # владелец рекомендации (M0·B5)
+    ("exercise", ("sport_id",)): "sport",
+    ("workout_session", ("sport_id",)): "sport",
+    # связь с Welltory-днём, перепривязана композитным FK в M0·B7 (раньше — одиночный на date)
+    ("workout_session", ("activity_date", "user_id")): "activity_day",
+    ("workout_session", ("user_id",)): "user",  # владелец сессии (M0·B3)
+    ("strength_set", ("session_id",)): "workout_session",
+    ("strength_set", ("exercise_id",)): "exercise",
+    ("cardio_log", ("session_id",)): "workout_session",
+    ("cardio_log", ("exercise_id",)): "exercise",
+    ("skill_log", ("session_id",)): "workout_session",
+    ("skill_log", ("exercise_id",)): "exercise",
+    ("personal_record", ("exercise_id",)): "exercise",
+    ("personal_record", ("user_id",)): "user",  # владелец рекорда (M0·B3)
+    ("achievement", ("sport_id",)): "sport",
+    ("achievement", ("user_id",)): "user",  # владелец ачивки (M0·B6)
+    ("achievement_proof", ("achievement_id",)): "achievement",
+    ("recommendation", ("goal_id",)): "smart_goal",
+    ("recommendation", ("user_id",)): "user",  # владелец рекомендации (M0·B5)
 }
 
 
@@ -106,10 +109,9 @@ def test_foreign_keys_reference_expected_tables():
     # критерий: FK на sport/exercise/session (и др.) согласованы
     insp = inspect(_memory_engine())
     actual = {
-        (table, col): fk["referred_table"]
+        (table, tuple(sorted(fk["constrained_columns"]))): fk["referred_table"]
         for table in _S12_TABLES
         for fk in insp.get_foreign_keys(table)
-        for col in fk["constrained_columns"]
     }
     assert actual == _EXPECTED_FKS
 
@@ -146,3 +148,33 @@ def test_nutrition_cluster_tables_have_user_id_fk():
             for col in fk["constrained_columns"]
         }
         assert fks.get("user_id") == "user", table
+
+
+# --- M0·B7: день активности изолирован по пользователю (составной PK) ---
+
+
+def test_activity_day_has_composite_pk_and_user_fk():
+    # критерий M0·B7: PK activity_day = (user_id, date), user_id ссылается на user
+    insp = inspect(_memory_engine())
+    pk = set(insp.get_pk_constraint("activity_day")["constrained_columns"])
+    assert pk == {"user_id", "date"}
+    fks = {
+        col: fk["referred_table"]
+        for fk in insp.get_foreign_keys("activity_day")
+        for col in fk["constrained_columns"]
+    }
+    assert fks.get("user_id") == "user"
+
+
+def test_workout_session_activity_link_is_composite_fk():
+    # критерий M0·B7: FK workout_session.activity_date перепривязан на составной PK дня
+    insp = inspect(_memory_engine())
+    composite = [
+        fk
+        for fk in insp.get_foreign_keys("workout_session")
+        if fk["referred_table"] == "activity_day"
+    ]
+    assert len(composite) == 1
+    fk = composite[0]
+    assert set(fk["constrained_columns"]) == {"user_id", "activity_date"}
+    assert set(fk["referred_columns"]) == {"user_id", "date"}

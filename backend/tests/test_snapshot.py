@@ -110,8 +110,8 @@ def _seed_full(engine) -> None:
             )
         )
         # Активность + дефицит.
-        s.add(ActivityDay(date=_d(1), total_kcal=2500, steps=10000, moving_min=60))
-        s.add(ActivityDay(date=_d(2), total_kcal=2300, steps=8000, moving_min=50))
+        s.add(ActivityDay(user_id=1, date=_d(1), total_kcal=2500, steps=10000, moving_min=60))
+        s.add(ActivityDay(user_id=1, date=_d(2), total_kcal=2300, steps=8000, moving_min=50))
         s.add(DeficitDay(date=_d(1), user_id=1, eaten_kcal=2000, burn_kcal=2500, deficit_kcal=500))
         s.add(DeficitDay(date=_d(2), user_id=1, eaten_kcal=1800, burn_kcal=2300, deficit_kcal=500))
         # Спорт/упражнения.

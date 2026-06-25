@@ -352,7 +352,7 @@ def test_read_unknown_skill_returns_404(client):
 def _add_activity_day(engine, date: str) -> None:
     """Заводит activity_day на дату напрямую (UI-импорт идёт через vision, тут он не нужен)."""
     with Session(engine) as session:
-        session.add(ActivityDay(date=dt.date.fromisoformat(date), total_kcal=500))
+        session.add(ActivityDay(user_id=1, date=dt.date.fromisoformat(date), total_kcal=500))
         session.commit()
 
 

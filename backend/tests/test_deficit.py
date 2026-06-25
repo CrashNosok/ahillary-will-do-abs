@@ -46,7 +46,7 @@ def _add_food(session: Session, date: dt.date, *kcals: float | None) -> None:
 def test_deficit_is_eaten_minus_burn(session):
     # критерий: на 2026-06-20 deficit = 3250 − всего_ккал(Welltory)
     _add_food(session, DAY, 455.0, 1000.0, 1795.0)  # сумма 3250
-    session.add(ActivityDay(date=DAY, total_kcal=BURN))
+    session.add(ActivityDay(user_id=1, date=DAY, total_kcal=BURN))
     session.commit()
 
     row = deficit.recompute(DAY, session, 1)
@@ -68,7 +68,7 @@ def test_missing_activity_is_incomplete_without_false_zero(session):
 
 def test_missing_food_is_incomplete_without_false_zero(session):
     # критерий: нет источника еды → «неполный день», deficit None
-    session.add(ActivityDay(date=DAY, total_kcal=BURN))
+    session.add(ActivityDay(user_id=1, date=DAY, total_kcal=BURN))
     session.commit()
     row = deficit.recompute(DAY, session, 1)
     assert row.eaten_kcal is None
@@ -80,7 +80,7 @@ def test_missing_food_is_incomplete_without_false_zero(session):
 def test_zero_kcal_entries_are_not_a_missing_source(session):
     # записи есть, но ккал по ним 0 → eaten=0 (валидный ноль, не пропуск источника)
     _add_food(session, DAY, 0.0, None)
-    session.add(ActivityDay(date=DAY, total_kcal=BURN))
+    session.add(ActivityDay(user_id=1, date=DAY, total_kcal=BURN))
     session.commit()
     row = deficit.recompute(DAY, session, 1)
     assert row.eaten_kcal == 0
@@ -90,7 +90,7 @@ def test_zero_kcal_entries_are_not_a_missing_source(session):
 
 def test_recompute_is_idempotent_upsert(session):
     _add_food(session, DAY, 1000.0)
-    session.add(ActivityDay(date=DAY, total_kcal=400))
+    session.add(ActivityDay(user_id=1, date=DAY, total_kcal=400))
     session.commit()
     deficit.recompute(DAY, session, 1)
 

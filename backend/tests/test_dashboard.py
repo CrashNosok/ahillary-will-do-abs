@@ -46,7 +46,7 @@ def _food(session, date, kcal=100.0):
 
 
 def _activity(session, date, total_kcal=500):
-    session.add(ActivityDay(date=date, total_kcal=total_kcal))
+    session.add(ActivityDay(user_id=1, date=date, total_kcal=total_kcal))
     session.commit()
 
 
@@ -221,7 +221,7 @@ def client():
         s.add(User(email=EMAIL, password_hash=hash_password(PASSWORD)))
         today = dt.date.today()
         s.add(FoodEntry(user_id=1, date=today, meal="Обед", product_name="x", kcal=100))
-        s.add(ActivityDay(date=today, total_kcal=500))
+        s.add(ActivityDay(user_id=1, date=today, total_kcal=500))
         s.commit()
 
     def override_get_session():
