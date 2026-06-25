@@ -19,6 +19,7 @@ from app.core.db import get_session
 from app.models.achievement import Achievement, AchievementProof
 from app.models.sport import Sport, SportCategory
 from app.services import achievement as achievement_service
+from app.services import sport as sport_service
 from app.services.achievement_schema import AthleteLevel, InvalidAchievementSetError
 from app.services.llm import LLMError
 
@@ -151,6 +152,19 @@ def delete_sport(sport_id: int, session: SessionDep, _: CurrentUser) -> None:
     sport = _get_or_404(session, sport_id)
     session.delete(sport)
     session.commit()
+
+
+@router.get("/{sport_id}/overview")
+def get_sport_overview(
+    sport_id: int, session: SessionDep, user: CurrentUser
+) -> sport_service.SportOverview:
+    """Сводка по дисциплине (M5·B27): ступени, события, менторы, рекомендации + счётчик ачивок.
+
+    Каталожные таблицы общие; achievement_count скоупится по владельцу (чужие не в счёте).
+    404 — для неизвестного вида спорта.
+    """
+    sport = _get_or_404(session, sport_id)
+    return sport_service.sport_overview(session, sport, user_id=user.id)
 
 
 @router.get("/{sport_id}/achievements")
