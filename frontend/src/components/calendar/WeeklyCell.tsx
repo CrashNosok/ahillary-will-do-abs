@@ -102,10 +102,9 @@ export function WeeklyCell({
         })}
       </span>
 
-      {/* Полные замеры (Вес+Замеры) дают усиленный залп искр — больше/крупнее/быстрее базового.
-          isFull ⟹ hasMeasurements, поэтому отдельной «базовой» искры 3/3 без замеров не бывает:
-          залп один и всегда усиленный. Reduced-motion гасит все .sparkle глобально (см. index.css). */}
-      {hasMeasurements && <Sparks count={10} spread={16} baseDur={900} size={6} />}
+      {/* Искры — только на полной неделе (3/3). Частичная (1/3, 2/3) без искр.
+          Reduced-motion гасит все .sparkle глобально (см. index.css). */}
+      {isFull && <Sparks count={10} spread={16} baseDur={900} size={6} />}
     </div>
   );
 }
