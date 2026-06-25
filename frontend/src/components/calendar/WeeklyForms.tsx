@@ -3,14 +3,30 @@
  *  кнопка «Сохранить». Замеры: талия/грудь/ягодицы обязательны, остальное по желанию. */
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type BodyMeasurementInput } from '../../lib/api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, bodyPhotoUrl, type BodyMeasurement, type BodyMeasurementInput } from '../../lib/api';
 import { inputCls, SaveButton, errText, numOrNull } from './formKit';
+import { MediaLightbox, type LightboxItem } from './MediaLightbox';
 
 export function WeekWeightForm({ date, onSaved }: { date: string; onSaved?: () => void }) {
   const qc = useQueryClient();
   const [w, setW] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const hydrated = useRef(false);
+
+  // Предзаполнение «Изменить»: вес дня живёт в inbody_measurement, читаем его рядом веса за [date;date].
+  const existing = useQuery({
+    queryKey: ['day-weight', date],
+    queryFn: () => api.getBodyProgress(date, date),
+    enabled: !!date,
+  });
+  useEffect(() => {
+    if (hydrated.current || !existing.isSuccess) return;
+    const pts = existing.data.weight_kg;
+    if (pts.length > 0) setW(String(pts[pts.length - 1].value));
+    hydrated.current = true;
+  }, [existing.isSuccess, existing.data]);
+
   const save = useMutation({
     mutationFn: () => api.createWeight({ date, weight_kg: Number(w) }),
     onSuccess: () => {
@@ -74,6 +90,31 @@ export function WeekMeasurementsForm({ date, onSaved }: { date: string; onSaved?
   const qc = useQueryClient();
   const [vals, setVals] = useState<Record<string, string>>({});
   const [err, setErr] = useState<string | null>(null);
+  // id уже существующего замера дня: есть → «Изменить» правит его (PATCH), нет → создаём (POST).
+  const [existingId, setExistingId] = useState<number | null>(null);
+  const hydrated = useRef(false);
+
+  // Предзаполнение «Изменить»: подтягиваем замер дня (одна запись на день; берём последнюю).
+  const existing = useQuery({
+    queryKey: ['day-measurements', date],
+    queryFn: () => api.listMeasurements(date),
+    enabled: !!date,
+  });
+  useEffect(() => {
+    if (hydrated.current || !existing.isSuccess) return;
+    const rows = existing.data;
+    const m = rows.length > 0 ? rows[rows.length - 1] : undefined;
+    if (m) {
+      setExistingId(m.id);
+      const next: Record<string, string> = {};
+      for (const f of M_FIELDS) {
+        const v = m[f.key];
+        if (v != null) next[f.key] = String(v);
+      }
+      setVals(next);
+    }
+    hydrated.current = true;
+  }, [existing.isSuccess, existing.data]);
 
   const save = useMutation({
     mutationFn: () => {
@@ -90,10 +131,14 @@ export function WeekMeasurementsForm({ date, onSaved }: { date: string; onSaved?
         calf_l_cm: numOrNull(vals.calf_l_cm),
         calf_r_cm: numOrNull(vals.calf_r_cm),
       };
-      return api.createMeasurement(payload);
+      return existingId != null
+        ? api.updateMeasurement(existingId, payload)
+        : api.createMeasurement(payload);
     },
-    onSuccess: () => {
+    onSuccess: (saved: BodyMeasurement) => {
+      setExistingId(saved.id); // повторное «Сохранить» того же открытия правит запись, а не дублит
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['day-measurements', date] });
       onSaved?.();
     },
   });
@@ -238,12 +283,28 @@ export function WeekPhotoForm({ date, onSaved }: { date: string; onSaved?: () =>
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [camera, setCamera] = useState(false);
+  const [viewAt, setViewAt] = useState<number | null>(null);
+
+  // Уже загруженные фото за день — карточка просит «прямо здесь посмотреть фото/видео».
+  // Файловый input предзаполнить нельзя (безопасность браузера), поэтому показываем превью.
+  const dayPhotos = useQuery({
+    queryKey: ['day-photos', date],
+    queryFn: () => api.listBodyPhotos(date, date),
+    enabled: !!date,
+  });
+  const photos = dayPhotos.data ?? [];
+  const items: LightboxItem[] = photos.map((p) => ({
+    src: bodyPhotoUrl(p.id),
+    isVideo: false,
+    name: `Фото ${p.id}`,
+  }));
 
   const save = useMutation({
     mutationFn: () => api.uploadBodyPhoto(file as File, date),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['body-photos'] });
+      qc.invalidateQueries({ queryKey: ['day-photos', date] });
       onSaved?.();
     },
   });
@@ -268,6 +329,29 @@ export function WeekPhotoForm({ date, onSaved }: { date: string; onSaved?: () =>
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
+      {/* Фото за этот день (предзаполнение для медиа): миниатюры кликом открывают лайтбокс. */}
+      {photos.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted">Фото за этот день</span>
+          <ul className="flex flex-wrap gap-2">
+            {items.map((it, i) => (
+              <li
+                key={photos[i].id}
+                className="size-16 overflow-hidden rounded-lg border border-line bg-panel"
+              >
+                <button
+                  type="button"
+                  onClick={() => setViewAt(i)}
+                  aria-label={`Открыть ${it.name}`}
+                  className="block size-full cursor-zoom-in focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none"
+                >
+                  <img src={it.src} alt={it.name} className="size-full object-cover" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {camera ? (
         <CameraShot
           onCapture={(f) => {
@@ -303,6 +387,14 @@ export function WeekPhotoForm({ date, onSaved }: { date: string; onSaved?: () =>
           {save.isSuccess && <p className="text-xs font-medium text-accent">Фото сохранено ✓</p>}
           <SaveButton pending={save.isPending} success={save.isSuccess} disabled={!file} />
         </>
+      )}
+      {viewAt !== null && items[viewAt] && (
+        <MediaLightbox
+          items={items}
+          index={viewAt}
+          onIndexChange={setViewAt}
+          onClose={() => setViewAt(null)}
+        />
       )}
     </form>
   );

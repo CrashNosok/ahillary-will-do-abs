@@ -3,7 +3,7 @@
  *  детальный логгер (/workouts) за тот же день: подходы с весами, дистанция/темп, попытки. */
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, SPORT_CATEGORIES, type SportCategory, type WorkoutKind } from '../../lib/api';
 import { useMySports } from '../../lib/sports';
@@ -61,6 +61,15 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
     });
   }, [categorySports]);
 
+  // Ранее внесённые тренировки дня (предзаполнение «Изменить»): простые логи append-only и
+  // их может быть несколько за день, поэтому показываем их сводкой над формой ввода нового лога.
+  const dayWorkouts = useQuery({
+    queryKey: ['day-simple-workouts', date],
+    queryFn: () => api.listDaySimpleWorkouts(date),
+    enabled: !!date,
+  });
+  const logged = dayWorkouts.data ?? [];
+
   const save = useMutation({
     mutationFn: () =>
       api.createSimpleWorkout({
@@ -77,6 +86,8 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       // Сохранение могло добавить медиа → освежаем полосу медиа дня (M3·F12).
       qc.invalidateQueries({ queryKey: ['workout-media'] });
+      // …и сводку ранее внесённых тренировок дня (новый лог появляется сразу).
+      qc.invalidateQueries({ queryKey: ['day-simple-workouts', date] });
       onSaved?.();
     },
   });
@@ -104,8 +115,35 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
     save.mutate();
   };
 
+  const kindLabel = (k: string) => KINDS.find((x) => x.id === k)?.label ?? k;
+
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
+      {/* Ранее внесённые тренировки за день — сводка (тип · время · усилие · заметка · медиа).
+          Медиа этих логов открывается из «Медиа дня» над формой (DayWorkoutMediaStrip). */}
+      {logged.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted">Тренировки за этот день</span>
+          <ul className="flex flex-col gap-1">
+            {logged.map((w) => (
+              <li
+                key={w.id}
+                className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-line bg-ink/30 px-2.5 py-1.5 text-xs text-fg"
+              >
+                <span className="font-medium">{kindLabel(w.kind)}</span>
+                {w.duration_min != null && (
+                  <span className="text-muted">· {w.duration_min} мин</span>
+                )}
+                {w.rpe != null && <span className="text-muted">· усилие {w.rpe}/10</span>}
+                {w.notes && <span className="text-muted">· {w.notes}</span>}
+                {w.surpassed_self && <span title="Личный рекорд">· 🏆</span>}
+                {w.media.length > 0 && <span className="text-muted">· 📎 {w.media.length}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Тип */}
       <div className="flex flex-col gap-1">
         <span className="text-xs text-muted">Тип</span>

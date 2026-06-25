@@ -906,6 +906,9 @@ export const api = {
   // Медиа дня (M2·B18): id+type всех медиа тренировок владельца за день; байты — workoutMediaUrl(id).
   listDayWorkoutMedia: (date: string) =>
     request<SimpleWorkoutMedia[]>(`/workouts/media?date=${date}`),
+  // Простые («быстрые») логи владельца за день (для попапа дня): тип/время/усилие/заметка + медиа.
+  listDaySimpleWorkouts: (date: string) =>
+    request<SimpleWorkout[]>(`/workouts/simple?date=${date}`),
 
   // Дашборд-хитмап: флаги данных по дням месяца (start/end — ISO YYYY-MM-DD).
   getDashboard: (start: string, end: string) =>
@@ -946,6 +949,14 @@ export const api = {
   createMeasurement: (input: BodyMeasurementInput) =>
     request<BodyMeasurement>('/body-measurements', {
       method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  // Замеры по дате (для предзаполнения формы в попапе дня): фильтр ?date=, хронология возрастает.
+  listMeasurements: (date: string) => request<BodyMeasurement[]>(`/body-measurements?date=${date}`),
+  // Обновить замер по id (PATCH): «Изменить» дня правит существующую запись, а не плодит дубль.
+  updateMeasurement: (id: number, input: BodyMeasurementInput) =>
+    request<BodyMeasurement>(`/body-measurements/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(input),
     }),
 
@@ -1001,6 +1012,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ date, ...fields }),
     }),
+  // День активности по дате (для предзаполнения формы в попапе): нет записи → null (200).
+  getActivityDay: (date: string) => request<ActivityDay | null>(`/import/activity/${date}`),
 
   // Рекомендации (S4.5): генерация по кнопке (снапшот → Opus → план), история списком,
   // деталь по id. Генерация может вернуть 502, если апстрим LLM недоступен.

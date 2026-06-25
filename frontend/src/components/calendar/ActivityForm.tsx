@@ -3,8 +3,8 @@
  *  но в форме. Дополнительно: «Распознать со скрина» — vision заполнит поля (если ключ valid),
  *  затем правишь и «Сохранить» (ручной upsert, без файла). */
 
-import { useState, type FormEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type ActivityFields } from '../../lib/api';
 import { inputCls, SaveButton, errText, numOrNull } from './formKit';
 
@@ -24,6 +24,24 @@ export function ActivityForm({ date, onSaved }: { date: string; onSaved?: () => 
   const qc = useQueryClient();
   const [vals, setVals] = useState<Record<string, string>>({});
   const [err, setErr] = useState<string | null>(null);
+  const hydrated = useRef(false);
+
+  // Предзаполнение «Изменить»: подтягиваем день активности (upsert по дню) и кладём 8 метрик в поля.
+  const existing = useQuery({
+    queryKey: ['day-activity', date],
+    queryFn: () => api.getActivityDay(date),
+    enabled: !!date,
+  });
+  useEffect(() => {
+    if (hydrated.current || !existing.isSuccess) return;
+    const day = existing.data;
+    if (day) {
+      const next: Record<string, string> = {};
+      for (const f of A_FIELDS) next[f.key] = day[f.key] != null ? String(day[f.key]) : '';
+      setVals(next);
+    }
+    hydrated.current = true;
+  }, [existing.isSuccess, existing.data]);
 
   const fields = (): ActivityFields => ({
     total_kcal: numOrNull(vals.total_kcal),
@@ -50,6 +68,7 @@ export function ActivityForm({ date, onSaved }: { date: string; onSaved?: () => 
     mutationFn: () => api.saveActivityManual(date, fields()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['day-activity', date] });
       onSaved?.();
     },
   });

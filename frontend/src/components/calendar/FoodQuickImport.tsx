@@ -3,7 +3,7 @@
  *  Минимум окошек: одна зона выбора + строка-итог. Обновление календаря — инвалидация dashboard. */
 
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type DiaryPreview } from '../../lib/api';
 
 const dateFmt = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' });
@@ -17,10 +17,21 @@ export function FoodQuickImport({ date, onSaved }: { date: string; onSaved?: () 
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  // Еда — это CSV-импорт без редактируемых полей: «предзаполнение» = показать, что за день уже
+  // импортировано и на сколько ккал (kcal_in за [date;date]). Новый CSV заменит день (идемпотентно).
+  const existing = useQuery({
+    queryKey: ['day-food', date],
+    queryFn: () => api.getEnergyProgress(date, date),
+    enabled: !!date,
+  });
+  const kcalPts = existing.data?.kcal_in ?? [];
+  const existingKcal = kcalPts.length > 0 ? kcalPts[kcalPts.length - 1].value : null;
+
   const save = useMutation<DiaryPreview, unknown, File>({
     mutationFn: (f) => api.saveImport(f, date), // записываем на выбранный день
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['day-food', date] });
       onSaved?.();
     },
   });
@@ -33,6 +44,11 @@ export function FoodQuickImport({ date, onSaved }: { date: string; onSaved?: () 
 
   return (
     <div className="flex flex-col gap-2">
+      {existingKcal != null && !save.isSuccess && (
+        <p className="text-xs text-accent">
+          За этот день еда уже импортирована: {Math.round(existingKcal)} ккал. Новый CSV заменит её.
+        </p>
+      )}
       <label
         onDragOver={(e) => {
           e.preventDefault();
