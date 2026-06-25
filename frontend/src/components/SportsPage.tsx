@@ -15,8 +15,11 @@ import {
   useCreateExercise,
   useCreateSport,
   useExercises,
+  useLinkSport,
+  useMySports,
   useSportCategories,
   useSports,
+  useUnlinkSport,
 } from '../lib/sports';
 
 const inputCls =
@@ -34,6 +37,9 @@ export default function SportsPage() {
   const { data: sports, isPending } = useSports(filter || undefined);
   const { data: categories } = useSportCategories();
   const { data: exercises } = useExercises();
+  // Привязанные к себе дисциплины (M2·B19/F6): по ним карточка рисует «Привязать/Отвязать».
+  const { data: mySports } = useMySports();
+  const linkedIds = useMemo(() => new Set((mySports ?? []).map((s) => s.sport_id)), [mySports]);
 
   // Группируем упражнения по виду спорта один раз — карточки читают свою группу.
   const bySport = useMemo(() => {
@@ -96,7 +102,11 @@ export default function SportsPage() {
             <ul className="flex flex-col gap-5">
               {sports.map((sport) => (
                 <li key={sport.id}>
-                  <SportCard sport={sport} exercises={bySport.get(sport.id) ?? []} />
+                  <SportCard
+                    sport={sport}
+                    exercises={bySport.get(sport.id) ?? []}
+                    linked={linkedIds.has(sport.id)}
+                  />
                 </li>
               ))}
             </ul>
@@ -197,7 +207,21 @@ function CreateSportForm() {
   );
 }
 
-function SportCard({ sport, exercises }: { sport: Sport; exercises: Exercise[] }) {
+function SportCard({
+  sport,
+  exercises,
+  linked,
+}: {
+  sport: Sport;
+  exercises: Exercise[];
+  linked: boolean;
+}) {
+  const link = useLinkSport();
+  const unlink = useUnlinkSport();
+  const pending = link.isPending || unlink.isPending;
+  const toggle = () => (linked ? unlink.mutate(sport.id) : link.mutate({ sport_id: sport.id }));
+  const linkError = errorMessage(link.error ?? unlink.error);
+
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-gradient-to-br from-panel to-surface p-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -205,7 +229,26 @@ function SportCard({ sport, exercises }: { sport: Sport; exercises: Exercise[] }
         <span className="rounded-full bg-accent px-3 py-1 text-sm font-medium text-accent-ink">
           {sportCategoryLabel(sport.category)}
         </span>
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={pending}
+          aria-pressed={linked}
+          className={`ml-auto rounded-full border px-3 py-1 text-sm font-medium transition-colors duration-[var(--duration-fast)] disabled:cursor-not-allowed disabled:opacity-60 ${
+            linked
+              ? 'border-accent bg-accent/15 text-accent hover:bg-accent/25'
+              : 'border-line text-muted hover:border-accent/50 hover:text-fg'
+          }`}
+        >
+          {pending ? '…' : linked ? 'Отвязать' : 'Привязать'}
+        </button>
       </div>
+
+      {linkError && (
+        <p role="alert" className="text-sm font-medium text-amber">
+          {linkError}
+        </p>
+      )}
 
       {sport.description && <p className="text-muted">{sport.description}</p>}
 
