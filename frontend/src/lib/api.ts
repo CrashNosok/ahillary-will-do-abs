@@ -97,12 +97,17 @@ true satisfies [Exclude<SportCategory, (typeof SPORT_CATEGORIES)[number]['value'
 export const sportCategoryLabel = (category: SportCategory): string =>
   SPORT_CATEGORIES.find((c) => c.value === category)?.label ?? category;
 
-/** Вид спорта (S3.1): дисциплина с категорией. name уникален (повтор → 409). */
+/** Вид спорта (S3.1): дисциплина с категорией. name уникален (повтор → 409).
+ *  M5·B22 rich-поля: slug — ЧПУ-идентификатор (server-managed, авто из name),
+ *  long_description — развёрнутое описание, is_global — встроенная дисциплина vs своя. */
 export type Sport = {
   id: number;
   name: string;
   category: SportCategory;
   description: string | null;
+  slug: string | null;
+  long_description: string | null;
+  is_global: boolean;
 };
 
 /** Поля формы создания вида спорта (S3.3). */
