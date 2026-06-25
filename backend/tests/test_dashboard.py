@@ -341,3 +341,42 @@ def test_dashboard_inverted_range_is_422(client):
 def test_dashboard_requires_auth():
     app.dependency_overrides.clear()
     assert TestClient(app).get("/dashboard").status_code == 401
+
+
+def test_dashboard_endpoint_surfaces_new_signals_true():
+    """M4·B21: сигналы B20 реально отдаются в JSON /dashboard как True, когда данные есть.
+
+    Сервисные расчёты покрыты выше; здесь — что DayFlags Pydantic + маппинг доносят их до
+    HTTP-ответа (а не теряют по пути). Сид-день: тренировка-рекорд с медиа + оба замера.
+    """
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    SQLModel.metadata.create_all(engine)
+    day = dt.date(2026, 6, 15)
+    with Session(engine) as s:
+        s.add(User(email=EMAIL, password_hash=hash_password(PASSWORD)))
+        ws = WorkoutSession(user_id=1, date=day, title="PR", surpassed_self=True)
+        s.add(ws)
+        s.add(BodyMeasurement(user_id=1, date=day, waist_cm=80))
+        s.add(InbodyMeasurement(user_id=1, date=day, weight_kg=88))
+        s.commit()
+        s.add(WorkoutMedia(session_id=ws.id, media_path="data/uploads/w/x.jpg", media_type="image"))
+        s.commit()
+
+    def override_get_session():
+        with Session(engine) as s:
+            yield s
+
+    app.dependency_overrides[get_session] = override_get_session
+    try:
+        c = TestClient(app)
+        c.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
+        resp = c.get("/dashboard", params={"start": str(day), "end": str(day)})
+        assert resp.status_code == 200
+        [d] = resp.json()["days"]
+        assert d["has_surpassed_self"] is True
+        assert d["has_workout_media"] is True
+        assert d["has_full_measurements"] is True
+    finally:
+        app.dependency_overrides.clear()
