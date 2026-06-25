@@ -43,3 +43,10 @@ export function liquidGradient(activeKeys: readonly string[], mystery: boolean):
 export function glowColor(mystery: boolean): string {
   return mystery ? 'oklch(72% 0.26 345)' : 'oklch(84% 0.16 150)';
 }
+
+/** Доп. «медиа-кольцо» для дня с медиа тренировки (has_workout_media): тонкий золотистый
+ *  кант + мягкое inset-свечение в тон спектра has_photo (бронза→золото). Это box-shadow-строка,
+ *  складывается через запятую с внешним glow полного дня в одном `box-shadow`. */
+export function mediaRingShadow(): string {
+  return 'inset 0 0 0 1.5px oklch(86% 0.15 82 / 0.75), inset 0 0 10px -1px oklch(90% 0.15 85 / 0.85)';
+}

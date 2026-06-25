@@ -3,11 +3,13 @@
  *  В углах — число дня и текстовый статус «что внесено / что осталось» (Е·А·Т: яркая
  *  буква = внесено, тусклая = осталось). Полный день (3/3) светится и искрится; если в этот
  *  день есть личный рекорд (has_surpassed_self) — залп искр «громче» (больше/крупнее/быстрее).
- *  `draining` (слияние «Получить отчёт») сливает жидкость вниз. */
+ *  Если в дне есть медиа тренировки (has_workout_media) — доп. золотистое inset-кольцо
+ *  (mediaRingShadow) и угловой бейдж-glint 📷. `draining` (слияние «Получить отчёт»)
+ *  сливает жидкость вниз. */
 
 import type { DayFlags } from '../../lib/api';
 import { DAILY } from '../../lib/weekly';
-import { glowColor } from '../../lib/liquid';
+import { glowColor, mediaRingShadow } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -33,7 +35,16 @@ export function DaySquare({
   const activeKeys = active.map((c) => c.key);
   const count = active.length;
   const isComplete = count === DAILY.length;
+  const hasMedia = !!flags?.has_workout_media;
   const level = draining ? 0 : count / DAILY.length;
+
+  // Складываем тени: внешний glow полного дня + внутреннее медиа-кольцо. Каждая опциональна.
+  const boxShadow = [
+    isComplete ? `0 0 12px -2px ${glowColor(false)}` : '',
+    hasMedia ? mediaRingShadow() : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   const summary = active.length
     ? active.map((c) => c.label.toLowerCase()).join(', ')
@@ -62,9 +73,22 @@ export function DaySquare({
       className={`relative aspect-square overflow-hidden rounded-xl border transition-colors duration-[var(--duration-fast)] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none ${
         onSelect ? 'cursor-pointer hover:border-accent/60' : ''
       } ${isToday ? 'border-accent' : count > 0 ? 'border-line' : 'border-line/50'}`}
-      style={isComplete ? { boxShadow: `0 0 12px -2px ${glowColor(false)}` } : undefined}
+      style={boxShadow ? { boxShadow } : undefined}
     >
       {count > 0 && <LiquidFill level={level} activeKeys={activeKeys} />}
+
+      {/* Медиа-glint: угловой бейдж 📷 для дня с медиа тренировки (DayFlags несёт только
+          булев has_workout_media, без типа фото/видео — поэтому одна иконка). */}
+      {hasMedia && (
+        <span
+          aria-hidden="true"
+          title="Есть медиа тренировки"
+          className="pointer-events-none absolute top-0.5 right-1 z-10 text-[0.6rem] leading-none sm:text-xs"
+          style={{ filter: 'drop-shadow(0 1px 1px rgb(0 0 0 / 0.55))' }}
+        >
+          📷
+        </span>
+      )}
 
       <span
         className={`pointer-events-none absolute top-0.5 left-1 z-10 text-[0.62rem] font-semibold tabular-nums sm:text-xs ${
