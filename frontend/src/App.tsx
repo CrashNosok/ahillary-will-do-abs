@@ -14,6 +14,7 @@ import PlaceholderPage from './components/PlaceholderPage';
 import ProgressPage from './components/ProgressPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import RecommendationsPage from './components/RecommendationsPage';
+import SportDetailPage from './components/SportDetailPage';
 import SportsPage from './components/SportsPage';
 import WorkoutLoggerPage from './components/WorkoutLoggerPage';
 import LoginPage from './pages/LoginPage';
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="data-entry" element={<DataEntryPage />} />
             <Route path="progress" element={<ProgressPage />} />
             <Route path="sports" element={<SportsPage />} />
+            <Route path="sports/:sportId" element={<SportDetailPage />} />
             <Route path="achievements" element={<AchievementsPage />} />
             <Route path="coach-phrases" element={<CoachPhrasesPage />} />
             <Route path="workouts" element={<WorkoutLoggerPage />} />

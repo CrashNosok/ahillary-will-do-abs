@@ -3,6 +3,7 @@
  *  Бэкенд — CRUD из S3.1 (виды спорта) и S3.2 (упражнения). */
 
 import { useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ApiError,
   SPORT_CATEGORIES,
@@ -225,7 +226,14 @@ function SportCard({
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-gradient-to-br from-panel to-surface p-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h3 className="font-display text-xl font-semibold tracking-tight">{sport.name}</h3>
+        <h3 className="font-display text-xl font-semibold tracking-tight">
+          <Link
+            to={`/sports/${sport.id}`}
+            className="transition-colors duration-[var(--duration-fast)] hover:text-accent"
+          >
+            {sport.name}
+          </Link>
+        </h3>
         <span className="rounded-full bg-accent px-3 py-1 text-sm font-medium text-accent-ink">
           {sportCategoryLabel(sport.category)}
         </span>
