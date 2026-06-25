@@ -50,23 +50,36 @@ class TodaySummary:
     deficit: int  # kcal_out − kcal_in: >0 — дефицит, <0 — профицит
 
 
-def _dates(session: Session, column, start: dt.date, end: dt.date) -> set[dt.date]:
-    """Множество дат в [start; end], по которым в таблице есть хотя бы одна запись."""
-    stmt = select(column).where(column >= start, column <= end).distinct()
+def _dates(
+    session: Session, date_col, user_id_col, user_id: int, start: dt.date, end: dt.date
+) -> set[dt.date]:
+    """Множество дат владельца в [start; end], где в таблице есть запись.
+
+    Скоуп по user_id — дашборд показывает данные только залогиненного пользователя.
+    """
+    stmt = (
+        select(date_col)
+        .where(date_col >= start, date_col <= end, user_id_col == user_id)
+        .distinct()
+    )
     return {d for d in session.exec(stmt).all() if d is not None}
 
 
-def day_flags(start: dt.date, end: dt.date, session: Session) -> list[DayFlag]:
-    """Флаги по каждому дню диапазона включительно. start > end → ValueError."""
+def day_flags(start: dt.date, end: dt.date, session: Session, *, user_id: int) -> list[DayFlag]:
+    """Флаги по каждому дню диапазона включительно для user_id. start > end → ValueError."""
     if start > end:
         raise ValueError("Начало диапазона позже конца")
 
-    food = _dates(session, FoodEntry.date, start, end)
-    activity = _dates(session, ActivityDay.date, start, end)
-    training = _dates(session, WorkoutSession.date, start, end)
-    weight = _dates(session, InbodyMeasurement.date, start, end)  # вес/InBody
-    body = _dates(session, BodyMeasurement.date, start, end)  # обхваты-«замеры»
-    photo = _dates(session, ProgressPhoto.date, start, end)
+    food = _dates(session, FoodEntry.date, FoodEntry.user_id, user_id, start, end)
+    activity = _dates(session, ActivityDay.date, ActivityDay.user_id, user_id, start, end)
+    training = _dates(session, WorkoutSession.date, WorkoutSession.user_id, user_id, start, end)
+    weight = _dates(  # вес/InBody
+        session, InbodyMeasurement.date, InbodyMeasurement.user_id, user_id, start, end
+    )
+    body = _dates(  # обхваты-«замеры»
+        session, BodyMeasurement.date, BodyMeasurement.user_id, user_id, start, end
+    )
+    photo = _dates(session, ProgressPhoto.date, ProgressPhoto.user_id, user_id, start, end)
     measurement = body | weight  # легаси-флаг (Заряд дня)
 
     days: list[DayFlag] = []
@@ -88,16 +101,16 @@ def day_flags(start: dt.date, end: dt.date, session: Session) -> list[DayFlag]:
     return days
 
 
-def current_streak(session: Session, today: dt.date | None = None) -> int:
-    """Серия последовательных полных дней (еда+активность), заканчивающаяся сегодня.
+def current_streak(session: Session, *, user_id: int, today: dt.date | None = None) -> int:
+    """Серия последовательных полных дней (еда+активность) владельца, кончающаяся сегодня.
 
     Грейс на незакрытый день: если сегодня ещё не полный, отсчёт ведём от вчера.
     Множество полных дней конечно, поэтому обход назад сам останавливается на разрыве.
     """
     today = today or dt.date.today()
-    complete = _dates(session, FoodEntry.date, dt.date.min, today) & _dates(
-        session, ActivityDay.date, dt.date.min, today
-    )
+    complete = _dates(
+        session, FoodEntry.date, FoodEntry.user_id, user_id, dt.date.min, today
+    ) & _dates(session, ActivityDay.date, ActivityDay.user_id, user_id, dt.date.min, today)
 
     day = today if today in complete else today - dt.timedelta(days=1)
     streak = 0
@@ -107,19 +120,22 @@ def current_streak(session: Session, today: dt.date | None = None) -> int:
     return streak
 
 
-def today_summary(session: Session, today: dt.date | None = None) -> TodaySummary:
-    """Сводка за сегодня: ккал съедено (food) и потрачено (activity.total_kcal).
+def today_summary(session: Session, *, user_id: int, today: dt.date | None = None) -> TodaySummary:
+    """Сводка владельца за сегодня: ккал съедено (food) и потрачено (activity.total_kcal).
 
     kcal_in — сумма kcal всех записей еды за день; kcal_out — total_kcal дня
     активности (0, если его нет). deficit = kcal_out − kcal_in.
     """
     today = today or dt.date.today()
     kcal_in = session.exec(
-        select(func.coalesce(func.sum(FoodEntry.kcal), 0.0)).where(FoodEntry.date == today)
+        select(func.coalesce(func.sum(FoodEntry.kcal), 0.0)).where(
+            FoodEntry.date == today, FoodEntry.user_id == user_id
+        )
     ).one()
-    # activity_day теперь с составным PK (user_id, date) — берём день запросом по дате
-    # (сводка пока не фильтруется по пользователю: read-изоляция вне scope M0·B7).
-    activity = session.exec(select(ActivityDay).where(ActivityDay.date == today)).first()
+    # activity_day с составным PK (user_id, date) — берём день владельца запросом по ключу.
+    activity = session.exec(
+        select(ActivityDay).where(ActivityDay.date == today, ActivityDay.user_id == user_id)
+    ).first()
     kcal_out = activity.total_kcal if activity and activity.total_kcal is not None else 0
     kcal_in = round(kcal_in)
     return TodaySummary(date=today, kcal_in=kcal_in, kcal_out=kcal_out, deficit=kcal_out - kcal_in)

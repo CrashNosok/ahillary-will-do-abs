@@ -25,7 +25,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 @router.get("")
 def get_snapshot(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     window_days: Annotated[int, Query(ge=1, le=365)] = snapshot_service.DEFAULT_WINDOW_DAYS,
 ) -> dict[str, Any]:
-    return snapshot_service.build_snapshot(session, window_days=window_days)
+    return snapshot_service.build_snapshot(session, user_id=user.id, window_days=window_days)

@@ -45,18 +45,21 @@ class GoalUpdate(BaseModel):
     status: GoalStatus | None = None
 
 
-def _archive_other_active(session: Session, keep_id: int | None) -> None:
-    """Инвариант «одна активная»: архивируем все active-цели, кроме keep_id."""
-    actives = session.exec(select(SmartGoal).where(SmartGoal.status == GoalStatus.active)).all()
+def _archive_other_active(session: Session, keep_id: int | None, user_id: int) -> None:
+    """Инвариант «одна активная»: архивируем все active-цели владельца, кроме keep_id."""
+    actives = session.exec(
+        select(SmartGoal).where(SmartGoal.status == GoalStatus.active, SmartGoal.user_id == user_id)
+    ).all()
     for goal in actives:
         if goal.id != keep_id:
             goal.status = GoalStatus.archived
             session.add(goal)
 
 
-def _get_or_404(session: Session, goal_id: int) -> SmartGoal:
+def _get_or_404(session: Session, goal_id: int, user_id: int) -> SmartGoal:
+    """Цель владельца по id; чужая/несуществующая → 404 (факт существования не раскрываем)."""
     goal = session.get(SmartGoal, goal_id)
-    if goal is None:
+    if goal is None or goal.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Цель не найдена")
     return goal
 
@@ -67,49 +70,55 @@ def create_goal(payload: GoalCreate, session: SessionDep, user: CurrentUser) -> 
     session.add(goal)
     session.flush()  # присвоить goal.id до архивации прочих активных
     if goal.status == GoalStatus.active:
-        _archive_other_active(session, keep_id=goal.id)
+        _archive_other_active(session, keep_id=goal.id, user_id=user.id)
     session.commit()
     session.refresh(goal)
     return goal
 
 
 @router.get("")
-def list_goals(session: SessionDep, _: CurrentUser) -> list[SmartGoal]:
-    stmt = select(SmartGoal).order_by(SmartGoal.created_at.desc(), SmartGoal.id.desc())
+def list_goals(session: SessionDep, user: CurrentUser) -> list[SmartGoal]:
+    stmt = (
+        select(SmartGoal)
+        .where(SmartGoal.user_id == user.id)
+        .order_by(SmartGoal.created_at.desc(), SmartGoal.id.desc())
+    )
     return session.exec(stmt).all()
 
 
 @router.get("/active")
-def get_active_goal(session: SessionDep, _: CurrentUser) -> SmartGoal:
-    goal = session.exec(select(SmartGoal).where(SmartGoal.status == GoalStatus.active)).first()
+def get_active_goal(session: SessionDep, user: CurrentUser) -> SmartGoal:
+    goal = session.exec(
+        select(SmartGoal).where(SmartGoal.status == GoalStatus.active, SmartGoal.user_id == user.id)
+    ).first()
     if goal is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Активной цели нет")
     return goal
 
 
 @router.get("/{goal_id}")
-def get_goal(goal_id: int, session: SessionDep, _: CurrentUser) -> SmartGoal:
-    return _get_or_404(session, goal_id)
+def get_goal(goal_id: int, session: SessionDep, user: CurrentUser) -> SmartGoal:
+    return _get_or_404(session, goal_id, user.id)
 
 
 @router.patch("/{goal_id}")
 def update_goal(
-    goal_id: int, payload: GoalUpdate, session: SessionDep, _: CurrentUser
+    goal_id: int, payload: GoalUpdate, session: SessionDep, user: CurrentUser
 ) -> SmartGoal:
-    goal = _get_or_404(session, goal_id)
+    goal = _get_or_404(session, goal_id, user.id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(goal, key, value)
     session.add(goal)
     if goal.status == GoalStatus.active:
-        _archive_other_active(session, keep_id=goal.id)
+        _archive_other_active(session, keep_id=goal.id, user_id=user.id)
     session.commit()
     session.refresh(goal)
     return goal
 
 
 @router.post("/{goal_id}/archive")
-def archive_goal(goal_id: int, session: SessionDep, _: CurrentUser) -> SmartGoal:
-    goal = _get_or_404(session, goal_id)
+def archive_goal(goal_id: int, session: SessionDep, user: CurrentUser) -> SmartGoal:
+    goal = _get_or_404(session, goal_id, user.id)
     goal.status = GoalStatus.archived
     session.add(goal)
     session.commit()

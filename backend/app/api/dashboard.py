@@ -53,14 +53,14 @@ class DashboardOut(BaseModel):
 @router.get("")
 def get_dashboard(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     start: dt.date | None = None,
     end: dt.date | None = None,
 ) -> DashboardOut:
     end = end or dt.date.today()
     start = start or end - dt.timedelta(days=DEFAULT_RANGE_DAYS - 1)
     try:
-        flags = dashboard.day_flags(start, end, session)
+        flags = dashboard.day_flags(start, end, session, user_id=user.id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
@@ -69,6 +69,6 @@ def get_dashboard(
         start=start,
         end=end,
         days=[DayFlags(**vars(f)) for f in flags],
-        current_streak=dashboard.current_streak(session),
-        today=TodaySummary(**vars(dashboard.today_summary(session))),
+        current_streak=dashboard.current_streak(session, user_id=user.id),
+        today=TodaySummary(**vars(dashboard.today_summary(session, user_id=user.id))),
     )

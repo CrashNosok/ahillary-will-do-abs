@@ -49,19 +49,23 @@ def create_recommendation(
 
 
 @router.get("")
-def list_recommendations(session: SessionDep, _: CurrentUser) -> list[Recommendation]:
+def list_recommendations(session: SessionDep, user: CurrentUser) -> list[Recommendation]:
     return list(
         session.exec(
-            select(Recommendation).order_by(Recommendation.created_at.desc()).limit(_LIST_LIMIT)
+            select(Recommendation)
+            .where(Recommendation.user_id == user.id)
+            .order_by(Recommendation.created_at.desc())
+            .limit(_LIST_LIMIT)
         )
     )
 
 
 @router.get("/{recommendation_id}")
 def get_recommendation(
-    recommendation_id: int, session: SessionDep, _: CurrentUser
+    recommendation_id: int, session: SessionDep, user: CurrentUser
 ) -> Recommendation:
+    # Чужая/несуществующая → 404 (факт существования чужой записи не раскрываем).
     rec = session.get(Recommendation, recommendation_id)
-    if rec is None:
+    if rec is None or rec.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Рекомендация не найдена")
     return rec

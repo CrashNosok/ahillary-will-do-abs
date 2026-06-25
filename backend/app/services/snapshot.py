@@ -53,25 +53,28 @@ INBODY_FIELDS = ("weight_kg", "body_fat_pct", "muscle_mass_kg", "visceral_fat", 
 def build_snapshot(
     session: Session,
     *,
+    user_id: int,
     end: dt.date | None = None,
     window_days: int = DEFAULT_WINDOW_DAYS,
 ) -> dict[str, Any]:
-    """Один объект со всеми сигналами трекера за окно [end-window_days+1; end].
+    """Снапшот владельца (user_id) со всеми сигналами за окно [end-window_days+1; end].
 
-    Любая секция устойчива к отсутствию данных. `end` по умолчанию — сегодня.
+    Любая секция устойчива к отсутствию данных. `end` по умолчанию — сегодня. Все
+    секции читают только записи user_id — снапшот для LLM собирается по одному
+    пользователю (каталоги sport/exercise общие и не скоупятся).
     """
     end = end or dt.date.today()
     start = end - dt.timedelta(days=window_days - 1)
     return {
         "generated_at": utcnow().isoformat(),
         "window": {"start": _iso(start), "end": _iso(end), "days": window_days},
-        "goal": _build_goal(session, end),
-        "nutrition": _build_nutrition(session, start, end),
-        "activity": _build_activity(session, start, end),
-        "measurements": _build_measurements(session, start, end),
-        "inbody": _build_inbody(session, start, end),
-        "training": _build_training(session, start, end),
-        "personal_records": _build_prs(session),
+        "goal": _build_goal(session, end, user_id),
+        "nutrition": _build_nutrition(session, start, end, user_id),
+        "activity": _build_activity(session, start, end, user_id),
+        "measurements": _build_measurements(session, start, end, user_id),
+        "inbody": _build_inbody(session, start, end, user_id),
+        "training": _build_training(session, start, end, user_id),
+        "personal_records": _build_prs(session, user_id),
     }
 
 
@@ -146,15 +149,16 @@ def _metric_progress(
     baseline_keys: tuple[str, ...],
     baseline_json: dict[str, Any] | None,
     start_date: dt.date | None,
+    user_id: int,
 ) -> dict[str, Any]:
-    """Прогресс по одной метрике цели: baseline→current→target, % и остаток.
+    """Прогресс по одной метрике цели владельца: baseline→current→target, % и остаток.
 
     Метрика без единого замера отдаёт current/percent = None (устойчивость к
     пропускам). baseline_json@start_date добавляется как самый ранний синтетический
     замер, только если он раньше первого реального — иначе темп считается неверно.
     """
     column = getattr(model, col)
-    conds = [column.is_not(None), model.date <= today]
+    conds = [column.is_not(None), model.date <= today, model.user_id == user_id]
     if start_date is not None:
         conds.append(model.date >= start_date)
     rows = session.exec(
@@ -178,8 +182,10 @@ def _metric_progress(
     }
 
 
-def _build_goal(session: Session, today: dt.date) -> dict[str, Any] | None:
-    goal = session.exec(select(SmartGoal).where(SmartGoal.status == GoalStatus.active)).first()
+def _build_goal(session: Session, today: dt.date, user_id: int) -> dict[str, Any] | None:
+    goal = session.exec(
+        select(SmartGoal).where(SmartGoal.status == GoalStatus.active, SmartGoal.user_id == user_id)
+    ).first()
     if goal is None:
         return None
 
@@ -196,6 +202,7 @@ def _build_goal(session: Session, today: dt.date) -> dict[str, Any] | None:
                 baseline_keys=("weight_kg",),
                 baseline_json=goal.baseline_json,
                 start_date=goal.start_date,
+                user_id=user_id,
             )
         )
     if goal.target_body_fat_pct is not None:
@@ -210,6 +217,7 @@ def _build_goal(session: Session, today: dt.date) -> dict[str, Any] | None:
                 baseline_keys=("body_fat_pct",),
                 baseline_json=goal.baseline_json,
                 start_date=goal.start_date,
+                user_id=user_id,
             )
         )
     for key, raw_target in (goal.target_measurements_json or {}).items():
@@ -228,6 +236,7 @@ def _build_goal(session: Session, today: dt.date) -> dict[str, Any] | None:
                 baseline_keys=(key, col),
                 baseline_json=goal.baseline_json,
                 start_date=goal.start_date,
+                user_id=user_id,
             )
         )
 
@@ -246,8 +255,8 @@ def _build_goal(session: Session, today: dt.date) -> dict[str, Any] | None:
 # --- питание / макросы -------------------------------------------------------
 
 
-def _daily_food(session: Session, start: dt.date, end: dt.date) -> list[tuple]:
-    """Суммы за день: (date, kcal, protein, fat, carb). SUM=None, если метрика пуста."""
+def _daily_food(session: Session, start: dt.date, end: dt.date, user_id: int) -> list[tuple]:
+    """Суммы за день владельца: (date, kcal, protein, fat, carb). SUM=None, если пусто."""
     return session.exec(
         select(
             FoodEntry.date,
@@ -256,7 +265,7 @@ def _daily_food(session: Session, start: dt.date, end: dt.date) -> list[tuple]:
             func.sum(FoodEntry.fat_g),
             func.sum(FoodEntry.carb_g),
         )
-        .where(FoodEntry.date >= start, FoodEntry.date <= end)
+        .where(FoodEntry.date >= start, FoodEntry.date <= end, FoodEntry.user_id == user_id)
         .group_by(FoodEntry.date)
         .order_by(FoodEntry.date)
     ).all()
@@ -272,8 +281,10 @@ def _avg_food(rows: list[tuple]) -> dict[str, Any]:
     }
 
 
-def _build_nutrition(session: Session, start: dt.date, end: dt.date) -> dict[str, Any]:
-    rows = _daily_food(session, start, end)
+def _build_nutrition(
+    session: Session, start: dt.date, end: dt.date, user_id: int
+) -> dict[str, Any]:
+    rows = _daily_food(session, start, end, user_id)
     window = _avg_food(rows)
     recent_start = end - dt.timedelta(days=RECENT_DAYS - 1)
     recent = _avg_food([r for r in rows if r[0] >= recent_start])
@@ -283,10 +294,10 @@ def _build_nutrition(session: Session, start: dt.date, end: dt.date) -> dict[str
 # --- активность / дефицит ----------------------------------------------------
 
 
-def _build_activity(session: Session, start: dt.date, end: dt.date) -> dict[str, Any]:
+def _build_activity(session: Session, start: dt.date, end: dt.date, user_id: int) -> dict[str, Any]:
     rows = session.exec(
         select(ActivityDay.date, ActivityDay.total_kcal, ActivityDay.steps, ActivityDay.moving_min)
-        .where(ActivityDay.date >= start, ActivityDay.date <= end)
+        .where(ActivityDay.date >= start, ActivityDay.date <= end, ActivityDay.user_id == user_id)
         .order_by(ActivityDay.date)
     ).all()
     deficits = session.exec(
@@ -295,6 +306,7 @@ def _build_activity(session: Session, start: dt.date, end: dt.date) -> dict[str,
             DeficitDay.date >= start,
             DeficitDay.date <= end,
             DeficitDay.deficit_kcal.is_not(None),
+            DeficitDay.user_id == user_id,
         )
         .order_by(DeficitDay.date)
     ).all()
@@ -329,20 +341,32 @@ def _current_change(rows: list, fields: tuple[str, ...]) -> dict[str, dict[str, 
     return out
 
 
-def _build_measurements(session: Session, start: dt.date, end: dt.date) -> dict[str, Any]:
+def _build_measurements(
+    session: Session, start: dt.date, end: dt.date, user_id: int
+) -> dict[str, Any]:
     rows = session.exec(
         select(BodyMeasurement)
-        .where(BodyMeasurement.date >= start, BodyMeasurement.date <= end)
+        .where(
+            BodyMeasurement.date >= start,
+            BodyMeasurement.date <= end,
+            BodyMeasurement.user_id == user_id,
+        )
         .order_by(BodyMeasurement.date, BodyMeasurement.id)
     ).all()
     latest = max((m.date for m in rows), default=None)
     return {"latest_date": _iso(latest), "values": _current_change(rows, CIRCUMFERENCE_FIELDS)}
 
 
-def _build_inbody(session: Session, start: dt.date, end: dt.date) -> dict[str, Any] | None:
+def _build_inbody(
+    session: Session, start: dt.date, end: dt.date, user_id: int
+) -> dict[str, Any] | None:
     rows = session.exec(
         select(InbodyMeasurement)
-        .where(InbodyMeasurement.date >= start, InbodyMeasurement.date <= end)
+        .where(
+            InbodyMeasurement.date >= start,
+            InbodyMeasurement.date <= end,
+            InbodyMeasurement.user_id == user_id,
+        )
         .order_by(InbodyMeasurement.date, InbodyMeasurement.id)
     ).all()
     if not rows:
@@ -354,7 +378,7 @@ def _build_inbody(session: Session, start: dt.date, end: dt.date) -> dict[str, A
 
 
 def _strength_summary(
-    session: Session, start: dt.date, end: dt.date, names: dict[int, str]
+    session: Session, start: dt.date, end: dt.date, names: dict[int, str], user_id: int
 ) -> list[dict[str, Any]]:
     rows = session.exec(
         select(
@@ -365,7 +389,11 @@ def _strength_summary(
         )
         .select_from(StrengthSet)
         .join(WorkoutSession, StrengthSet.session_id == WorkoutSession.id)
-        .where(WorkoutSession.date >= start, WorkoutSession.date <= end)
+        .where(
+            WorkoutSession.date >= start,
+            WorkoutSession.date <= end,
+            WorkoutSession.user_id == user_id,
+        )
         .order_by(WorkoutSession.date, StrengthSet.id)
     ).all()
 
@@ -400,7 +428,7 @@ def _strength_summary(
 
 
 def _cardio_summary(
-    session: Session, start: dt.date, end: dt.date, names: dict[int, str]
+    session: Session, start: dt.date, end: dt.date, names: dict[int, str], user_id: int
 ) -> list[dict[str, Any]]:
     rows = session.exec(
         select(
@@ -411,7 +439,11 @@ def _cardio_summary(
         )
         .select_from(CardioLog)
         .join(WorkoutSession, CardioLog.session_id == WorkoutSession.id)
-        .where(WorkoutSession.date >= start, WorkoutSession.date <= end)
+        .where(
+            WorkoutSession.date >= start,
+            WorkoutSession.date <= end,
+            WorkoutSession.user_id == user_id,
+        )
     ).all()
 
     per: dict[int | None, dict[str, Any]] = {}
@@ -439,9 +471,13 @@ def _cardio_summary(
     return out
 
 
-def _build_training(session: Session, start: dt.date, end: dt.date) -> dict[str, Any]:
+def _build_training(session: Session, start: dt.date, end: dt.date, user_id: int) -> dict[str, Any]:
     sessions = session.exec(
-        select(WorkoutSession).where(WorkoutSession.date >= start, WorkoutSession.date <= end)
+        select(WorkoutSession).where(
+            WorkoutSession.date >= start,
+            WorkoutSession.date <= end,
+            WorkoutSession.user_id == user_id,
+        )
     ).all()
     sport_names = {s.id: s.name for s in session.exec(select(Sport)).all()}
     counts = Counter(s.sport_id for s in sessions)
@@ -453,22 +489,22 @@ def _build_training(session: Session, start: dt.date, end: dt.date) -> dict[str,
     return {
         "sessions": len(sessions),
         "by_sport": by_sport,
-        "strength": _strength_summary(session, start, end, names),
-        "cardio": _cardio_summary(session, start, end, names),
+        "strength": _strength_summary(session, start, end, names, user_id),
+        "cardio": _cardio_summary(session, start, end, names, user_id),
     }
 
 
 # --- персональные рекорды ----------------------------------------------------
 
 
-def _build_prs(session: Session) -> list[dict[str, Any]]:
-    """Текущий лучший PR на каждую пару (упражнение, метрика).
+def _build_prs(session: Session, user_id: int) -> list[dict[str, Any]]:
+    """Текущий лучший PR владельца на каждую пару (упражнение, метрика).
 
     Таблица хранит историю рекордов; здесь оставляем экстремум по направлению
     метрики (для темпа меньше = лучше). Нет рекордов → пустой список.
     """
     best: dict[tuple[int, str], PersonalRecord] = {}
-    for rec in session.exec(select(PersonalRecord)).all():
+    for rec in session.exec(select(PersonalRecord).where(PersonalRecord.user_id == user_id)).all():
         higher = METRICS.get(rec.metric, (None, True))[1]
         key = (rec.exercise_id, rec.metric)
         cur = best.get(key)

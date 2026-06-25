@@ -87,7 +87,7 @@ def generate_recommendation(
     Сетевую/парс-ошибку пробрасываем наверх (`llm.LLMError` / `InvalidPlanError`) — ничего
     не пишем в БД, если валидный план получить не удалось.
     """
-    snapshot = build_snapshot(session, window_days=window_days)
+    snapshot = build_snapshot(session, user_id=user_id, window_days=window_days)
     model_name = model or settings.model_reco
     prompt = build_prompt(snapshot)
 
