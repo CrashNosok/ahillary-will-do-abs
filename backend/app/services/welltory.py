@@ -174,6 +174,7 @@ def _upsert_day(
     date: dt.date,
     session: Session,
     *,
+    user_id: int,
     fields: dict[str, int | None],
     raw: dict,
 ) -> ActivityDay:
@@ -198,7 +199,8 @@ def _upsert_day(
     day.parsed_at = utcnow()
     session.add(day)
     session.commit()
-    deficit.recompute(date, session)  # S1.12: активность изменилась → пересчёт дефицита дня
+    # S1.12: активность изменилась → пересчёт дефицита дня (тот же владелец, M0·B5).
+    deficit.recompute(date, session, user_id)
     session.refresh(day)  # recompute коммитит и сбрасывает day — перечитываем перед возвратом
     return day
 
@@ -208,6 +210,7 @@ def save_activity_day(
     date: dt.date,
     session: Session,
     *,
+    user_id: int,
     model: str | None = None,
 ) -> ActivityDay:
     """Разобрать скрин активности и сохранить день + исходник (S1.10).
@@ -219,7 +222,7 @@ def save_activity_day(
     """
     vision = parse_activity_screen(image_bytes, model=model)
     fields = {name: getattr(vision, name) for name in FIELD_NAMES}
-    return _upsert_day(image_bytes, date, session, fields=fields, raw=vision.raw)
+    return _upsert_day(image_bytes, date, session, user_id=user_id, fields=fields, raw=vision.raw)
 
 
 def save_activity_day_values(
@@ -227,6 +230,7 @@ def save_activity_day_values(
     date: dt.date,
     session: Session,
     *,
+    user_id: int,
     fields: dict[str, int | None],
     raw: dict,
 ) -> ActivityDay:
@@ -236,13 +240,14 @@ def save_activity_day_values(
     экрана сверки (пользователь подтвердил/поправил их), а `raw` — исходный разбор
     модели из шага превью (для аудита: что увидела модель против того, что сохранили).
     """
-    return _upsert_day(image_bytes, date, session, fields=fields, raw=raw)
+    return _upsert_day(image_bytes, date, session, user_id=user_id, fields=fields, raw=raw)
 
 
 def save_activity_day_manual(
     date: dt.date,
     session: Session,
     *,
+    user_id: int,
     fields: dict[str, int | None],
 ) -> ActivityDay:
     """Ручной ввод дня активности (без скрина): upsert значений, vision не дёргаем.
@@ -259,6 +264,6 @@ def save_activity_day_manual(
     day.parsed_at = utcnow()
     session.add(day)
     session.commit()
-    deficit.recompute(date, session)
+    deficit.recompute(date, session, user_id)  # тот же владелец дня (M0·B5)
     session.refresh(day)
     return day

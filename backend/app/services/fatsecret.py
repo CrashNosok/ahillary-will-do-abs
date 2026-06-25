@@ -246,6 +246,7 @@ def import_food_diary(
     raw: bytes,
     session: Session,
     *,
+    user_id: int,
     filename: str | None = None,
     import_id: str | None = None,
     replace_day: bool = False,
@@ -275,8 +276,10 @@ def import_food_diary(
             session.delete(stale)
     batch_id = import_id or uuid.uuid4().hex
     for entry in parsed.entries:
+        entry.user_id = user_id  # владелец записей дневника (M0·B5)
         entry.import_id = batch_id
         session.add(entry)
     session.commit()
-    deficit.recompute(parsed.date, session)  # S1.12: еда изменилась → пересчёт дефицита дня
+    # S1.12: еда изменилась → пересчёт дефицита дня (тот же владелец).
+    deficit.recompute(parsed.date, session, user_id)
     return parsed

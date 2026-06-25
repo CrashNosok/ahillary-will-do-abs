@@ -99,18 +99,18 @@ async def preview_activity(
 def import_activity_manual(
     payload: ManualActivityIn,
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
 ) -> ActivityDay:
     """Ручной ввод активности (без скрина): upsert дня по `date`. Vision не дёргаем."""
     return welltory.save_activity_day_manual(
-        payload.date, session, fields=payload.model_dump(exclude={"date"})
+        payload.date, session, user_id=user.id, fields=payload.model_dump(exclude={"date"})
     )
 
 
 @router.post("/activity", status_code=status.HTTP_201_CREATED)
 async def import_activity(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     file: Annotated[UploadFile, File()],
     date: Annotated[dt.date | None, Form()] = None,
     fields: Annotated[str | None, Form()] = None,
@@ -130,12 +130,12 @@ async def import_activity(
                 detail=f"Некорректные поля активности: {exc}",
             ) from exc
         return welltory.save_activity_day_values(
-            image_bytes, day, session, fields=parsed_fields.model_dump(), raw=raw
+            image_bytes, day, session, user_id=user.id, fields=parsed_fields.model_dump(), raw=raw
         )
 
     # S1.10 (обратная совместимость): полей нет — разбираем скрин и сохраняем разбор.
     try:
-        return welltory.save_activity_day(image_bytes, day, session)
+        return welltory.save_activity_day(image_bytes, day, session, user_id=user.id)
     except welltory.VisionParseError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

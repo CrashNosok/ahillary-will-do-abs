@@ -34,11 +34,13 @@ _LIST_LIMIT = 20
 @router.post("/generate", status_code=status.HTTP_201_CREATED)
 def create_recommendation(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     window_days: Annotated[int, Query(ge=1, le=365)] = DEFAULT_WINDOW_DAYS,
 ) -> Recommendation:
     try:
-        return reco_service.generate_recommendation(session, window_days=window_days)
+        return reco_service.generate_recommendation(
+            session, user_id=user.id, window_days=window_days
+        )
     except (LLMError, InvalidPlanError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

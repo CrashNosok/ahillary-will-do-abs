@@ -62,8 +62,8 @@ def _get_or_404(session: Session, goal_id: int) -> SmartGoal:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def create_goal(payload: GoalCreate, session: SessionDep, _: CurrentUser) -> SmartGoal:
-    goal = SmartGoal(**payload.model_dump())
+def create_goal(payload: GoalCreate, session: SessionDep, user: CurrentUser) -> SmartGoal:
+    goal = SmartGoal(**payload.model_dump(), user_id=user.id)
     session.add(goal)
     session.flush()  # присвоить goal.id до архивации прочих активных
     if goal.status == GoalStatus.active:

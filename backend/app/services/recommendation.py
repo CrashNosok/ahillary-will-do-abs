@@ -74,6 +74,7 @@ def build_prompt(snapshot: dict[str, Any]) -> str:
 def generate_recommendation(
     session: Session,
     *,
+    user_id: int,
     window_days: int = DEFAULT_WINDOW_DAYS,
     model: str | None = None,
     attempts: int = 3,
@@ -107,6 +108,7 @@ def generate_recommendation(
 
     goal = snapshot.get("goal")
     recommendation = Recommendation(
+        user_id=user_id,
         model=model_name,
         input_snapshot_json=snapshot,
         output_json=plan.model_dump(mode="json"),

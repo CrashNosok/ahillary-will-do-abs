@@ -34,18 +34,20 @@ def _burn_kcal(date: dt.date, session: Session) -> int | None:
     return day.total_kcal if day else None
 
 
-def recompute(date: dt.date, session: Session) -> DeficitDay:
+def recompute(date: dt.date, session: Session, user_id: int) -> DeficitDay:
     """Пересчитать и сохранить дефицит за день; вернуть запись deficit_day.
 
     deficit_kcal считается только когда оба источника есть; иначе остаётся None
     (без ложного нуля) и статус — «неполный день». Upsert по дате: повторный вызов
-    обновляет ту же запись, а не плодит дубли.
+    обновляет ту же запись, а не плодит дубли. `user_id` — владелец дня (M0·B5):
+    проставляется на запись (NOT NULL FK на user.id).
     """
     eaten = _eaten_kcal(date, session)
     burn = _burn_kcal(date, session)
     deficit = eaten - burn if eaten is not None and burn is not None else None
 
-    row = session.get(DeficitDay, date) or DeficitDay(date=date)
+    row = session.get(DeficitDay, date) or DeficitDay(date=date, user_id=user_id)
+    row.user_id = user_id
     row.eaten_kcal = eaten
     row.burn_kcal = burn
     row.deficit_kcal = deficit

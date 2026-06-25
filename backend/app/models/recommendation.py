@@ -21,6 +21,8 @@ class Recommendation(SQLModel, table=True):
     __tablename__ = "recommendation"
 
     id: int | None = Field(default=None, primary_key=True)
+    # Владелец рекомендации (M0·B5): изоляция данных по пользователю. NOT NULL + FK на user.id.
+    user_id: int = Field(foreign_key="user.id", index=True)
     created_at: dt.datetime = Field(default_factory=utcnow)
     model: str  # имя LLM-модели, сгенерировавшей рекомендацию
     input_snapshot_json: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))

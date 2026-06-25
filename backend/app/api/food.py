@@ -134,7 +134,7 @@ async def preview_food(
 @router.post("/food", status_code=status.HTTP_201_CREATED)
 async def import_food(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     file: Annotated[UploadFile, File()],
     # Необязательная дата: записать дневник на выбранный в календаре день, а не из файла.
     date: Annotated[dt.date | None, Form()] = None,
@@ -143,7 +143,12 @@ async def import_food(
     raw = await file.read()
     try:
         parsed = import_food_diary(
-            raw, session, filename=file.filename, replace_day=True, override_date=date
+            raw,
+            session,
+            user_id=user.id,
+            filename=file.filename,
+            replace_day=True,
+            override_date=date,
         )
     except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(

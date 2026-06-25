@@ -26,6 +26,8 @@ class SmartGoal(SQLModel, table=True):
     __tablename__ = "smart_goal"
 
     id: int | None = Field(default=None, primary_key=True)
+    # Владелец цели (M0·B5): изоляция данных по пользователю. NOT NULL + FK на user.id.
+    user_id: int = Field(foreign_key="user.id", index=True)
     target_weight_kg: float | None = None
     target_body_fat_pct: float | None = None
     target_measurements_json: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))

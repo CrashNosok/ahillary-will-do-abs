@@ -14,6 +14,8 @@ class DeficitDay(SQLModel, table=True):
     __tablename__ = "deficit_day"
 
     date: dt.date = Field(primary_key=True)  # один расчёт на день
+    # Владелец дня (M0·B5): изоляция данных по пользователю. NOT NULL + FK на user.id.
+    user_id: int = Field(foreign_key="user.id", index=True)
     eaten_kcal: int | None = None
     burn_kcal: int | None = None
     deficit_kcal: int | None = None
