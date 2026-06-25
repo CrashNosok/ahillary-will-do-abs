@@ -370,6 +370,57 @@
   }
 }
 
+/* Ползунок усилия (M2·F8): нативный input[type=range] со статичным треком-градиентом
+ * зелёный→красный (шкала «легко→до отказа»). Кроссбраузерные псевдоэлементы трека/бегунка;
+ * бегунок — лаймовый акцент. Только цвет/форма → дёшево, без анимаций. */
+.effort-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.5rem;
+  background: transparent;
+  cursor: pointer;
+}
+.effort-slider::-webkit-slider-runnable-track {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    oklch(72% 0.17 145),
+    oklch(82% 0.15 95),
+    oklch(64% 0.21 25)
+  );
+}
+.effort-slider::-moz-range-track {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    oklch(72% 0.17 145),
+    oklch(82% 0.15 95),
+    oklch(64% 0.21 25)
+  );
+}
+.effort-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -0.25rem; /* центрируем бегунок 1rem на треке 0.5rem */
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  border: 2px solid var(--color-ink);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+.effort-slider::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  border: 2px solid var(--color-ink);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
 /* Формы ввода, встроенные инлайн в попап дня: ужимаем «страничные» отступы и заголовки,
  * чтобы существующие страницы аккуратно жили внутри модалки. */
 .entry-embed > section {

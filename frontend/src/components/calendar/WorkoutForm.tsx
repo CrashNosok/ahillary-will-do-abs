@@ -15,8 +15,6 @@ const KINDS: { id: WorkoutKind; label: string }[] = [
   { id: 'skill', label: 'Скилл' },
   { id: 'other', label: 'Другое' },
 ];
-const RPE_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
 const chip =
   'rounded-full px-3 py-1 text-xs font-medium transition-colors duration-[var(--duration-fast)]';
 
@@ -271,31 +269,44 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
         />
       </label>
 
-      {/* Усилие — RPE тапом, опционально */}
+      {/* Усилие — ползунок 1–10 (M2·F8), опционально. Трек-градиент зелёный→красный = шкала
+          «легко→до отказа»; пока не двигали — «Не указано» (полупрозрачный), «Сбросить» возвращает
+          в это состояние. aria-valuetext озвучивает выбор для скринридера. */}
       <div className="flex flex-col gap-1">
-        <span className="text-xs text-muted">
-          Усилие (необязательно, 1 — легко, 10 — до отказа)
-        </span>
-        <div className="flex flex-wrap gap-1">
-          {RPE_VALUES.map((v) => (
-            <button
-              key={v}
-              type="button"
-              aria-pressed={rpe === v}
-              onClick={() => {
-                setRpe((p) => (p === v ? null : v));
-                reset();
-              }}
-              className={`size-7 rounded-md text-xs font-semibold tabular-nums transition-colors duration-[var(--duration-fast)] ${
-                rpe === v
-                  ? 'bg-accent text-accent-ink'
-                  : 'border border-line text-muted hover:border-accent/50 hover:text-fg'
-              }`}
-            >
-              {v}
-            </button>
-          ))}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-muted">
+            Усилие (необязательно, 1 — легко, 10 — до отказа)
+          </span>
+          <span className="text-xs font-semibold tabular-nums text-fg">
+            {rpe == null ? 'Не указано' : `${rpe} / 10`}
+          </span>
         </div>
+        <input
+          type="range"
+          min={1}
+          max={10}
+          step={1}
+          value={rpe ?? 5}
+          aria-label="Усилие"
+          aria-valuetext={rpe == null ? 'Не указано' : `${rpe} из 10`}
+          onChange={(e) => {
+            setRpe(Number(e.target.value));
+            reset();
+          }}
+          className={`effort-slider ${rpe == null ? 'opacity-50' : ''}`}
+        />
+        {rpe != null && (
+          <button
+            type="button"
+            onClick={() => {
+              setRpe(null);
+              reset();
+            }}
+            className="self-start text-xs font-medium text-muted underline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-accent hover:underline"
+          >
+            Сбросить
+          </button>
+        )}
       </div>
 
       <label className="flex flex-col gap-1">
