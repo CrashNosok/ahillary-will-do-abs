@@ -139,9 +139,10 @@ def _read(session: Session, ws: WorkoutSession) -> WorkoutRead:
     )
 
 
-def _get_or_404(session: Session, workout_id: int) -> WorkoutSession:
+def _get_or_404(session: Session, workout_id: int, user_id: int) -> WorkoutSession:
+    """Сессия по id, но только своя (M0·B8): чужая → 404, чтобы не раскрывать её существование."""
     ws = session.get(WorkoutSession, workout_id)
-    if ws is None:
+    if ws is None or ws.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тренировка не найдена")
     return ws
 
@@ -309,11 +310,13 @@ async def create_simple_workout(
 
 
 @router.get("/media/{media_id}")
-def get_workout_media(media_id: int, session: SessionDep, _: CurrentUser) -> FileResponse:
+def get_workout_media(media_id: int, session: SessionDep, user: CurrentUser) -> FileResponse:
     """Отдаёт сам файл медиа тренировки (media_type выводится из расширения)."""
     m = session.get(WorkoutMedia, media_id)
     if m is None or not m.media_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Медиа не найдено")
+    # медиа принадлежит юзеру транзитивно через сессию (M0·B8): чужое → 404
+    _get_or_404(session, m.session_id, user.id)
     path = Path(m.media_path)
     if not path.is_absolute():
         path = db.BACKEND_DIR / path
@@ -323,9 +326,11 @@ def get_workout_media(media_id: int, session: SessionDep, _: CurrentUser) -> Fil
 
 
 @router.get("")
-def list_workouts(session: SessionDep, _: CurrentUser) -> list[WorkoutRead]:
+def list_workouts(session: SessionDep, user: CurrentUser) -> list[WorkoutRead]:
     sessions = session.exec(
-        select(WorkoutSession).order_by(WorkoutSession.date.desc(), WorkoutSession.id.desc())
+        select(WorkoutSession)
+        .where(WorkoutSession.user_id == user.id)
+        .order_by(WorkoutSession.date.desc(), WorkoutSession.id.desc())
     ).all()
     return [_read(session, ws) for ws in sessions]
 
@@ -353,18 +358,20 @@ class WorkoutMetrics(BaseModel):
 
 
 @router.get("/prs")
-def list_personal_records(session: SessionDep, _: CurrentUser) -> list[PersonalRecordRead]:
-    """Все зафиксированные персональные рекорды (S3.10), свежие сверху."""
+def list_personal_records(session: SessionDep, user: CurrentUser) -> list[PersonalRecordRead]:
+    """Все зафиксированные персональные рекорды владельца (S3.10), свежие сверху."""
     rows = session.exec(
-        select(PersonalRecord).order_by(PersonalRecord.date.desc(), PersonalRecord.id.desc())
+        select(PersonalRecord)
+        .where(PersonalRecord.user_id == user.id)
+        .order_by(PersonalRecord.date.desc(), PersonalRecord.id.desc())
     ).all()
     return [PersonalRecordRead.model_validate(r.model_dump()) for r in rows]
 
 
 @router.get("/{workout_id}/metrics")
-def get_workout_metrics(workout_id: int, session: SessionDep, _: CurrentUser) -> WorkoutMetrics:
+def get_workout_metrics(workout_id: int, session: SessionDep, user: CurrentUser) -> WorkoutMetrics:
     """1ПМ/тоннаж/объём силовой сессии: по упражнению и по группе (S3.10)."""
-    _get_or_404(session, workout_id)
+    _get_or_404(session, workout_id, user.id)
     sets = session.exec(select(StrengthSet).where(StrengthSet.session_id == workout_id)).all()
 
     by_ex: dict[int, list[StrengthSet]] = {}
@@ -409,8 +416,8 @@ def get_workout_metrics(workout_id: int, session: SessionDep, _: CurrentUser) ->
 
 
 @router.get("/{workout_id}")
-def get_workout(workout_id: int, session: SessionDep, _: CurrentUser) -> WorkoutRead:
-    return _read(session, _get_or_404(session, workout_id))
+def get_workout(workout_id: int, session: SessionDep, user: CurrentUser) -> WorkoutRead:
+    return _read(session, _get_or_404(session, workout_id, user.id))
 
 
 # --- Кардио (S3.5) ---
@@ -512,13 +519,18 @@ def create_cardio(payload: CardioIn, session: SessionDep, user: CurrentUser) -> 
 
 
 @router.get("/cardio/{cardio_id}")
-def get_cardio(cardio_id: int, session: SessionDep, _: CurrentUser) -> CardioRead:
+def get_cardio(cardio_id: int, session: SessionDep, user: CurrentUser) -> CardioRead:
     log = session.get(CardioLog, cardio_id)
     if log is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Кардио-сессия не найдена"
         )
+    # кардио принадлежит юзеру через сессию (M0·B8): чужая → 404
     ws = session.get(WorkoutSession, log.session_id)
+    if ws is None or ws.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Кардио-сессия не найдена"
+        )
     return _read_cardio(ws, log)
 
 
@@ -610,9 +622,13 @@ def create_skill(payload: SkillCreate, session: SessionDep, user: CurrentUser) -
 
 
 @router.get("/skill/progress")
-def skill_progress(session: SessionDep, _: CurrentUser) -> list[SkillProgressItem]:
-    """Прогресс по элементам: суммируем попытки/приземления по каждому упражнению."""
-    logs = session.exec(select(SkillLog)).all()
+def skill_progress(session: SessionDep, user: CurrentUser) -> list[SkillProgressItem]:
+    """Прогресс по элементам: суммируем попытки/приземления по каждому упражнению владельца."""
+    logs = session.exec(
+        select(SkillLog)
+        .join(WorkoutSession, SkillLog.session_id == WorkoutSession.id)
+        .where(WorkoutSession.user_id == user.id)
+    ).all()
 
     agg: dict[int, dict] = {}
     for log in logs:
@@ -640,10 +656,11 @@ def skill_progress(session: SessionDep, _: CurrentUser) -> list[SkillProgressIte
 
 
 @router.get("/skill/{skill_id}")
-def get_skill(skill_id: int, session: SessionDep, _: CurrentUser) -> SkillRead:
+def get_skill(skill_id: int, session: SessionDep, user: CurrentUser) -> SkillRead:
     ws = session.get(WorkoutSession, skill_id)
     has_entries = (
         ws is not None
+        and ws.user_id == user.id  # чужая сессия → 404 (M0·B8)
         and session.exec(select(SkillLog).where(SkillLog.session_id == skill_id).limit(1)).first()
         is not None
     )
