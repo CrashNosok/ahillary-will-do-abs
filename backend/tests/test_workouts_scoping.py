@@ -135,6 +135,11 @@ def test_get_other_media_returns_404(client, other):
     assert client.get(f"/workouts/media/{other['media']}").status_code == 404
 
 
+def test_list_media_by_date_excludes_other_user(client, other):
+    # у чужого user(id=2) есть медиа за 2026-06-21 — список за этот день у владельца пуст
+    assert client.get("/workouts/media", params={"date": "2026-06-21"}).json() == []
+
+
 def test_owner_sees_own_not_other(client, other):
     # своя тренировка создаётся через API (user_id=1) и видна; чужая (user_id=2) — нет
     sport = client.post("/sports", json={"name": "Мой спорт", "category": "strength"}).json()["id"]

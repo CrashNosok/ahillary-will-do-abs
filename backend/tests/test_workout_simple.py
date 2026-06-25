@@ -166,3 +166,37 @@ def test_simple_workout_surpassed_self(client):
 
 def test_media_404(client):
     assert client.get("/workouts/media/999").status_code == 404
+
+
+def test_list_media_by_date(client):
+    """M2·B18: GET /workouts/media?date= отдаёт media (id+type) сессий владельца за день."""
+    # день с двумя медиа (одна сессия — фото, другая — видео)
+    client.post(
+        "/workouts/simple",
+        data={"kind": "skill", "date": "2026-06-24"},
+        files=[("files", ("a.png", b"\x89PNGfoto", "image/png"))],
+    )
+    client.post(
+        "/workouts/simple",
+        data={"kind": "skill", "date": "2026-06-24"},
+        files=[("files", ("b.mov", b"\x00ftypqt vid", "video/quicktime"))],
+    )
+    # медиа другого дня — не должно попасть в выборку
+    client.post(
+        "/workouts/simple",
+        data={"kind": "other", "date": "2026-06-25"},
+        files=[("files", ("c.png", b"\x89PNGother", "image/png"))],
+    )
+
+    res = client.get("/workouts/media", params={"date": "2026-06-24"})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert len(body) == 2
+    assert {m["media_type"] for m in body} == {"image", "video"}
+    assert all(isinstance(m["id"], int) for m in body)
+
+    # день без медиа — пустой список
+    assert client.get("/workouts/media", params={"date": "2026-01-01"}).json() == []
+
+    # date обязателен
+    assert client.get("/workouts/media").status_code == 422

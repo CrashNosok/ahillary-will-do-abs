@@ -329,6 +329,21 @@ def get_workout_media(media_id: int, session: SessionDep, user: CurrentUser) -> 
     return FileResponse(path)
 
 
+@router.get("/media")
+def list_workout_media(
+    date: dt.date, session: SessionDep, user: CurrentUser
+) -> list[SimpleMediaRead]:
+    """Медиа (id+type) всех сессий владельца за день — для галереи дня (байты: /media/{id}).
+    Объявлено до /{workout_id}, иначе «media» уйдёт в catch-all как workout_id."""
+    rows = session.exec(
+        select(WorkoutMedia)
+        .join(WorkoutSession, WorkoutMedia.session_id == WorkoutSession.id)
+        .where(WorkoutSession.user_id == user.id, WorkoutSession.date == date)
+        .order_by(WorkoutMedia.id)
+    ).all()
+    return [SimpleMediaRead(id=m.id, media_type=m.media_type) for m in rows]
+
+
 @router.get("")
 def list_workouts(session: SessionDep, user: CurrentUser) -> list[WorkoutRead]:
     sessions = session.exec(
