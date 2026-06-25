@@ -329,9 +329,9 @@
  * крутится-мерцает. Длительность/задержка/направление задаются на каждую искру → хаос. */
 .sparkle {
   position: absolute;
-  width: 5px;
-  height: 5px;
-  margin: -2.5px;
+  width: var(--spark-size, 5px);
+  height: var(--spark-size, 5px);
+  margin: calc(var(--spark-size, 5px) / -2);
   border-radius: 9999px;
   background: #fff;
   box-shadow:
