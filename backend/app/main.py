@@ -29,14 +29,15 @@ from app.api import (
 )
 from app.core.config import CORS_ORIGINS
 from app.core.db import init_db
-from app.core.seed import seed_initial_user
+from app.core.seed import seed_initial_sports, seed_initial_user
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # На старте: каталоги data/ и таблицы БД (data/app.db), затем сид единственного юзера.
+    # На старте: каталоги data/ и таблицы БД (data/app.db), затем сид юзера и каталога спортов.
     init_db()
     seed_initial_user()
+    seed_initial_sports()
     yield
 
 
