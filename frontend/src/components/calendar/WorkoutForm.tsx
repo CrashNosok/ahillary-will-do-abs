@@ -308,13 +308,28 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
             e.target.value = '';
           }}
         />
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="self-start rounded-full border border-line px-3 py-1.5 text-xs font-medium text-fg transition-colors duration-[var(--duration-fast)] hover:border-accent/50"
-        >
-          Добавить фото / видео
-        </button>
+        {/* Добавить медиа · Просмотреть. «Просмотреть» (M3·F13) — явный вход в лайтбокс добавленных
+            media[], доступен и после сохранения (превью не сбрасываются). Открывает первый кадр;
+            листание ‹/› внутри лайтбокса. Дублирует клик по миниатюре (F11), но даёт подписанный
+            контрол, как требует карточка. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-fg transition-colors duration-[var(--duration-fast)] hover:border-accent/50"
+          >
+            Добавить фото / видео
+          </button>
+          {previews.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setLightboxAt(0)}
+              className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-accent/60"
+            >
+              Просмотреть ({previews.length})
+            </button>
+          )}
+        </div>
         {previews.length > 0 && (
           <ul className="flex flex-wrap gap-2">
             {previews.map((p, i) => (
