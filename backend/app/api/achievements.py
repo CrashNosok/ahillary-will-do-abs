@@ -3,8 +3,8 @@
 POST /achievements/{achievement_id}/proofs — принимает файл видео (+ опц. notes),
 кладёт его в data/videos/<achievement_id>/, генерит кадр-превью через ffmpeg и пишет
 achievement_proof (пути к файлам + uploaded_at + notes; байты в БД не хранятся).
-Роут под сессией (CurrentUser) — приложение однопользовательское. Контролируемые
-ошибки: неизвестная ачивка → 404, пустой/нечитаемый файл → 422.
+Роуты под сессией (CurrentUser); ачивки скоупятся по владельцу (M0·B11). Контролируемые
+ошибки: неизвестная/чужая ачивка → 404, пустой/нечитаемый файл → 422.
 """
 
 from pathlib import Path
@@ -26,16 +26,23 @@ router = APIRouter(prefix="/achievements", tags=["achievements"])
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
+def _get_owned_or_404(session: Session, achievement_id: int, user_id: int) -> Achievement:
+    """Ачивка владельца или 404 (M0·B11): чужую/несуществующую не раскрываем (404, не 403)."""
+    achievement = session.get(Achievement, achievement_id)
+    if achievement is None or achievement.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ачивка не найдена")
+    return achievement
+
+
 @router.post("/{achievement_id}/proofs", status_code=status.HTTP_201_CREATED)
 async def upload_proof(
     achievement_id: int,
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     file: Annotated[UploadFile, File()],
     notes: Annotated[str | None, Form()] = None,
 ) -> AchievementProof:
-    if session.get(Achievement, achievement_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ачивка не найдена")
+    _get_owned_or_404(session, achievement_id, user.id)
     video_bytes = await file.read()
     if not video_bytes:
         raise HTTPException(
@@ -56,12 +63,14 @@ async def upload_proof(
 def get_proof_thumbnail(
     achievement_id: int,
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
 ) -> FileResponse:
     """Отдаёт превью последнего видео-пруфа (S5.6 UI) — картинка для карточки ачивки.
 
     Нет пруфа или файл превью отсутствует на диске → 404 (фронт просто не рисует превью).
+    Чужая ачивка → 404 (M0·B11): не отдаём превью к чужому пруфу.
     """
+    _get_owned_or_404(session, achievement_id, user.id)
     proof = session.exec(
         select(AchievementProof)
         .where(AchievementProof.achievement_id == achievement_id)
@@ -81,17 +90,15 @@ def get_proof_thumbnail(
 def unlock_achievement(
     achievement_id: int,
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
 ) -> Achievement:
     """Закрыть ачивку (S5.5): unlocked возможен ТОЛЬКО при наличии видео-пруфа.
 
     Серверная проверка: без achievement_proof закрытие отклоняется (409), статус и
     unlocked_at не меняются. Идемпотентно — повторный вызов сохраняет исходный момент
-    закрытия. Неизвестная ачивка → 404.
+    закрытия. Неизвестная/чужая ачивка → 404 (M0·B11).
     """
-    achievement = session.get(Achievement, achievement_id)
-    if achievement is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ачивка не найдена")
+    achievement = _get_owned_or_404(session, achievement_id, user.id)
     if not proof_service.has_proof(session, achievement_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

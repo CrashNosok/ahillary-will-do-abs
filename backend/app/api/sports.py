@@ -107,16 +107,19 @@ def delete_sport(sport_id: int, session: SessionDep, _: CurrentUser) -> None:
 
 @router.get("/{sport_id}/achievements")
 def list_sport_achievements(
-    sport_id: int, session: SessionDep, _: CurrentUser
+    sport_id: int, session: SessionDep, user: CurrentUser
 ) -> list[AchievementRead]:
     """Ачивки вида спорта со статусами (locked/in_progress/unlocked), в порядке создания.
 
     Поле has_proof говорит UI, есть ли видео-пруф (рисовать ли превью в карточке, S5.6).
     404 для неизвестного спорта; пустой список — если набор ещё не сгенерирован.
+    Каталог sport общий, а ачивки скоупятся по владельцу (M0·B11): чужие не попадают.
     """
     _get_or_404(session, sport_id)
     achievements = session.exec(
-        select(Achievement).where(Achievement.sport_id == sport_id).order_by(Achievement.id)
+        select(Achievement)
+        .where(Achievement.sport_id == sport_id, Achievement.user_id == user.id)
+        .order_by(Achievement.id)
     ).all()
     # Одним запросом — id ачивок, у которых есть пруф (без N+1 по карточкам).
     proof_ids: set[int] = (
