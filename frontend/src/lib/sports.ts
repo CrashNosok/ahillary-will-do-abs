@@ -42,6 +42,18 @@ export function useExercises() {
   return useQuery<Exercise[]>({ queryKey: EXERCISES_KEY, queryFn: () => api.listExercises() });
 }
 
+/** Один вид спорта по id (M5·F21) — лёгкая шапка детальной страницы /sports/:id.
+ *  Отдельно от useSportOverview: шапка (имя/категория/описание) живёт на дешёвом
+ *  GET /sports/{id}, тело (секции/ачивки) — на агрегате /overview. Ключ включает id;
+ *  enabled отсекает невалидный id (NaN из роут-параметра). 404 → error со status 404. */
+export function useSport(sportId: number) {
+  return useQuery<Sport>({
+    queryKey: ['sport', sportId],
+    queryFn: () => api.getSport(sportId),
+    enabled: Number.isFinite(sportId),
+  });
+}
+
 /** Сводка по дисциплине (M5·B27) для детальной страницы /sports/:id; ключ включает id.
  *  enabled отсекает невалидный id (NaN из роут-параметра) — без запроса /sports/NaN/overview. */
 export function useSportOverview(sportId: number) {

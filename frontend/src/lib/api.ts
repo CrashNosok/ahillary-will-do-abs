@@ -785,6 +785,8 @@ export const api = {
   listSportCategories: () => request<SportCategory[]>('/sports/categories'),
   createSport: (input: SportInput) =>
     request<Sport>('/sports', { method: 'POST', body: JSON.stringify(input) }),
+  // Один вид спорта по id (M5·F21): лёгкая шапка детальной страницы. 404 для неизвестного id.
+  getSport: (sportId: number) => request<Sport>(`/sports/${sportId}`),
   // Сводка по дисциплине (M5·B27): вид спорта + ступени/события/менторы/рекомендации + счётчик ачивок.
   // Бэкенд отдаёт 404 для неизвестного id (ApiError.status === 404).
   getSportOverview: (sportId: number) => request<SportOverview>(`/sports/${sportId}/overview`),

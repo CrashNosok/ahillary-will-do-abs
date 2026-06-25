@@ -1,11 +1,13 @@
-/** Детальная страница вида спорта (M5·F20): открывается из карточки каталога по /sports/:id.
- *  Читает сводку дисциплины (M5·B27): шапка (имя/категория/описания) + счётчик ачивок владельца
- *  + секции каталога (ступени/события/менторы/рекомендации), read-only. Глобальный каталог. */
+/** Детальная страница вида спорта (M5·F20/F21): открывается из карточки каталога по /sports/:id.
+ *  Каркас (M5·F21): шапка (имя/категория-чип/описания) рендерится из useSport(id) — лёгкий
+ *  GET /sports/{id}; not-found/loading/error страницы тоже на нём. Тело (секции каталога:
+ *  ступени/события/менторы/рекомендации + счётчик ачивок владельца) — из useSportOverview(id)
+ *  (M5·B27). Read-only, глобальный каталог. */
 
 import { type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, sportCategoryLabel } from '../lib/api';
-import { useSportOverview } from '../lib/sports';
+import { useSport, useSportOverview } from '../lib/sports';
 
 const eventDateFmt = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
@@ -27,7 +29,9 @@ const backLink = (
 export default function SportDetailPage() {
   const { sportId } = useParams();
   const id = Number(sportId);
-  const { data, isPending, error } = useSportOverview(id);
+  // Шапка/состояния страницы — на useSport (M5·F21); тело (секции/ачивки) — на overview (M5·B27).
+  const { data: sport, isPending, error } = useSport(id);
+  const { data: overview, isPending: overviewPending, error: overviewError } = useSportOverview(id);
 
   if (!Number.isFinite(id) || (error instanceof ApiError && error.status === 404)) {
     return <StateScreen message="Вид спорта не найден." />;
@@ -37,11 +41,15 @@ export default function SportDetailPage() {
       <StateScreen message="Не удалось загрузить дисциплину. Проверьте, что сервер запущен." />
     );
   }
-  if (isPending || !data) {
+  if (isPending || !sport) {
     return <StateScreen message="Загрузка…" />;
   }
 
-  const { sport, levels, events, mentors, recommendations, achievement_count } = data;
+  // overview грузится параллельно: пока его нет — секции показывают «Загрузка…», а не «пусто».
+  const levels = overview?.levels ?? [];
+  const events = overview?.events ?? [];
+  const mentors = overview?.mentors ?? [];
+  const recommendations = overview?.recommendations ?? [];
 
   return (
     <section
@@ -64,11 +72,21 @@ export default function SportDetailPage() {
         {sport.long_description && (
           <p className="mt-3 leading-relaxed text-muted">{sport.long_description}</p>
         )}
-        <p className="mt-4 text-sm font-medium text-muted">Ачивок: {achievement_count}</p>
+        {overview && (
+          <p className="mt-4 text-sm font-medium text-muted">
+            Ачивок: {overview.achievement_count}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Section title="Ступени" isEmpty={levels.length === 0} emptyText="Ступеней пока нет.">
+        <Section
+          title="Ступени"
+          isLoading={overviewPending}
+          isError={!!overviewError}
+          isEmpty={levels.length === 0}
+          emptyText="Ступеней пока нет."
+        >
           {levels.map((lvl) => (
             <li key={lvl.id} className="flex flex-col gap-0.5">
               <span className="font-medium">
@@ -79,7 +97,13 @@ export default function SportDetailPage() {
           ))}
         </Section>
 
-        <Section title="События" isEmpty={events.length === 0} emptyText="Событий пока нет.">
+        <Section
+          title="События"
+          isLoading={overviewPending}
+          isError={!!overviewError}
+          isEmpty={events.length === 0}
+          emptyText="Событий пока нет."
+        >
           {events.map((ev) => (
             <li key={ev.id} className="flex flex-col gap-0.5">
               <span className="font-medium">{ev.title}</span>
@@ -95,6 +119,8 @@ export default function SportDetailPage() {
 
         <Section
           title="Наставники"
+          isLoading={overviewPending}
+          isError={!!overviewError}
           isEmpty={mentors.length === 0}
           emptyText="Наставников пока нет."
         >
@@ -109,6 +135,8 @@ export default function SportDetailPage() {
 
         <Section
           title="Рекомендации"
+          isLoading={overviewPending}
+          isError={!!overviewError}
           isEmpty={recommendations.length === 0}
           emptyText="Рекомендаций пока нет."
         >
@@ -134,14 +162,20 @@ function StateScreen({ message }: { message: string }) {
   );
 }
 
-/** Карточка-секция каталога дисциплины: заголовок + список или пустое состояние. */
+/** Карточка-секция каталога дисциплины: заголовок + список, пустое состояние, «Загрузка…»
+ *  (пока тянется агрегат /overview — чтобы не мигало «пусто» до прихода данных) или ошибка
+ *  загрузки (чтобы сбой /overview не выглядел как «данных нет»). */
 function Section({
   title,
+  isLoading,
+  isError,
   isEmpty,
   emptyText,
   children,
 }: {
   title: string;
+  isLoading: boolean;
+  isError: boolean;
   isEmpty: boolean;
   emptyText: string;
   children: ReactNode;
@@ -149,7 +183,11 @@ function Section({
   return (
     <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-6">
       <h2 className="font-display text-xl font-semibold tracking-tight">{title}</h2>
-      {isEmpty ? (
+      {isLoading ? (
+        <p className="text-muted">Загрузка…</p>
+      ) : isError ? (
+        <p className="text-muted">Не удалось загрузить.</p>
+      ) : isEmpty ? (
         <p className="text-muted">{emptyText}</p>
       ) : (
         <ul className="flex flex-col gap-3">{children}</ul>
