@@ -284,6 +284,7 @@ export type SimpleWorkoutInput = {
   durationMin: number | null;
   rpe: number | null;
   note: string | null;
+  surpassedSelf: boolean; // «превзошёл себя» (M2·F9): отметка личного рекорда сессии
   files: File[];
 };
 
@@ -752,6 +753,7 @@ export const api = {
     if (input.durationMin != null) form.append('duration_min', String(input.durationMin));
     if (input.rpe != null) form.append('rpe', String(input.rpe));
     if (input.note) form.append('note', input.note);
+    if (input.surpassedSelf) form.append('surpassed_self', 'true');
     for (const file of input.files) form.append('files', file);
     return postForm<SimpleWorkout>('/workouts/simple', form);
   },

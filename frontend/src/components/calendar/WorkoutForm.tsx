@@ -72,6 +72,7 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   const [sportId, setSportId] = useState<number | null>(null);
   const [duration, setDuration] = useState('');
   const [rpe, setRpe] = useState<number | null>(null);
+  const [surpassedSelf, setSurpassedSelf] = useState(false);
   const [note, setNote] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -122,6 +123,7 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
         durationMin: duration.trim() ? Number(duration) : null,
         rpe,
         note: note.trim() || null,
+        surpassedSelf,
         files,
       }),
     onSuccess: () => {
@@ -308,6 +310,23 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
           </button>
         )}
       </div>
+
+      {/* «Превзошёл сам себя» — необязательная отметка личного рекорда сессии (M2·F9). В payload
+          createSimpleWorkout уходит surpassed_self; по умолчанию снят (бэкенд default False). */}
+      <label className="flex cursor-pointer items-center gap-2 self-start text-sm text-fg">
+        <input
+          type="checkbox"
+          checked={surpassedSelf}
+          onChange={(e) => {
+            setSurpassedSelf(e.target.checked);
+            reset();
+          }}
+          className="size-4 accent-accent"
+        />
+        <span>
+          Превзошёл сам себя 🏆 <span className="text-muted">(личный рекорд, необязательно)</span>
+        </span>
+      </label>
 
       <label className="flex flex-col gap-1">
         <span className="text-xs text-muted">Заметка (необязательно)</span>
