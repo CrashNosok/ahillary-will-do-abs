@@ -3,6 +3,7 @@
 from app.models.achievement import Achievement, AchievementProof
 from app.models.activity import ActivityDay, HrZones
 from app.models.body import BodyMeasurement, InbodyMeasurement, ProgressPhoto
+from app.models.challenge import Challenge
 from app.models.deficit import DeficitDay
 from app.models.goal import GoalStatus, SmartGoal
 from app.models.nutrition import FoodEntry
@@ -34,6 +35,7 @@ __all__ = [
     "ActivityDay",
     "BodyMeasurement",
     "CardioLog",
+    "Challenge",
     "DeficitDay",
     "Exercise",
     "FoodEntry",
