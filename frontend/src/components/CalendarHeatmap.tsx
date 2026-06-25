@@ -230,7 +230,17 @@ function WeekRow({
     has_photo: flagsList.some((d) => d.has_photo),
   };
   const isCurrentWeek = weekStart !== '' && weekStart <= todayIso && todayIso <= weekEnd;
-  const weeklyDate = weekStart === '' ? todayIso : weekEnd <= todayIso ? weekEnd : todayIso;
+  // Дата, на которую пишутся недельные данные (вес/замеры/фото): прошлая неделя → её последний
+  // день, текущая → сегодня, будущая (напр. при переключении на июль) → её ПЕРВЫЙ день. Раньше
+  // будущая неделя падала на `todayIso` — данные уходили в текущий месяц и в июле «не сохранялись».
+  const weeklyDate =
+    weekStart === ''
+      ? todayIso
+      : weekEnd <= todayIso
+        ? weekEnd
+        : weekStart <= todayIso
+          ? todayIso
+          : weekStart;
   const weekRangeLabel =
     weekStart && weekEnd ? `Неделя ${fmtShort(weekStart)} – ${fmtShort(weekEnd)}` : 'Неделя';
   const weekShort = weekStart && weekEnd ? `${fmtShort(weekStart)}–${fmtShort(weekEnd)}` : '';
