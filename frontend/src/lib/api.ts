@@ -748,6 +748,40 @@ export type AchievementProof = {
   notes: string | null;
 };
 
+/** Челлендж (M6·B30/B34): вызов по виду спорта из общего каталога — их находят и
+ *  присоединяются. `is_base` отделяет встроенные (базовые) челленджи от пользовательских. */
+export type Challenge = {
+  id: number;
+  sport_id: number;
+  creator_user_id: number;
+  title: string;
+  description: string;
+  is_base: boolean;
+};
+
+/** Статус участия в челлендже (M6·B31): участвует / завершил / бросил. */
+export type ChallengeParticipantStatus = 'active' | 'completed' | 'abandoned';
+
+/** Участие в челлендже (M6·B31/B34): связка пользователь↔челлендж со статусом —
+ *  ответ POST /challenges/{id}/join. status хранится строкой (ChallengeParticipantStatus). */
+export type ChallengeParticipant = {
+  id: number;
+  challenge_id: number;
+  user_id: number;
+  status: ChallengeParticipantStatus;
+};
+
+/** Видео-пруф участия в челлендже (M6·B32/B35): пути к видео/превью на диске +
+ *  метаданные — ответ POST /challenges/{id}/proofs. Клон AchievementProof по participant_id. */
+export type ChallengeProof = {
+  id: number;
+  participant_id: number;
+  video_path: string | null;
+  thumbnail_path: string | null;
+  uploaded_at: string;
+  notes: string | null;
+};
+
 /** URL превью последнего видео-пруфа ачивки (S5.6): картинка для карточки.
  *  Cache-bust (`v`) — чтобы после новой загрузки бралась свежая картинка, а не из кеша. */
 export const achievementThumbnailUrl = (achievementId: number, v?: string | number): string =>
@@ -807,6 +841,21 @@ export const api = {
   // Закрытие ачивки (S5.5): сервер требует наличия пруфа, иначе 409 → status=unlocked.
   unlockAchievement: (achievementId: number) =>
     request<Achievement>(`/achievements/${achievementId}/unlock`, { method: 'POST' }),
+
+  // Челленджи (M6·B34): каталог всех вызовов (бэкенд сортирует по заголовку) — их находят
+  // и присоединяются.
+  listChallenges: () => request<Challenge[]>('/challenges'),
+  // Присоединиться к челленджу (M6·B34): 404 (нет челленджа) / 409 (уже участвую), иначе участие.
+  joinChallenge: (challengeId: number) =>
+    request<ChallengeParticipant>(`/challenges/${challengeId}/join`, { method: 'POST' }),
+  // Видео-пруф участия (M6·B35): загрузка видео (multipart) + опц. заметка → пруф + превью.
+  // 404 (нет челленджа / не участвую); 422 (пустой/битый файл).
+  uploadChallengeProof: (challengeId: number, file: File, notes?: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (notes) form.append('notes', notes);
+    return postForm<ChallengeProof>(`/challenges/${challengeId}/proofs`, form);
+  },
 
   // Упражнения библиотеки (S3.2): без sport_id — все; иначе фильтр по виду спорта.
   listExercises: (sportId?: number) =>
