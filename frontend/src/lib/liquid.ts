@@ -50,3 +50,10 @@ export function glowColor(mystery: boolean): string {
 export function mediaRingShadow(): string {
   return 'inset 0 0 0 1.5px oklch(86% 0.15 82 / 0.75), inset 0 0 10px -1px oklch(90% 0.15 85 / 0.85)';
 }
+
+/** Бонус-подсветка недельной ячейки за полные замеры (has_weight && has_body): фуксиево-розовое
+ *  внешнее свечение (тон спектра has_weight) + аметистовый inset (тон has_body). box-shadow-строка,
+ *  складывается через запятую с зелёным glow полной недели в одном `box-shadow`. */
+export function measureGlow(): string {
+  return '0 0 16px -1px oklch(74% 0.22 340 / 0.9), inset 0 0 9px -1px oklch(70% 0.16 290 / 0.7)';
+}

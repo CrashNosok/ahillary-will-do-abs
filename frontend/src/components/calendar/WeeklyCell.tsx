@@ -1,11 +1,16 @@
 /** Недельная ячейка (8-я колонка перед медалью): «раз в неделю» — Вес/Замеры/Фото.
  *  Наполняется премиум-жидкостью по 3 недельным категориям (как день, но за неделю); пунктирная
  *  рамка отличает её от дней. В углу — статус В·З·Ф (внесено/осталось). Клик открывает редактор
- *  недельных данных. `draining` сливает её в общую чашу при «Получить отчёт». */
+ *  недельных данных. `draining` сливает её в общую чашу при «Получить отчёт».
+ *
+ *  Бонус за полные замеры (Вес И Замеры за неделю — Фото опционально): усиленный залп искр +
+ *  доп. фуксиево-аметистовая подсветка (measureGlow), которая складывается с зелёным glow полной
+ *  недели. Так замеры поощряются отдельно от Фото; полная неделя 3/3 всегда содержит полные
+ *  замеры, поэтому получает и зелёный glow, и бонус-подсветку. */
 
 import type { DayFlags } from '../../lib/api';
 import { WEEKLY } from '../../lib/weekly';
-import { glowColor } from '../../lib/liquid';
+import { glowColor, measureGlow } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -26,7 +31,17 @@ export function WeeklyCell({
   const activeKeys = active.map((c) => c.key);
   const count = active.length;
   const isFull = count === WEEKLY.length;
+  // Полные замеры за неделю = есть и Вес, и Замеры (Фото опционально). Это бонус-условие.
+  const hasMeasurements = weeklyFlags.has_weight && weeklyFlags.has_body;
   const level = draining ? 0 : count / WEEKLY.length;
+
+  // Складываем тени: зелёный glow полной недели (3/3) + бонус-подсветка за полные замеры. Обе опц.
+  const boxShadow = [
+    isFull ? `0 0 12px -2px ${glowColor(false)}` : '',
+    hasMeasurements ? measureGlow() : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
   const summary = active.length
     ? active.map((c) => c.label.toLowerCase()).join(', ')
     : 'нет недельных данных';
@@ -51,7 +66,7 @@ export function WeeklyCell({
       className={`relative aspect-square overflow-hidden rounded-xl border border-dashed transition-colors duration-[var(--duration-fast)] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none ${
         onSelect ? 'cursor-pointer hover:border-accent/60' : ''
       } ${isCurrentWeek ? 'border-accent/70' : count > 0 ? 'border-line' : 'border-line/50'}`}
-      style={isFull ? { boxShadow: `0 0 12px -2px ${glowColor(false)}` } : undefined}
+      style={boxShadow ? { boxShadow } : undefined}
     >
       {count > 0 && <LiquidFill level={level} activeKeys={activeKeys} />}
 
@@ -77,7 +92,10 @@ export function WeeklyCell({
         })}
       </span>
 
-      {isFull && <Sparks count={6} spread={13} baseDur={1300} />}
+      {/* Полные замеры (Вес+Замеры) дают усиленный залп искр — больше/крупнее/быстрее базового.
+          isFull ⟹ hasMeasurements, поэтому отдельной «базовой» искры 3/3 без замеров не бывает:
+          залп один и всегда усиленный. Reduced-motion гасит все .sparkle глобально (см. index.css). */}
+      {hasMeasurements && <Sparks count={10} spread={16} baseDur={900} size={6} />}
     </div>
   );
 }
