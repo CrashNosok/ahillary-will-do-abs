@@ -25,6 +25,15 @@ DEFAULT_RANGE_DAYS = 30
 
 
 class DayFlags(BaseModel):
+    """Сигналы наличия данных за один день в ответе /dashboard (зеркало service.DayFlag).
+
+    Ежедневные: has_food/has_activity/has_training. Недельные: has_weight/has_body/has_photo.
+    has_measurement (body|inbody) — легаси-флаг «Заряда дня».
+    Сигналы M4·B20 (по дню, скоуп по пользователю): has_surpassed_self — день с тренировкой-
+    личным-рекордом; has_workout_media — у тренировки дня есть медиа; has_full_measurements —
+    за день есть ОБА вида замеров (обхваты И вес).
+    """
+
     date: dt.date
     has_food: bool
     has_activity: bool
