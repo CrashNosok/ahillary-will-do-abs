@@ -14,6 +14,7 @@ from app.models.sport import (
     SportEvent,
     SportLevel,
     SportMentor,
+    SportRecommendation,
 )
 from app.models.user import User
 from app.models.user_sport import UserSport
@@ -47,6 +48,7 @@ __all__ = [
     "SportEvent",
     "SportLevel",
     "SportMentor",
+    "SportRecommendation",
     "SmartGoal",
     "StrengthSet",
     "User",

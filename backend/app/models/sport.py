@@ -108,6 +108,26 @@ class SportMentor(SQLModel, table=True):
     photo_path: str | None = None  # путь к фото на диске (файл вне БД)
 
 
+class SportRecommendation(SQLModel, table=True):
+    """Рекомендация по виду спорта (M5·B26): совет/гайд внутри дисциплины.
+
+    Привязана к дисциплине через FK sport_id. title и body обязательны (заголовок
+    и текст рекомендации). from_level_id/to_level_id — необязательные FK на
+    sport_level: на какой переход между ступенями нацелен совет (None — общий совет
+    по дисциплине, без привязки к уровню). Глобальный каталог без user-скоупа —
+    как sport/sport_level/sport_event/sport_mentor. Роутера пока нет.
+    """
+
+    __tablename__ = "sport_recommendation"
+
+    id: int | None = Field(default=None, primary_key=True)
+    sport_id: int = Field(foreign_key="sport.id", index=True)
+    from_level_id: int | None = Field(default=None, foreign_key="sport_level.id")
+    to_level_id: int | None = Field(default=None, foreign_key="sport_level.id")
+    title: str  # заголовок рекомендации, обязателен
+    body: str  # текст рекомендации, обязателен
+
+
 class Exercise(SQLModel, table=True):
     __tablename__ = "exercise"
 
