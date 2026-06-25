@@ -519,7 +519,10 @@ export type InbodyMeasurement = InbodyFields & {
 /** Дашборд (S1.13): по каждому дню диапазона — флаги наличия данных.
  *  Ежедневные (дневной «стакан»): food/activity/training.
  *  Недельные (наливаются в «общую чашу» недели): weight/body/photo.
- *  has_measurement (body|inbody) — легаси-флаг для «Заряда дня». */
+ *  has_measurement (body|inbody) — легаси-флаг для «Заряда дня».
+ *  Новые сигналы (M4·B20), по дню и со скоупом по пользователю:
+ *  surpassed_self (личный рекорд), workout_media (медиа тренировки),
+ *  full_measurements (обхваты И вес за один день). */
 export type DayFlags = {
   date: string; // ISO YYYY-MM-DD
   has_food: boolean;
@@ -529,6 +532,9 @@ export type DayFlags = {
   has_weight: boolean;
   has_body: boolean;
   has_photo: boolean;
+  has_surpassed_self: boolean;
+  has_workout_media: boolean;
+  has_full_measurements: boolean;
 };
 
 /** Сводка энергобаланса за сегодня (S1.15). deficit = kcal_out − kcal_in. */

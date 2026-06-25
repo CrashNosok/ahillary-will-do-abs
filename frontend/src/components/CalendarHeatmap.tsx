@@ -249,6 +249,9 @@ function WeekRow({
         has_weight: weeklyFlags.has_weight,
         has_body: weeklyFlags.has_body,
         has_photo: weeklyFlags.has_photo,
+        has_surpassed_self: false,
+        has_workout_media: false,
+        has_full_measurements: weeklyFlags.has_weight && weeklyFlags.has_body,
       },
     });
 
