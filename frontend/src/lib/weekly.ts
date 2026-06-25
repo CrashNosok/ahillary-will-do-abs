@@ -9,8 +9,10 @@
 import type { DayFlags } from './api';
 import { keyColor } from './liquid';
 
-/** Ячейка месяца: день с ISO-датой либо `null` (паддинг под смещение/хвост недели). */
-export type MonthCell = { day: number; iso: string } | null;
+/** Ячейка месяца: число дня + ISO-дата + признак принадлежности отображаемому месяцу.
+ *  Сетка показывает полные недели Пн–Вс, поэтому в краях есть дни соседних месяцев
+ *  (`inMonth=false`) — их видно бледнее, но они кликабельны и заполняемы. */
+export type MonthCell = { day: number; iso: string; inMonth: boolean };
 
 /** Ежедневные категории дневной ячейки: ключ флага → ярлык + представительный премиум-цвет
  *  (средний тон спектра из liquid.ts). Порядок задаёт слои снизу-вверх: еда→активность→тренировки. */
@@ -34,12 +36,11 @@ export function dayFill(flags: DayFlags | undefined): number {
   return n / DAILY.length;
 }
 
-/** Режет плоский массив ячеек месяца на недели по 7; хвост добивает паддингом `pad`. */
-export function chunkWeeks<T>(cells: T[], pad: T): T[][] {
+/** Режет плоский массив ячеек месяца на недели по 7. buildMonthCells отдаёт полные недели
+ *  (кратно 7), поэтому паддинг не нужен. */
+export function chunkWeeks<T>(cells: T[]): T[][] {
   const weeks: T[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  const last = weeks[weeks.length - 1];
-  if (last) while (last.length < 7) last.push(pad);
   return weeks;
 }
 
@@ -54,10 +55,8 @@ export type WeekFill = {
   realDays: number;
 };
 
-/** Считает заполнение недели по флагам её реальных дней (null-ячейки не передавать).
- *  ponytail: знаменатель — по реальным дням месяца в неделе; краевые недели у границы
- *  месяца не видят дни соседнего месяца (их нет в выборке /dashboard). Если понадобится
- *  «честная» 7-дневная неделя на стыке — догружать соседние дни и считать по ним. */
+/** Считает заполнение недели по флагам её дней. Сетка — полные недели Пн–Вс (7 дней, включая
+ *  дни соседних месяцев), флаги для них тоже грузятся, поэтому знаменатель честный 7-дневный. */
 export function weekFill(days: DayFlags[]): WeekFill {
   const realDays = days.length;
   const dailyFilled = days.reduce(

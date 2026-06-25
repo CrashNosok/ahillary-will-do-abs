@@ -35,15 +35,19 @@ const firstOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const monthTitleFmt = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' });
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Ячейки месяца: ведущие null под смещение первого дня (Пн=0), затем 1..N. */
+/** Ячейки месяца полными неделями Пн–Вс: добираем дни предыдущего месяца перед 1-м числом
+ *  (если оно не понедельник) и дни следующего месяца после последнего (до воскресенья). Дни
+ *  соседних месяцев — реальные (inMonth=false), их можно открыть и заполнить. Длина кратна 7. */
 export function buildMonthCells(monthStart: Date): MonthCell[] {
   const year = monthStart.getFullYear();
   const month = monthStart.getMonth();
-  const offset = (new Date(year, month, 1).getDay() + 6) % 7; // Вс(0)→6, Пн(1)→0
+  const offset = (new Date(year, month, 1).getDay() + 6) % 7; // Вс(0)→6, Пн(1)→0 — дней до Пн
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: MonthCell[] = Array(offset).fill(null);
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push({ day, iso: toISO(new Date(year, month, day)) });
+  const trailing = (7 - ((offset + daysInMonth) % 7)) % 7; // дней после конца месяца до Вс
+  const cells: MonthCell[] = [];
+  for (let i = -offset; i < daysInMonth + trailing; i += 1) {
+    const d = new Date(year, month, 1 + i); // i<0 → пред. месяц, i≥daysInMonth → след. месяц
+    cells.push({ day: d.getDate(), iso: toISO(d), inMonth: d.getMonth() === month });
   }
   return cells;
 }
@@ -52,8 +56,11 @@ export default function CalendarHeatmap() {
   const [monthStart, setMonthStart] = useState(() => firstOfMonth(new Date()));
   const todayIso = toISO(new Date());
 
-  const start = toISO(monthStart);
-  const end = toISO(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
+  // Сетка — полные недели Пн–Вс, поэтому грузим флаги по краям сетки (вкл. дни соседних месяцев),
+  // а не только по 1-е…последнее число месяца.
+  const cells = useMemo(() => buildMonthCells(monthStart), [monthStart]);
+  const start = cells[0].iso;
+  const end = cells[cells.length - 1].iso;
   const { data, isPending, error } = useDashboard(start, end);
 
   const flagsByDate = useMemo(() => {
@@ -62,10 +69,7 @@ export default function CalendarHeatmap() {
     return map;
   }, [data]);
 
-  const weeks = useMemo(
-    () => chunkWeeks<MonthCell>(buildMonthCells(monthStart), null),
-    [monthStart],
-  );
+  const weeks = useMemo(() => chunkWeeks<MonthCell>(cells), [cells]);
 
   const [report, setReport] = useState<ReportTarget | null>(null);
   const [editDay, setEditDay] = useState<EditDay | null>(null);
@@ -213,7 +217,7 @@ function WeekRow({
   onOpenReport: (t: ReportTarget) => void;
   onOpenDay: (d: EditDay) => void;
 }) {
-  const realCells = week.filter((c): c is { day: number; iso: string } => c !== null);
+  const realCells = week; // полная неделя Пн–Вс: 7 реальных дней (вкл. дни соседних месяцев)
   const flagsList = realCells
     .map((c) => flagsByDate.get(c.iso))
     .filter((f): f is DayFlags => f !== undefined);
@@ -268,22 +272,19 @@ function WeekRow({
 
   return (
     <>
-      {week.map((cell, i) =>
-        cell === null ? (
-          <div key={`pad-${weekStart}-${i}`} aria-hidden="true" />
-        ) : (
-          <DaySquare
-            key={cell.iso}
-            day={cell.day}
-            iso={cell.iso}
-            flags={flagsByDate.get(cell.iso)}
-            isToday={cell.iso === todayIso}
-            onSelect={() =>
-              onOpenDay({ iso: cell.iso, flags: flagsByDate.get(cell.iso), rows: 'daily' })
-            }
-          />
-        ),
-      )}
+      {week.map((cell) => (
+        <DaySquare
+          key={cell.iso}
+          day={cell.day}
+          iso={cell.iso}
+          inMonth={cell.inMonth}
+          flags={flagsByDate.get(cell.iso)}
+          isToday={cell.iso === todayIso}
+          onSelect={() =>
+            onOpenDay({ iso: cell.iso, flags: flagsByDate.get(cell.iso), rows: 'daily' })
+          }
+        />
+      ))}
       <WeeklyCell
         weeklyFlags={weeklyFlags}
         isCurrentWeek={isCurrentWeek}

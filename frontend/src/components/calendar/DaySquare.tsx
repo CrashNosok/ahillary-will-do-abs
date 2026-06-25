@@ -21,6 +21,7 @@ export function DaySquare({
   iso,
   flags,
   isToday,
+  inMonth = true,
   draining = false,
   onSelect,
 }: {
@@ -28,6 +29,8 @@ export function DaySquare({
   iso: string;
   flags: DayFlags | undefined;
   isToday: boolean;
+  /** День принадлежит отображаемому месяцу. Дни соседних месяцев показываем бледнее (но кликабельны). */
+  inMonth?: boolean;
   draining?: boolean;
   onSelect?: () => void;
 }) {
@@ -76,9 +79,11 @@ export function DaySquare({
             }
           : undefined
       }
-      className={`relative aspect-square overflow-hidden rounded-xl border transition-colors duration-[var(--duration-fast)] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none ${
+      className={`relative aspect-square overflow-hidden rounded-xl border transition-[opacity,border-color] duration-[var(--duration-fast)] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none ${
         onSelect ? 'cursor-pointer hover:border-accent/60' : ''
-      } ${isToday ? 'border-accent' : count > 0 ? 'border-line' : 'border-line/50'}`}
+      } ${isToday ? 'border-accent' : count > 0 ? 'border-line' : 'border-line/50'} ${
+        inMonth ? '' : 'opacity-40 hover:opacity-100'
+      }`}
       style={boxShadow ? { boxShadow } : undefined}
     >
       {count > 0 && (
