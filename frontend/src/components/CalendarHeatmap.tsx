@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type DayFlags } from '../lib/api';
+import { glowColor, mediaRingShadow } from '../lib/liquid';
 import { useDashboard } from '../lib/dashboard';
 import { DAILY, WEEKLY, chunkWeeks, weekFill, type MonthCell } from '../lib/weekly';
 import { DaySquare } from './calendar/DaySquare';
@@ -314,6 +315,25 @@ function Legend() {
           {c.label}
         </span>
       ))}
+      {/* Бонус-визуалы дня: ярче+искры = личный рекорд (F16), золотое кольцо = медиа (F17).
+          Свотчи берут те же helpers, что и сама ячейка, — цвета совпадают побуквенно. */}
+      <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-fg">Бонус:</span>
+      <span className="flex items-center gap-1.5">
+        <span
+          className="size-2.5 rounded-full"
+          style={{ background: glowColor(false), boxShadow: `0 0 6px 1px ${glowColor(false)}` }}
+          aria-hidden="true"
+        />
+        ярче — превзошёл себя
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span
+          className="size-2.5 rounded-full bg-surface"
+          style={{ boxShadow: mediaRingShadow() }}
+          aria-hidden="true"
+        />
+        кольцо — медиа тренировки
+      </span>
     </div>
   );
 }
