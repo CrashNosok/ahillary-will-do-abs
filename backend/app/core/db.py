@@ -18,7 +18,7 @@ _BACKEND_DIR = Path(__file__).resolve().parents[2]
 BACKEND_DIR = _BACKEND_DIR  # экспортируем для построения относительных путей к загрузкам
 
 # Подкаталоги под локальные данные (parents=True заодно создаёт сам data/).
-_SUBDIRS = ("uploads", "videos")
+_SUBDIRS = ("uploads", "videos", "challenge_proofs")
 
 
 def _data_dir() -> Path:
@@ -58,6 +58,13 @@ def workout_media_dir() -> Path:
 def videos_dir(achievement_id: int) -> Path:
     """Каталог видео-пруфов ачивки (data/videos/<achievement_id>). Создаётся при обращении."""
     target = _data_dir() / "videos" / str(achievement_id)
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def challenge_proofs_dir(participant_id: int) -> Path:
+    """Каталог видео-пруфов участия в челлендже (data/challenge_proofs/<participant_id>)."""
+    target = _data_dir() / "challenge_proofs" / str(participant_id)
     target.mkdir(parents=True, exist_ok=True)
     return target
 

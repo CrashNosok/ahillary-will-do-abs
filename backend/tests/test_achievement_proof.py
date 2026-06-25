@@ -26,7 +26,7 @@ from app.core.security import hash_password
 from app.main import app
 from app.models.achievement import Achievement, AchievementProof
 from app.models.user import User
-from app.services import achievement_proof as proof_service
+from app.services import video_proof
 
 EMAIL = "proof@example.com"
 PASSWORD = "right-password"
@@ -74,7 +74,7 @@ def fake_thumb(monkeypatch):
     def _fake(video_path, thumb_path):
         thumb_path.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
 
-    monkeypatch.setattr(proof_service, "_generate_thumbnail", _fake)
+    monkeypatch.setattr(video_proof, "_generate_thumbnail", _fake)
 
 
 @pytest.fixture

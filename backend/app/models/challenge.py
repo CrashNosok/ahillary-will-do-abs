@@ -1,4 +1,4 @@
-"""Челлендж (M6·B30) и участие в нём (M6·B31).
+"""Челлендж (M6·B30), участие в нём (M6·B31) и видео-пруф участия (M6·B32).
 
 Challenge — задание/вызов по виду спорта, который заводят пользователи: привязан
 к дисциплине через FK sport_id и к автору через FK creator_user_id (оба NOT NULL,
@@ -7,13 +7,20 @@ Challenge — задание/вызов по виду спорта, которы
 
 ChallengeParticipant — связка «пользователь ↔ челлендж»: кто в каком вызове участвует
 и в каком он статусе. unique (challenge_id, user_id): один пользователь участвует в
-челлендже не более одного раза. Роутера/UI у обеих моделей пока нет (только модель).
+челлендже не более одного раза.
+
+ChallengeProof — видео-пруф участия (клон achievement_proof по participant_id): FK на
+challenge_participant.id; в БД только пути к видео и превью на диске + uploaded_at и
+notes. Роутера/UI у моделей пока нет (только модель + сервис).
 """
 
+import datetime as dt
 from enum import StrEnum
 
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
+
+from app.models._time import utcnow
 
 
 class Challenge(SQLModel, table=True):
@@ -46,3 +53,14 @@ class ChallengeParticipant(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id", index=True)
     # Статус участия (см. ChallengeParticipantStatus); по умолчанию — active.
     status: str = Field(default=ChallengeParticipantStatus.active, index=True)
+
+
+class ChallengeProof(SQLModel, table=True):
+    __tablename__ = "challenge_proof"
+
+    id: int | None = Field(default=None, primary_key=True)
+    participant_id: int = Field(foreign_key="challenge_participant.id", index=True)
+    video_path: str | None = None  # путь к видео на диске (файл вне БД)
+    thumbnail_path: str | None = None  # путь к превью на диске
+    uploaded_at: dt.datetime = Field(default_factory=utcnow)
+    notes: str | None = None
