@@ -44,25 +44,6 @@ export function liquidGradient(activeKeys: readonly string[], mystery: boolean):
  *  Частичные дни (1/3, 2/3) остаются раздельными категориями (liquidGradient в порядке внесения). */
 export const DAY_FULL_FILL = 'linear-gradient(0deg, oklch(84% 0.18 160), oklch(62% 0.21 322))';
 
-/** Полная неделя (3/3): красный (Вес) занимает ~85% высоты, верхние ~15% уходят в фиолетовый
- *  (Замеры) — не 50/50, доминирует красный. На весь квадрат. */
-export const WEEK_FULL_FILL =
-  'linear-gradient(0deg, oklch(60% 0.23 356) 0%, oklch(73% 0.23 350) 55%, oklch(79% 0.18 348) 85%, oklch(60% 0.18 290) 100%)';
-
-/** Частичная неделя (1/3, 2/3): по одному тону на категорию (keyColor) ЧЁТКИМИ полосами по
- *  трети высоты — резкая граница между категориями (а не плавное смешение спектров). */
-export function weekPartialFill(activeKeys: readonly string[]): string {
-  if (activeKeys.length === 0) return 'transparent';
-  const band = 100 / 3; // каждая категория — треть стакана; граница резкая
-  const stops = activeKeys
-    .map((k, i) => {
-      const c = keyColor(k);
-      return `${c} ${(i * band).toFixed(2)}%, ${c} ${((i + 1) * band).toFixed(2)}%`;
-    })
-    .join(', ');
-  return `linear-gradient(0deg, ${stops})`;
-}
-
 /** Цвет свечения вокруг полной жидкости/медали. */
 export function glowColor(mystery: boolean): string {
   return mystery ? 'oklch(72% 0.26 345)' : 'oklch(84% 0.16 150)';
