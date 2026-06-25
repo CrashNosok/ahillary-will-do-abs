@@ -7,18 +7,9 @@ import type { DayFlags } from '../../lib/api';
 import { WEEKLY } from '../../lib/weekly';
 import { glowColor } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
+import { Sparks } from './Sparks';
 
 type WeeklyFlags = Pick<DayFlags, 'has_weight' | 'has_body' | 'has_photo'>;
-
-// Искры полной недели (все 3 категории) — вспыхивают и разлетаются.
-const SPARKS = [
-  { x: 24, y: 30, dx: -11, dy: -12, dur: 1300, delay: 0 },
-  { x: 62, y: 24, dx: 12, dy: -8, dur: 1100, delay: 240 },
-  { x: 44, y: 50, dx: 3, dy: 14, dur: 1500, delay: 480 },
-  { x: 76, y: 46, dx: 13, dy: 6, dur: 1150, delay: 140 },
-  { x: 30, y: 68, dx: -12, dy: 10, dur: 1450, delay: 660 },
-  { x: 60, y: 70, dx: 9, dy: 12, dur: 1250, delay: 360 },
-];
 
 export function WeeklyCell({
   weeklyFlags,
@@ -86,26 +77,7 @@ export function WeeklyCell({
         })}
       </span>
 
-      {isFull && (
-        <span className="sparkles" aria-hidden="true">
-          {SPARKS.map((s, i) => (
-            <span
-              key={i}
-              className="sparkle"
-              style={
-                {
-                  left: `${s.x}%`,
-                  top: `${s.y}%`,
-                  '--dx': `${s.dx}px`,
-                  '--dy': `${s.dy}px`,
-                  '--dur': `${s.dur}ms`,
-                  '--delay': `${s.delay}ms`,
-                } as React.CSSProperties
-              }
-            />
-          ))}
-        </span>
-      )}
+      {isFull && <Sparks count={6} spread={13} baseDur={1300} />}
     </div>
   );
 }

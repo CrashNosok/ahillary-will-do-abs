@@ -3,6 +3,8 @@
  *  КРУТИТСЯ в 3D: лицо — бейдж, оборот — «за что» (диапазон + %). Клик по медали и кнопка
  *  «Получить отчёт» под ней открывают отчёт недели. */
 
+import { Sparks } from './Sparks';
+
 const HEX = 'M28 6 L72 6 L96 50 L72 94 L28 94 L4 50 Z';
 
 type Design = { from: string; to: string; mid?: string; ring: string; glyph: string };
@@ -58,18 +60,6 @@ const MEDALS: Design[] = [
 ];
 
 const tierOf = (overall: number) => (overall <= 0 ? -1 : Math.min(9, Math.floor(overall * 10)));
-
-// Искры вокруг топовых медалей — разлетаются наружу.
-const SPARKS = [
-  { x: 50, y: 0 },
-  { x: 90, y: 18 },
-  { x: 100, y: 50 },
-  { x: 88, y: 84 },
-  { x: 52, y: 100 },
-  { x: 12, y: 84 },
-  { x: 0, y: 50 },
-  { x: 14, y: 16 },
-];
 
 function MedalFront({ d, gid }: { d: Design; gid: string }) {
   return (
@@ -189,30 +179,7 @@ export function WeekMedal({
             <MedalBack short={short} pct={pct} perfect={overall >= 1} />
           </span>
         </span>
-        {spin && tier >= 7 && (
-          <span className="sparkles" aria-hidden="true">
-            {SPARKS.map((s, i) => {
-              const dx = ((s.x - 50) / 50) * 18;
-              const dy = ((s.y - 50) / 50) * 18;
-              return (
-                <span
-                  key={i}
-                  className="sparkle"
-                  style={
-                    {
-                      left: `${s.x}%`,
-                      top: `${s.y}%`,
-                      '--dx': `${dx}px`,
-                      '--dy': `${dy}px`,
-                      '--dur': `${1000 + ((i * 137) % 700)}ms`,
-                      '--delay': `${(i * 173) % 900}ms`,
-                    } as React.CSSProperties
-                  }
-                />
-              );
-            })}
-          </span>
-        )}
+        {spin && tier >= 7 && <Sparks count={8} spread={18} baseDur={1000} size={6} />}
       </button>
 
       {!locked && (

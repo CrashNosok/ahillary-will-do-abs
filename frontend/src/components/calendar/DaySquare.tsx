@@ -8,21 +8,10 @@ import type { DayFlags } from '../../lib/api';
 import { DAILY } from '../../lib/weekly';
 import { glowColor } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
+import { Sparks } from './Sparks';
 
 const dayLabelFmt = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' });
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
-// Искры полного дня: позиция + вектор разлёта (dx/dy, px) + своя длительность/задержка → хаос.
-const DAY_SPARKS = [
-  { x: 22, y: 28, dx: -11, dy: -13, dur: 1300, delay: 0 },
-  { x: 60, y: 22, dx: 13, dy: -9, dur: 1050, delay: 220 },
-  { x: 42, y: 48, dx: 4, dy: 15, dur: 1550, delay: 470 },
-  { x: 78, y: 44, dx: 14, dy: 5, dur: 1150, delay: 130 },
-  { x: 30, y: 66, dx: -13, dy: 11, dur: 1450, delay: 690 },
-  { x: 64, y: 70, dx: 9, dy: 13, dur: 1250, delay: 350 },
-  { x: 50, y: 34, dx: 2, dy: -15, dur: 1650, delay: 560 },
-  { x: 16, y: 50, dx: -15, dy: 1, dur: 1100, delay: 300 },
-];
 
 export function DaySquare({
   day,
@@ -104,26 +93,7 @@ export function DaySquare({
         })}
       </span>
 
-      {isComplete && (
-        <span className="sparkles" aria-hidden="true">
-          {DAY_SPARKS.map((s, i) => (
-            <span
-              key={i}
-              className="sparkle"
-              style={
-                {
-                  left: `${s.x}%`,
-                  top: `${s.y}%`,
-                  '--dx': `${s.dx}px`,
-                  '--dy': `${s.dy}px`,
-                  '--dur': `${s.dur}ms`,
-                  '--delay': `${s.delay}ms`,
-                } as React.CSSProperties
-              }
-            />
-          ))}
-        </span>
-      )}
+      {isComplete && <Sparks count={8} spread={14} baseDur={1300} />}
     </div>
   );
 }
