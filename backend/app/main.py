@@ -30,6 +30,7 @@ from app.api import (
 from app.core.config import CORS_ORIGINS
 from app.core.db import init_db
 from app.core.seed import (
+    seed_initial_base_challenge,
     seed_initial_sport_levels,
     seed_initial_sports,
     seed_initial_user,
@@ -38,12 +39,14 @@ from app.core.seed import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # На старте: каталоги data/ и таблицы БД (data/app.db), затем сид юзера, каталога спортов
-    # и лестниц уровней дисциплин (уровни идут после спортов — им нужны их id).
+    # На старте: каталоги data/ и таблицы БД (data/app.db), затем сид юзера, каталога спортов,
+    # лестниц уровней дисциплин (уровни идут после спортов — им нужны их id) и базового
+    # челленджа WIPEOUTS (ему нужны и юзер-автор, и action-дисциплина).
     init_db()
     seed_initial_user()
     seed_initial_sports()
     seed_initial_sport_levels()
+    seed_initial_base_challenge()
     yield
 
 

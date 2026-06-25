@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.db import engine
 from app.core.security import hash_password
+from app.models.challenge import Challenge
 from app.models.sport import Sport, SportCategory, SportLevel
 from app.models.user import User
 
@@ -63,6 +64,18 @@ BASE_SPORT_LEVELS: dict[str, tuple[tuple[str, str], ...]] = {
         ("pro", "Профи"),
     ),
 }
+
+
+# Базовый челлендж (M7·B39): встроенный вызов WIPEOUTS для категории action. У challenge
+# обязательны sport_id и creator_user_id, поэтому привязываем его к первой глобальной
+# action-дисциплине (фильтр is_global отсекает тест-данные) и к сид-юзеру как автору.
+# is_base=True отделяет встроенный челлендж от пользовательских — UI рисует ему бейдж
+# WIPEOUT и акцентную рамку на странице «Челленджи».
+BASE_CHALLENGE_TITLE = "WIPEOUTS"
+BASE_CHALLENGE_DESCRIPTION = (
+    "Серия заездов на грани контроля: держись на доске и не лови вайпаут. "
+    "Упал — это вайпаут, отсчёт начинается заново."
+)
 
 
 def seed_user(session: Session) -> User | None:
@@ -124,6 +137,42 @@ def seed_sport_levels(session: Session) -> int:
     return added
 
 
+def seed_base_challenge(session: Session) -> Challenge | None:
+    """Сидит базовый челлендж WIPEOUTS (is_base=True) для категории action, идемпотентно.
+
+    Единственность держится в сервисе — у challenge нет уникального индекса, поэтому
+    повтор пропускаем, если базовый челлендж с этим заголовком уже есть. Требует сид-юзера
+    (creator_user_id) и хотя бы одну глобальную action-дисциплину (sport_id); если чего-то
+    нет — возвращаем None и ничего не пишем. Возвращает новый Challenge либо None.
+    """
+    existing = session.exec(
+        select(Challenge).where(
+            Challenge.title == BASE_CHALLENGE_TITLE, Challenge.is_base.is_(True)
+        )
+    ).first()
+    if existing is not None:
+        return None
+    creator = session.exec(select(User).order_by(User.id)).first()
+    sport = session.exec(
+        select(Sport)
+        .where(Sport.is_global.is_(True), Sport.category == SportCategory.action)
+        .order_by(Sport.id)
+    ).first()
+    if creator is None or sport is None:
+        return None
+    challenge = Challenge(
+        sport_id=sport.id,
+        creator_user_id=creator.id,
+        title=BASE_CHALLENGE_TITLE,
+        description=BASE_CHALLENGE_DESCRIPTION,
+        is_base=True,
+    )
+    session.add(challenge)
+    session.commit()
+    session.refresh(challenge)
+    return challenge
+
+
 def seed_initial_user() -> None:
     """Точка вызова на старте: открывает сессию и сидит пользователя при необходимости."""
     with Session(engine) as session:
@@ -140,3 +189,9 @@ def seed_initial_sport_levels() -> None:
     """Точка вызова на старте: открывает сессию и сидит лестницы уровней дисциплин."""
     with Session(engine) as session:
         seed_sport_levels(session)
+
+
+def seed_initial_base_challenge() -> None:
+    """Точка вызова на старте: открывает сессию и сидит базовый челлендж WIPEOUTS."""
+    with Session(engine) as session:
+        seed_base_challenge(session)
