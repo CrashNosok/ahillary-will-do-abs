@@ -10,11 +10,14 @@ import {
   type Sport,
   type SportCategory,
   type SportInput,
+  type UserSport,
+  type UserSportLink,
 } from './api';
 
 const SPORTS_KEY = ['sports'] as const;
 const EXERCISES_KEY = ['exercises'] as const;
 const SPORT_CATEGORIES_KEY = ['sport-categories'] as const;
+const MY_SPORTS_KEY = ['me', 'sports'] as const;
 
 /** Каталог дисциплин; category фильтрует через ?category= (M1·B15). Ключ включает категорию,
  *  чтобы кэш не смешивал выборки; инвалидация по префиксу ['sports'] обновляет все варианты. */
@@ -51,5 +54,28 @@ export function useCreateExercise() {
   return useMutation({
     mutationFn: (input: ExerciseInput) => api.createExercise(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: EXERCISES_KEY }),
+  });
+}
+
+/** Дисциплины текущего пользователя (M2·B19): личные привязки из /me/sports. */
+export function useMySports() {
+  return useQuery<UserSport[]>({ queryKey: MY_SPORTS_KEY, queryFn: api.listMySports });
+}
+
+/** Привязать дисциплину к себе; успех инвалидирует список моих дисциплин. */
+export function useLinkSport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UserSportLink) => api.linkSport(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: MY_SPORTS_KEY }),
+  });
+}
+
+/** Отвязать дисциплину; успех инвалидирует список моих дисциплин. */
+export function useUnlinkSport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sportId: number) => api.unlinkSport(sportId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: MY_SPORTS_KEY }),
   });
 }

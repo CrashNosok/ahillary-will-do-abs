@@ -112,6 +112,26 @@ export type SportInput = {
   description: string | null;
 };
 
+/** Дисциплина пользователя (M2·B19): связка user_sport + данные каталога вида спорта.
+ *  current_level_id/rating — личные атрибуты (уровень/рейтинг); таблицы уровней пока нет,
+ *  поэтому current_level_id — просто int без FK. joined_at — когда привязал дисциплину. */
+export type UserSport = {
+  sport_id: number;
+  name: string;
+  category: SportCategory;
+  description: string | null;
+  current_level_id: number | null;
+  rating: number | null;
+  joined_at: string; // ISO datetime
+};
+
+/** Тело привязки дисциплины к себе: какой вид спорта (+ опц. уровень и рейтинг). */
+export type UserSportLink = {
+  sport_id: number;
+  current_level_id?: number | null;
+  rating?: number | null;
+};
+
 /** Упражнение библиотеки (S3.2): принадлежит виду спорта (sport_id). */
 export type Exercise = {
   id: number;
@@ -249,6 +269,7 @@ export type SimpleWorkout = {
   duration_min: number | null;
   rpe: number | null;
   notes: string | null;
+  surpassed_self: boolean; // «превзошёл себя» (M2·B16/B17): отмечен ли личный рекорд в сессии
   created_at: string;
   media: SimpleWorkoutMedia[];
 };
@@ -688,6 +709,13 @@ export const api = {
   // Ачивки вида спорта (S5.2): набор достижений со статусами (locked/in_progress/unlocked).
   listAchievements: (sportId: number) => request<Achievement[]>(`/sports/${sportId}/achievements`),
 
+  // Мои дисциплины (M2·B19): личные привязки видов спорта, скоуп по сессии.
+  // link → 404 (нет sport) / 409 (уже привязана); unlink → 404 (связки нет), иначе 204.
+  listMySports: () => request<UserSport[]>('/me/sports'),
+  linkSport: (input: UserSportLink) =>
+    request<UserSport>('/me/sports', { method: 'POST', body: JSON.stringify(input) }),
+  unlinkSport: (sportId: number) => request<void>(`/me/sports/${sportId}`, { method: 'DELETE' }),
+
   // Видео-пруф ачивки (S5.4): загрузка видео (multipart) → запись пруфа + превью.
   uploadAchievementProof: (achievementId: number, file: File) =>
     upload<AchievementProof>(`/achievements/${achievementId}/proofs`, file),
@@ -724,6 +752,10 @@ export const api = {
     for (const file of input.files) form.append('files', file);
     return postForm<SimpleWorkout>('/workouts/simple', form);
   },
+
+  // Медиа дня (M2·B18): id+type всех медиа тренировок владельца за день; байты — workoutMediaUrl(id).
+  listDayWorkoutMedia: (date: string) =>
+    request<SimpleWorkoutMedia[]>(`/workouts/media?date=${date}`),
 
   // Дашборд-хитмап: флаги данных по дням месяца (start/end — ISO YYYY-MM-DD).
   getDashboard: (start: string, end: string) =>
