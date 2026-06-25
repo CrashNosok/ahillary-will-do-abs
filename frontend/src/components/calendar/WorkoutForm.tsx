@@ -5,7 +5,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, type WorkoutKind } from '../../lib/api';
+import { api, SPORT_CATEGORIES, type SportCategory, type WorkoutKind } from '../../lib/api';
+import { useMySports } from '../../lib/sports';
 import { inputCls, SaveButton, errText } from './formKit';
 
 const KINDS: { id: WorkoutKind; label: string }[] = [
@@ -69,6 +70,7 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   const navigate = useNavigate();
 
   const [kind, setKind] = useState<WorkoutKind>('strength');
+  const [category, setCategory] = useState<SportCategory | null>(null);
   const [duration, setDuration] = useState('');
   const [rpe, setRpe] = useState<number | null>(null);
   const [note, setNote] = useState('');
@@ -83,17 +85,33 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
       files.map((f) => ({
         file: f,
         url: URL.createObjectURL(f),
-        isVideo: f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|hevc)$/i.test(f.name),
+        isVideo:
+          f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv|3gp|hevc)$/i.test(f.name),
       })),
     [files],
   );
   useEffect(() => () => previews.forEach((p) => URL.revokeObjectURL(p.url)), [previews]);
+
+  // Категории — только у привязанных дисциплин (M2·F6). Берём из /me/sports, оставляем уникальные
+  // и упорядочиваем по канону SPORT_CATEGORIES (стабильный порядок чипов, без дублей).
+  const { data: mySports, isPending: sportsPending } = useMySports();
+  const myCategories = useMemo(() => {
+    const have = new Set((mySports ?? []).map((s) => s.category));
+    return SPORT_CATEGORIES.filter((c) => have.has(c.value));
+  }, [mySports]);
+  // Выбранная категория тегирует тренировку видом спорта: первой привязанной дисциплиной этой
+  // категории. ponytail: берём первую — для личного трекера обычно одна дисциплина на категорию;
+  // если их несколько, точечный выбор вида спорта — это «Расширенный ввод».
+  const sportId = category
+    ? ((mySports ?? []).find((s) => s.category === category)?.sport_id ?? null)
+    : null;
 
   const save = useMutation({
     mutationFn: () =>
       api.createSimpleWorkout({
         date,
         kind,
+        sportId,
         durationMin: duration.trim() ? Number(duration) : null,
         rpe,
         note: note.trim() || null,
@@ -154,6 +172,54 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Категория — только дисциплины, привязанные к себе (M2·F6). Нет привязок → подсказка
+          увести в каталог; привязки есть → чипы их категорий (необязательный выбор-тоггл). */}
+      <div className="flex flex-col gap-1">
+        <span className="text-xs text-muted">Категория (необязательно)</span>
+        {sportsPending ? (
+          <span className="text-xs text-muted">Загрузка…</span>
+        ) : myCategories.length === 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted">
+              Привяжите вид спорта, чтобы выбрать категорию.
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate('/data-entry?tab=sports')}
+              className="rounded-full border border-line px-3 py-1 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-accent/60"
+            >
+              Виды спорта →
+            </button>
+          </div>
+        ) : (
+          <div
+            role="radiogroup"
+            aria-label="Категория дисциплины"
+            className="flex flex-wrap gap-1.5"
+          >
+            {myCategories.map((c) => (
+              <button
+                key={c.value}
+                type="button"
+                role="radio"
+                aria-checked={c.value === category}
+                onClick={() => {
+                  setCategory((p) => (p === c.value ? null : c.value));
+                  reset();
+                }}
+                className={`${chip} ${
+                  c.value === category
+                    ? 'bg-accent text-accent-ink'
+                    : 'border border-line text-muted hover:border-accent/50 hover:text-fg'
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <label className="flex max-w-[10rem] flex-col gap-1">

@@ -275,10 +275,12 @@ export type SimpleWorkout = {
 };
 
 /** Ввод минимального лога: тип, длительность, усилие, заметка и медиа (фото/видео).
- *  Длительность опциональна — для видео рекорда/трюка минуты не нужны. */
+ *  Длительность опциональна — для видео рекорда/трюка минуты не нужны.
+ *  sportId — опц. привязка к виду спорта (M2·F6): фронт ставит его из выбранной категории. */
 export type SimpleWorkoutInput = {
   date: string;
   kind: WorkoutKind;
+  sportId: number | null;
   durationMin: number | null;
   rpe: number | null;
   note: string | null;
@@ -746,6 +748,7 @@ export const api = {
     const form = new FormData();
     form.append('date', input.date);
     form.append('kind', input.kind);
+    if (input.sportId != null) form.append('sport_id', String(input.sportId));
     if (input.durationMin != null) form.append('duration_min', String(input.durationMin));
     if (input.rpe != null) form.append('rpe', String(input.rpe));
     if (input.note) form.append('note', input.note);
