@@ -22,7 +22,7 @@ function fmtDuration(totalSec: number): string {
 export default function CardioLoggerForm({ initialDate }: { initialDate?: string }) {
   const { data: sports } = useSports();
   const cardioSports = useMemo<Sport[]>(
-    () => (sports ?? []).filter((s) => s.type === 'cardio'),
+    () => (sports ?? []).filter((s) => s.category === 'endurance'),
     [sports],
   );
 

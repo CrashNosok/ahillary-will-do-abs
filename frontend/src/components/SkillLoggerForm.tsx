@@ -66,8 +66,11 @@ export default function SkillLoggerForm({ initialDate }: { initialDate?: string 
   const [rows, setRows] = useState<EntryRow[]>([emptyRow()]);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Только навыковые виды спорта — кардио/силовая тут не логируются.
-  const skillSports = useMemo(() => (sports ?? []).filter((s) => s.type === 'skill'), [sports]);
+  // Только дисциплины категории «Экстрим» (action) — кардио/силовая тут не логируются.
+  const skillSports = useMemo(
+    () => (sports ?? []).filter((s) => s.category === 'action'),
+    [sports],
+  );
 
   // Упражнения выбранного вида спорта — варианты для строк элементов.
   const sportExercises = useMemo<Exercise[]>(

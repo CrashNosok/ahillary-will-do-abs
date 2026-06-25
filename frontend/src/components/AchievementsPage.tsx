@@ -5,6 +5,7 @@
 import {
   achievementThumbnailUrl,
   ApiError,
+  sportCategoryLabel,
   type Achievement,
   type AchievementStatus,
   type AchievementTier,
@@ -26,12 +27,6 @@ const TIER_LABEL: Record<AchievementTier, string> = {
   intermediate: 'Средний',
   advanced: 'Продвинутый',
   elite: 'Элита',
-};
-
-const SPORT_TYPE_LABEL: Record<Sport['type'], string> = {
-  strength: 'Силовая',
-  cardio: 'Кардио',
-  skill: 'Навык',
 };
 
 // Статус → ярлык + классы чипа/точки. Закрытая — намеренно тусклая и серая.
@@ -117,7 +112,7 @@ function SportAchievements({ sport, achievements }: { sport: Sport; achievements
           {sport.name}
         </h2>
         <span className="rounded-full bg-accent px-3 py-1 text-sm font-medium text-accent-ink">
-          {SPORT_TYPE_LABEL[sport.type]}
+          {sportCategoryLabel(sport.category)}
         </span>
         {achievements.length > 0 && (
           <span className="ml-auto text-sm font-medium text-muted">

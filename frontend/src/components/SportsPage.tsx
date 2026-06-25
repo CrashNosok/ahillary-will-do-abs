@@ -3,18 +3,15 @@
  *  Бэкенд — CRUD из S3.1 (виды спорта) и S3.2 (упражнения). */
 
 import { useMemo, useState, type FormEvent } from 'react';
-import { ApiError, type Exercise, type Sport, type SportType } from '../lib/api';
+import {
+  ApiError,
+  SPORT_CATEGORIES,
+  sportCategoryLabel,
+  type Exercise,
+  type Sport,
+  type SportCategory,
+} from '../lib/api';
 import { useCreateExercise, useCreateSport, useExercises, useSports } from '../lib/sports';
-
-// Три поддерживаемых типа дисциплины (S3.1). value уходит на бэкенд, label — в UI.
-const SPORT_TYPES: { value: SportType; label: string }[] = [
-  { value: 'strength', label: 'Силовая' },
-  { value: 'cardio', label: 'Кардио' },
-  { value: 'skill', label: 'Навык' },
-];
-
-const typeLabel = (type: SportType): string =>
-  SPORT_TYPES.find((t) => t.value === type)?.label ?? type;
 
 const inputCls =
   'rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent';
@@ -81,7 +78,7 @@ export default function SportsPage() {
 function CreateSportForm() {
   const create = useCreateSport();
   const [name, setName] = useState('');
-  const [type, setType] = useState<SportType>('strength');
+  const [category, setCategory] = useState<SportCategory>('strength');
   const [description, setDescription] = useState('');
 
   function onSubmit(event: FormEvent) {
@@ -89,11 +86,11 @@ function CreateSportForm() {
     const trimmed = name.trim();
     if (!trimmed) return;
     create.mutate(
-      { name: trimmed, type, description: description.trim() || null },
+      { name: trimmed, category, description: description.trim() || null },
       {
         onSuccess: () => {
           setName('');
-          setType('strength');
+          setCategory('strength');
           setDescription('');
         },
       },
@@ -124,16 +121,16 @@ function CreateSportForm() {
       </label>
 
       <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-muted">Тип</span>
+        <span className="text-sm font-medium text-muted">Категория</span>
         <select
-          name="type"
-          value={type}
-          onChange={(e) => setType(e.target.value as SportType)}
+          name="category"
+          value={category}
+          onChange={(e) => setCategory(e.target.value as SportCategory)}
           className={`${inputCls} [color-scheme:dark]`}
         >
-          {SPORT_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
+          {SPORT_CATEGORIES.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
             </option>
           ))}
         </select>
@@ -174,7 +171,7 @@ function SportCard({ sport, exercises }: { sport: Sport; exercises: Exercise[] }
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="font-display text-xl font-semibold tracking-tight">{sport.name}</h3>
         <span className="rounded-full bg-accent px-3 py-1 text-sm font-medium text-accent-ink">
-          {typeLabel(sport.type)}
+          {sportCategoryLabel(sport.category)}
         </span>
       </div>
 

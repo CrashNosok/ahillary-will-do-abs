@@ -84,7 +84,7 @@ export default function StrengthLoggerForm({ initialDate }: { initialDate?: stri
   useEffect(() => {
     if (sportId || !sports || !exercises) return;
     const hasEx = (id: number) => exercises.some((ex) => ex.sport_id === id);
-    const strength = sports.find((s) => s.type === 'strength' && hasEx(s.id));
+    const strength = sports.find((s) => s.category === 'strength' && hasEx(s.id));
     const anyWithEx = sports.find((s) => hasEx(s.id));
     const pick = strength ?? anyWithEx ?? sports[0];
     if (pick) setSportId(String(pick.id));

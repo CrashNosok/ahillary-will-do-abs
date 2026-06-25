@@ -59,21 +59,48 @@ export type User = {
   is_active: boolean;
 };
 
-/** Тип дисциплины (S3.1): силовая / кардио / навыковая. */
-export type SportType = 'strength' | 'cardio' | 'skill';
+/** Категория дисциплины (S3.1, таксономия M1·B14): сменила тройку strength/cardio/skill. */
+export type SportCategory =
+  | 'strength'
+  | 'endurance'
+  | 'combat'
+  | 'team'
+  | 'racket'
+  | 'action'
+  | 'precision'
+  | 'artistic'
+  | 'other';
 
-/** Вид спорта (S3.1): дисциплина с типом. name уникален (повтор → 409). */
+/** Категории дисциплины с русскими ярлыками (S3.3) — единый источник для форм и бейджей.
+ *  value уходит на бэкенд (== SportCategory), label рисуется в UI. */
+export const SPORT_CATEGORIES: { value: SportCategory; label: string }[] = [
+  { value: 'strength', label: 'Силовая' },
+  { value: 'endurance', label: 'Выносливость' },
+  { value: 'combat', label: 'Единоборства' },
+  { value: 'team', label: 'Командный' },
+  { value: 'racket', label: 'Ракеточный' },
+  { value: 'action', label: 'Экстрим' },
+  { value: 'precision', label: 'Точность' },
+  { value: 'artistic', label: 'Артистическая' },
+  { value: 'other', label: 'Другое' },
+];
+
+/** Русский ярлык категории дисциплины; неизвестное значение возвращаем как есть. */
+export const sportCategoryLabel = (category: SportCategory): string =>
+  SPORT_CATEGORIES.find((c) => c.value === category)?.label ?? category;
+
+/** Вид спорта (S3.1): дисциплина с категорией. name уникален (повтор → 409). */
 export type Sport = {
   id: number;
   name: string;
-  type: SportType;
+  category: SportCategory;
   description: string | null;
 };
 
 /** Поля формы создания вида спорта (S3.3). */
 export type SportInput = {
   name: string;
-  type: SportType;
+  category: SportCategory;
   description: string | null;
 };
 
