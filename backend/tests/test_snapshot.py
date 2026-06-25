@@ -182,7 +182,7 @@ def test_empty_db_builds_full_resilient_snapshot(ctx):
     """Пустая БД: снапшот собирается целиком, пустые секции — null/пусто/0."""
     _, engine = ctx
     with Session(engine) as s:
-        snap = snapshot_service.build_snapshot(s, end=TODAY)
+        snap = snapshot_service.build_snapshot(s, user_id=1, end=TODAY)
 
     assert set(snap) == {
         "generated_at",
@@ -227,7 +227,7 @@ def test_full_snapshot_has_all_signals(ctx):
     _, engine = ctx
     _seed_full(engine)
     with Session(engine) as s:
-        snap = snapshot_service.build_snapshot(s, end=TODAY)
+        snap = snapshot_service.build_snapshot(s, user_id=1, end=TODAY)
 
     # Цель + прогресс по трём метрикам.
     goal = snap["goal"]
@@ -294,7 +294,7 @@ def test_goal_without_measurements_is_resilient(ctx):
     with Session(engine) as s:
         s.add(SmartGoal(user_id=1, target_weight_kg=75.0, status="active"))
         s.commit()
-        snap = snapshot_service.build_snapshot(s, end=TODAY)
+        snap = snapshot_service.build_snapshot(s, user_id=1, end=TODAY)
     metric = snap["goal"]["progress"][0]
     assert metric["metric"] == "weight_kg"
     assert metric["current"] is None
