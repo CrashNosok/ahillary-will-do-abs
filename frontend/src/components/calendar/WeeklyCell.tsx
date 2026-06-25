@@ -10,7 +10,7 @@
 
 import type { DayFlags } from '../../lib/api';
 import { WEEKLY } from '../../lib/weekly';
-import { glowColor, liquidGradient, measureGlow } from '../../lib/liquid';
+import { glowColor, measureGlow, WEEK_FULL_FILL, weekPartialFill } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -72,10 +72,9 @@ export function WeeklyCell({
         <LiquidFill
           level={level}
           activeKeys={activeKeys}
-          // Полная неделя (3/3) — однородный «розовый» как у 2/3 Вес+Замеры (неделя 1-7), на весь
-          // квадрат; Фото (золото) в заливку не добавляем, чтобы цвет совпадал с 1-7. Частичная —
-          // послойно по категориям (как дни).
-          fillColor={isFull ? liquidGradient(['has_weight', 'has_body'], false) : undefined}
+          // Полная неделя (3/3) — красный доминирует (~85%), верх в фиолетовый, на весь квадрат.
+          // Частичная (1/3, 2/3) — категории чёткими полосами (резкая граница).
+          fillColor={isFull ? WEEK_FULL_FILL : weekPartialFill(activeKeys)}
         />
       )}
 
