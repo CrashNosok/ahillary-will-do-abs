@@ -537,6 +537,19 @@ export type DayFlags = {
   has_full_measurements: boolean;
 };
 
+/** Контракт M4·F14: `DayFlags` обязан нести три новых сигнала-флага (boolean,
+ *  семантический дефолт — false; рантайм-значения приходят с бэкенда /dashboard).
+ *  Это compile-time-замок: `tsc` падает здесь, если поле убрали, переименовали
+ *  или сменили его тип — дешёвый регресс-гард без рантайм-веса и без зависимостей. */
+export const DAYFLAGS_NEW_SIGNALS: Pick<
+  DayFlags,
+  'has_surpassed_self' | 'has_workout_media' | 'has_full_measurements'
+> = {
+  has_surpassed_self: false,
+  has_workout_media: false,
+  has_full_measurements: false,
+};
+
 /** Сводка энергобаланса за сегодня (S1.15). deficit = kcal_out − kcal_in. */
 export type TodaySummary = {
   date: string; // ISO YYYY-MM-DD
