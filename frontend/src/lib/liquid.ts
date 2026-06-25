@@ -39,13 +39,20 @@ export function liquidGradient(activeKeys: readonly string[], mystery: boolean):
   return `linear-gradient(0deg, ${stops})`;
 }
 
-/** Однородная заливка ПОЛНОЙ ячейки (3/3). Частичные (1/3, 2/3) остаются радужным смешением
- *  категорий (liquidGradient); при полном заполнении радугу заменяем одним красивым тоном —
- *  «однородность + искры». Неделя сохраняет свой рознично-аметистовый цвет (как при 2/3
- *  Вес+Замеры), день получает прохладный индиго→лазурь, который с ним сочетается (холодные
- *  самоцветные тона рядом). Лёгкий вертикальный 2-тон даёт глубину, оставаясь однородным. */
-export const WEEK_FULL_FILL = 'linear-gradient(0deg, oklch(59% 0.19 302), oklch(77% 0.21 345))';
-export const DAY_FULL_FILL = 'linear-gradient(0deg, oklch(54% 0.17 266), oklch(76% 0.14 232))';
+/** Заливка ПОЛНОЙ ячейки (3/3): красивый чистый градиент из 3 цветов — по одному
+ *  представительному тону на каждую активную категорию (вместо «радуги» из 9 тонов
+ *  liquidGradient, где у каждой категории свой 3-тоновый спектр). Получается тот же набор
+ *  цветов, что и раньше, но плавнее и наряднее; искры и свечение остаются. Частичные дни/недели
+ *  (1/3, 2/3) не трогаем — там по-прежнему liquidGradient. */
+export function fullGradient(activeKeys: readonly string[]): string {
+  const colors = activeKeys.map(keyColor);
+  if (colors.length === 0) return 'transparent';
+  if (colors.length === 1) return colors[0];
+  const stops = colors
+    .map((c, i) => `${c} ${Math.round((i / (colors.length - 1)) * 100)}%`)
+    .join(', ');
+  return `linear-gradient(0deg, ${stops})`;
+}
 
 /** Цвет свечения вокруг полной жидкости/медали. */
 export function glowColor(mystery: boolean): string {

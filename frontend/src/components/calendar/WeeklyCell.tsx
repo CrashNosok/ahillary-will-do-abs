@@ -10,7 +10,7 @@
 
 import type { DayFlags } from '../../lib/api';
 import { WEEKLY } from '../../lib/weekly';
-import { glowColor, measureGlow, WEEK_FULL_FILL } from '../../lib/liquid';
+import { fullGradient, glowColor, measureGlow } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -72,7 +72,7 @@ export function WeeklyCell({
         <LiquidFill
           level={level}
           activeKeys={activeKeys}
-          fillColor={isFull ? WEEK_FULL_FILL : undefined}
+          fillColor={isFull ? fullGradient(activeKeys) : undefined}
         />
       )}
 
