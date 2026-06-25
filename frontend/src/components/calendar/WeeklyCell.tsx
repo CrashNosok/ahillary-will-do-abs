@@ -10,7 +10,7 @@
 
 import type { DayFlags } from '../../lib/api';
 import { WEEKLY } from '../../lib/weekly';
-import { glowColor, liquidGradient, measureGlow } from '../../lib/liquid';
+import { glowColor, measureGlow } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -68,16 +68,7 @@ export function WeeklyCell({
       } ${isCurrentWeek ? 'border-accent/70' : count > 0 ? 'border-line' : 'border-line/50'}`}
       style={boxShadow ? { boxShadow } : undefined}
     >
-      {count > 0 && (
-        <LiquidFill
-          level={level}
-          activeKeys={activeKeys}
-          // Полная неделя (3/3) — однородный «розовый» как у 2/3 Вес+Замеры (неделя 1-7), на весь
-          // квадрат; Фото (золото) в заливку не добавляем, чтобы цвет совпадал с 1-7. Частичная —
-          // послойно по категориям (как дни).
-          fillColor={isFull ? liquidGradient(['has_weight', 'has_body'], false) : undefined}
-        />
-      )}
+      {count > 0 && <LiquidFill level={level} activeKeys={activeKeys} />}
 
       <span className="pointer-events-none absolute top-0.5 left-1 z-10 text-[0.5rem] font-semibold uppercase tracking-wide text-muted sm:text-[0.55rem]">
         нед
