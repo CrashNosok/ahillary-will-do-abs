@@ -7,8 +7,9 @@
 
 import { type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ApiError, sportCategoryLabel } from '../lib/api';
+import { ApiError, type Sponsor, sportCategoryLabel } from '../lib/api';
 import { useMySports, useSport, useSportOverview } from '../lib/sports';
+import { useSponsors } from '../lib/sponsors';
 import LevelLadder from './LevelLadder';
 
 const eventDateFmt = new Intl.DateTimeFormat('ru-RU', {
@@ -47,6 +48,8 @@ export default function SportDetailPage() {
   // не привязана к пользователю (тогда лестница показывается без подсветки).
   const { data: mySports } = useMySports();
   const currentLevelId = mySports?.find((s) => s.sport_id === id)?.current_level_id ?? null;
+  // Полоса спонсоров (M6·F29) — глобальный каталог партнёров, общий для всех дисциплин.
+  const { data: sponsors, isPending: sponsorsPending, error: sponsorsError } = useSponsors();
 
   if (!Number.isFinite(id) || (error instanceof ApiError && error.status === 404)) {
     return <StateScreen message="Вид спорта не найден." />;
@@ -88,6 +91,10 @@ export default function SportDetailPage() {
           <p className="mt-3 leading-relaxed text-muted">{sport.long_description}</p>
         )}
       </div>
+
+      {/* Спонсоры (M6·F29): полоса партнёров проекта (глобальный каталог /sponsors, не привязан
+          к дисциплине). Read-only — карточки-пилюли с именем и внешней ссылкой при http(s) url. */}
+      <SponsorStrip sponsors={sponsors} isLoading={sponsorsPending} isError={!!sponsorsError} />
 
       {/* Достижения (M5·F23): счётчик ачивок дисциплины (скоуп пользователя) + deep-link на
           общий экран достижений. Read-only — генерация/разблокировка живут на /achievements. */}
@@ -237,5 +244,64 @@ function Section({
         <ul className="flex flex-col gap-3">{children}</ul>
       )}
     </div>
+  );
+}
+
+/** Полоса спонсоров (M6·F29): горизонтальный ряд пилюль-партнёров. Имя всегда; внешняя ссылка —
+ *  только при http(s) `url` (логотип не рендерим: файла на отдачу нет, был бы 404). Те же
+ *  состояния загрузки/ошибки/пусто, что и у секций дисциплины, чтобы не мигало «пусто». */
+function SponsorStrip({
+  sponsors,
+  isLoading,
+  isError,
+}: {
+  sponsors: Sponsor[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-6">
+      <h2 className="font-display text-xl font-semibold tracking-tight">Спонсоры</h2>
+      {isLoading ? (
+        <p className="text-muted">Загрузка…</p>
+      ) : isError ? (
+        <p className="text-muted">Не удалось загрузить.</p>
+      ) : !sponsors || sponsors.length === 0 ? (
+        <p className="text-muted">Спонсоров пока нет.</p>
+      ) : (
+        <ul className="flex flex-wrap gap-3">
+          {sponsors.map((s) => (
+            <li key={s.id}>{renderSponsorPill(s)}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+const sponsorPillCls =
+  'inline-flex items-center rounded-full border border-line bg-panel px-4 py-2 text-sm font-medium';
+
+/** Одна пилюля спонсора: ссылка при http(s) url, иначе статичный чип. description — в title. */
+function renderSponsorPill(s: Sponsor) {
+  const href = externalHref(s.url);
+  const title = s.description ?? undefined;
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        title={title}
+        className={`${sponsorPillCls} text-accent transition-all duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-0.5 hover:underline active:translate-y-0`}
+      >
+        {s.name} ↗
+      </a>
+    );
+  }
+  return (
+    <span title={title} className={sponsorPillCls}>
+      {s.name}
+    </span>
   );
 }

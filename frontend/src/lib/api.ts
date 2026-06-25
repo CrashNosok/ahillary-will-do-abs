@@ -782,6 +782,17 @@ export type ChallengeProof = {
   notes: string | null;
 };
 
+/** Спонсор/партнёр (M6·B29/F29): глобальный каталог партнёров проекта без привязки к спорту.
+ *  url/logo_path — необязательные. logo_path это путь к файлу на диске, а отдачи файла нет,
+ *  поэтому в UI показываем имя, а внешнюю ссылку — только при http(s) `url`. */
+export type Sponsor = {
+  id: number;
+  name: string;
+  description: string | null;
+  url: string | null;
+  logo_path: string | null;
+};
+
 /** URL превью последнего видео-пруфа ачивки (S5.6): картинка для карточки.
  *  Cache-bust (`v`) — чтобы после новой загрузки бралась свежая картинка, а не из кеша. */
 export const achievementThumbnailUrl = (achievementId: number, v?: string | number): string =>
@@ -856,6 +867,9 @@ export const api = {
     if (notes) form.append('notes', notes);
     return postForm<ChallengeProof>(`/challenges/${challengeId}/proofs`, form);
   },
+
+  // Спонсоры (M6·B29): глобальный каталог партнёров (бэкенд сортирует по имени) — read-only.
+  listSponsors: () => request<Sponsor[]>('/sponsors'),
 
   // Упражнения библиотеки (S3.2): без sport_id — все; иначе фильтр по виду спорта.
   listExercises: (sportId?: number) =>
