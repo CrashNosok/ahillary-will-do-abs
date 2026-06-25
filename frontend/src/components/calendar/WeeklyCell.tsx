@@ -10,7 +10,7 @@
 
 import type { DayFlags } from '../../lib/api';
 import { WEEKLY } from '../../lib/weekly';
-import { glowColor, measureGlow } from '../../lib/liquid';
+import { glowColor, keyColor, measureGlow } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -68,7 +68,17 @@ export function WeeklyCell({
       } ${isCurrentWeek ? 'border-accent/70' : count > 0 ? 'border-line' : 'border-line/50'}`}
       style={boxShadow ? { boxShadow } : undefined}
     >
-      {count > 0 && <LiquidFill level={level} activeKeys={activeKeys} />}
+      {count > 0 && (
+        <LiquidFill
+          level={level}
+          activeKeys={activeKeys}
+          // Полная неделя (3/3): плавный градиент по ОДНОМУ тону на категорию (как день 21), в
+          // порядке заполнения — а не 3-тоновые спектры (9 стопов «пестрят»). Частичная — как было.
+          fillColor={
+            isFull ? `linear-gradient(0deg, ${activeKeys.map(keyColor).join(', ')})` : undefined
+          }
+        />
+      )}
 
       <span className="pointer-events-none absolute top-0.5 left-1 z-10 text-[0.5rem] font-semibold uppercase tracking-wide text-muted sm:text-[0.55rem]">
         нед
