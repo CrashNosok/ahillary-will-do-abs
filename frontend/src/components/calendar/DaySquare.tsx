@@ -9,7 +9,7 @@
 
 import type { DayFlags } from '../../lib/api';
 import { DAILY } from '../../lib/weekly';
-import { DAY_FULL_FILL, fullGradient, glowColor, mediaRingShadow } from '../../lib/liquid';
+import { glowColor, mediaRingShadow } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -75,13 +75,7 @@ export function DaySquare({
       } ${isToday ? 'border-accent' : count > 0 ? 'border-line' : 'border-line/50'}`}
       style={boxShadow ? { boxShadow } : undefined}
     >
-      {count > 0 && (
-        <LiquidFill
-          level={level}
-          activeKeys={activeKeys}
-          fillColor={isComplete ? DAY_FULL_FILL : fullGradient(activeKeys)}
-        />
-      )}
+      {count > 0 && <LiquidFill level={level} activeKeys={activeKeys} />}
 
       {/* Медиа-glint: угловой бейдж 📷 для дня с медиа тренировки (DayFlags несёт только
           булев has_workout_media, без типа фото/видео — поэтому одна иконка). */}

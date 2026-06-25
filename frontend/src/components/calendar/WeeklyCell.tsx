@@ -10,7 +10,7 @@
 
 import type { DayFlags } from '../../lib/api';
 import { WEEKLY } from '../../lib/weekly';
-import { fullGradient, glowColor, measureGlow, WEEK_FULL_FILL } from '../../lib/liquid';
+import { glowColor, measureGlow } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -68,13 +68,7 @@ export function WeeklyCell({
       } ${isCurrentWeek ? 'border-accent/70' : count > 0 ? 'border-line' : 'border-line/50'}`}
       style={boxShadow ? { boxShadow } : undefined}
     >
-      {count > 0 && (
-        <LiquidFill
-          level={level}
-          activeKeys={activeKeys}
-          fillColor={isFull ? WEEK_FULL_FILL : fullGradient(activeKeys)}
-        />
-      )}
+      {count > 0 && <LiquidFill level={level} activeKeys={activeKeys} />}
 
       <span className="pointer-events-none absolute top-0.5 left-1 z-10 text-[0.5rem] font-semibold uppercase tracking-wide text-muted sm:text-[0.55rem]">
         нед
@@ -98,9 +92,10 @@ export function WeeklyCell({
         })}
       </span>
 
-      {/* Искры — ТОЛЬКО на полной неделе (3/3). Частичная (1/3, 2/3) остаётся раздельными цветами
-          без искр. Reduced-motion гасит все .sparkle глобально (см. index.css). */}
-      {isFull && <Sparks count={10} spread={16} baseDur={900} size={6} />}
+      {/* Полные замеры (Вес+Замеры) дают усиленный залп искр — больше/крупнее/быстрее базового.
+          isFull ⟹ hasMeasurements, поэтому отдельной «базовой» искры 3/3 без замеров не бывает:
+          залп один и всегда усиленный. Reduced-motion гасит все .sparkle глобально (см. index.css). */}
+      {hasMeasurements && <Sparks count={10} spread={16} baseDur={900} size={6} />}
     </div>
   );
 }
