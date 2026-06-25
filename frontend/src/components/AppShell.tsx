@@ -11,6 +11,7 @@ const NAV = [
   { to: '/data-entry', label: 'Ввод данных', end: false },
   { to: '/progress', label: 'Прогресс', end: false },
   { to: '/achievements', label: 'Достижения', end: false },
+  { to: '/challenges', label: 'Челленджи', end: false },
   { to: '/recommendations', label: 'Рекомендации', end: false },
   { to: '/coach-phrases', label: 'Фразы коуча', end: false },
   { to: '/settings', label: 'Настройки', end: false },

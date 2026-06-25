@@ -4,6 +4,7 @@ import AchievementsPage from './components/AchievementsPage';
 import ActivityImportPage from './components/ActivityImportPage';
 import AppShell from './components/AppShell';
 import BodyMeasurementsPage from './components/BodyMeasurementsPage';
+import ChallengesPage from './components/ChallengesPage';
 import CoachPhrasesPage from './components/CoachPhrasesPage';
 import Dashboard from './components/Dashboard';
 import DataEntryPage from './components/DataEntryPage';
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="sports" element={<SportsPage />} />
             <Route path="sports/:sportId" element={<SportDetailPage />} />
             <Route path="achievements" element={<AchievementsPage />} />
+            <Route path="challenges" element={<ChallengesPage />} />
             <Route path="coach-phrases" element={<CoachPhrasesPage />} />
             <Route path="workouts" element={<WorkoutLoggerPage />} />
             <Route path="recommendations" element={<RecommendationsPage />} />
