@@ -21,7 +21,7 @@ from app.models.activity import ActivityDay
 from app.models.body import BodyMeasurement, InbodyMeasurement, ProgressPhoto
 from app.models.nutrition import FoodEntry
 from app.models.user import User
-from app.models.workout import WorkoutSession
+from app.models.workout import WorkoutMedia, WorkoutSession
 from app.services import dashboard
 
 EMAIL = "dash@example.com"
@@ -126,6 +126,77 @@ def test_flags_isolated_per_day(session):
 def test_flags_reject_inverted_range(session):
     with pytest.raises(ValueError):
         dashboard.day_flags(dt.date(2026, 6, 3), dt.date(2026, 6, 1), session, user_id=1)
+
+
+# ── новые сигналы дня (M4·B20) ────────────────────────────────────────────
+
+
+def test_surpassed_self_flag_only_for_record_day(session):
+    rec, plain = dt.date(2026, 6, 5), dt.date(2026, 6, 6)
+    session.add(WorkoutSession(user_id=1, date=rec, title="PR", surpassed_self=True))
+    session.add(WorkoutSession(user_id=1, date=plain, title="обычная", surpassed_self=False))
+    session.commit()
+    days = {d.date: d for d in dashboard.day_flags(rec, plain, session, user_id=1)}
+    assert days[rec].has_surpassed_self is True
+    assert days[plain].has_surpassed_self is False
+
+
+def test_workout_media_flag_needs_attached_media(session):
+    with_media, without = dt.date(2026, 6, 7), dt.date(2026, 6, 8)
+    s1 = WorkoutSession(user_id=1, date=with_media, title="с медиа")
+    s2 = WorkoutSession(user_id=1, date=without, title="без медиа")
+    session.add(s1)
+    session.add(s2)
+    session.commit()
+    session.add(
+        WorkoutMedia(session_id=s1.id, media_path="data/uploads/workouts/x.jpg", media_type="image")
+    )
+    session.commit()
+    days = {d.date: d for d in dashboard.day_flags(with_media, without, session, user_id=1)}
+    assert days[with_media].has_workout_media is True
+    assert days[without].has_workout_media is False
+
+
+def test_full_measurements_needs_both_body_and_weight(session):
+    full, only_body, only_weight = (
+        dt.date(2026, 6, 9),
+        dt.date(2026, 6, 10),
+        dt.date(2026, 6, 11),
+    )
+    session.add(BodyMeasurement(date=full, waist_cm=80, user_id=1))
+    session.add(InbodyMeasurement(date=full, weight_kg=88, user_id=1))
+    session.add(BodyMeasurement(date=only_body, waist_cm=81, user_id=1))
+    session.add(InbodyMeasurement(date=only_weight, weight_kg=89, user_id=1))
+    session.commit()
+    days = {d.date: d for d in dashboard.day_flags(full, only_weight, session, user_id=1)}
+    assert days[full].has_full_measurements is True
+    assert days[only_body].has_full_measurements is False
+    assert days[only_weight].has_full_measurements is False
+
+
+def test_new_signals_scoped_by_user(session):
+    # Данные чужого пользователя (user_id=2) не должны попадать в флаги user_id=1.
+    day = dt.date(2026, 6, 12)
+    other = WorkoutSession(user_id=2, date=day, title="чужая PR", surpassed_self=True)
+    session.add(other)
+    session.add(BodyMeasurement(date=day, waist_cm=80, user_id=2))
+    session.add(InbodyMeasurement(date=day, weight_kg=88, user_id=2))
+    session.commit()
+    session.add(
+        WorkoutMedia(
+            session_id=other.id, media_path="data/uploads/workouts/y.jpg", media_type="image"
+        )
+    )
+    session.commit()
+    [d] = dashboard.day_flags(day, day, session, user_id=1)
+    assert d.has_surpassed_self is False
+    assert d.has_workout_media is False
+    assert d.has_full_measurements is False
+
+
+def test_new_signals_false_on_empty_db(session):
+    [d] = dashboard.day_flags(dt.date(2026, 6, 1), dt.date(2026, 6, 1), session, user_id=1)
+    assert not (d.has_surpassed_self or d.has_workout_media or d.has_full_measurements)
 
 
 # ── стрик ─────────────────────────────────────────────────────────────────
@@ -246,6 +317,8 @@ def test_dashboard_endpoint_returns_flags_and_streak(client):
     assert d["date"] == str(today)
     assert d["has_food"] and d["has_activity"]
     assert not d["has_training"] and not d["has_measurement"]
+    # M4·B20 — новые сигналы присутствуют в ответе и False на сид-дне без тренировок/замеров
+    assert not (d["has_surpassed_self"] or d["has_workout_media"] or d["has_full_measurements"])
 
 
 def test_dashboard_endpoint_includes_today_summary(client):

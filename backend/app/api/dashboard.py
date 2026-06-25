@@ -33,6 +33,9 @@ class DayFlags(BaseModel):
     has_weight: bool
     has_body: bool
     has_photo: bool
+    has_surpassed_self: bool
+    has_workout_media: bool
+    has_full_measurements: bool
 
 
 class TodaySummary(BaseModel):

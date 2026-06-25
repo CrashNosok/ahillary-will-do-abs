@@ -18,7 +18,7 @@ from sqlmodel import Session, select
 from app.models.activity import ActivityDay
 from app.models.body import BodyMeasurement, InbodyMeasurement, ProgressPhoto
 from app.models.nutrition import FoodEntry
-from app.models.workout import WorkoutSession
+from app.models.workout import WorkoutMedia, WorkoutSession
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,11 @@ class DayFlag:
     Ежедневные категории (дневной «стакан»): food/activity/training.
     Недельные (наливаются в «общую чашу» недели): weight/body/photo.
     has_measurement (body|inbody) оставлен для легаси-потребителей (Заряд дня).
+
+    Новые сигналы (M4·B20), все по дню и со скоупом по user_id:
+    - has_surpassed_self — в этот день есть тренировка с отметкой личного рекорда;
+    - has_workout_media — к тренировке этого дня прикреплено хотя бы одно медиа;
+    - has_full_measurements — за день залогированы ОБА вида замеров (обхваты body И вес/InBody).
     """
 
     date: dt.date
@@ -38,6 +43,9 @@ class DayFlag:
     has_weight: bool
     has_body: bool
     has_photo: bool
+    has_surpassed_self: bool
+    has_workout_media: bool
+    has_full_measurements: bool
 
 
 @dataclass(frozen=True)
@@ -51,15 +59,22 @@ class TodaySummary:
 
 
 def _dates(
-    session: Session, date_col, user_id_col, user_id: int, start: dt.date, end: dt.date
+    session: Session,
+    date_col,
+    user_id_col,
+    user_id: int,
+    start: dt.date,
+    end: dt.date,
+    *extra,
 ) -> set[dt.date]:
     """Множество дат владельца в [start; end], где в таблице есть запись.
 
     Скоуп по user_id — дашборд показывает данные только залогиненного пользователя.
+    `extra` — дополнительные условия фильтра (напр. отметка «превзошёл себя»).
     """
     stmt = (
         select(date_col)
-        .where(date_col >= start, date_col <= end, user_id_col == user_id)
+        .where(date_col >= start, date_col <= end, user_id_col == user_id, *extra)
         .distinct()
     )
     return {d for d in session.exec(stmt).all() if d is not None}
@@ -81,6 +96,18 @@ def day_flags(start: dt.date, end: dt.date, session: Session, *, user_id: int) -
     )
     photo = _dates(session, ProgressPhoto.date, ProgressPhoto.user_id, user_id, start, end)
     measurement = body | weight  # легаси-флаг (Заряд дня)
+    # M4·B20 — новые сигналы дня (скоуп по user_id):
+    surpassed = _dates(  # дни с тренировкой-личным-рекордом
+        session,
+        WorkoutSession.date,
+        WorkoutSession.user_id,
+        user_id,
+        start,
+        end,
+        WorkoutSession.surpassed_self.is_(True),
+    )
+    workout_media = _workout_media_dates(session, user_id, start, end)
+    full_measurements = body & weight  # «полный» замер дня = обхваты И вес одновременно
 
     days: list[DayFlag] = []
     day = start
@@ -95,10 +122,34 @@ def day_flags(start: dt.date, end: dt.date, session: Session, *, user_id: int) -
                 has_weight=day in weight,
                 has_body=day in body,
                 has_photo=day in photo,
+                has_surpassed_self=day in surpassed,
+                has_workout_media=day in workout_media,
+                has_full_measurements=day in full_measurements,
             )
         )
         day += dt.timedelta(days=1)
     return days
+
+
+def _workout_media_dates(
+    session: Session, user_id: int, start: dt.date, end: dt.date
+) -> set[dt.date]:
+    """Даты владельца в [start; end], где у тренировки есть хотя бы одно медиа.
+
+    WorkoutMedia не хранит ни даты, ни user_id — берём их у родительской сессии
+    (join по session_id). Скоуп по WorkoutSession.user_id.
+    """
+    stmt = (
+        select(WorkoutSession.date)
+        .join(WorkoutMedia, WorkoutMedia.session_id == WorkoutSession.id)
+        .where(
+            WorkoutSession.date >= start,
+            WorkoutSession.date <= end,
+            WorkoutSession.user_id == user_id,
+        )
+        .distinct()
+    )
+    return {d for d in session.exec(stmt).all() if d is not None}
 
 
 def current_streak(session: Session, *, user_id: int, today: dt.date | None = None) -> int:
