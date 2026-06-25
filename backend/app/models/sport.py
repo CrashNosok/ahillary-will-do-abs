@@ -35,7 +35,11 @@ class Sport(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
     category: SportCategory
-    description: str | None = None
+    description: str | None = None  # короткая подпись (S3.1)
+    # M5·B22 «rich-поля» каталога:
+    slug: str | None = Field(default=None, unique=True, index=True)  # ЧПУ, авто из name
+    long_description: str | None = None  # развёрнутое описание дисциплины
+    is_global: bool = Field(default=False)  # встроенная дисциплина vs заведённая юзером
 
 
 class Exercise(SQLModel, table=True):

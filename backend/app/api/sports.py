@@ -6,6 +6,7 @@
 """
 
 import datetime as dt
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -30,12 +31,16 @@ class SportCreate(BaseModel):
     name: str
     category: SportCategory
     description: str | None = None
+    long_description: str | None = None
+    is_global: bool = False
 
 
 class SportUpdate(BaseModel):
     name: str | None = None
     category: SportCategory | None = None
     description: str | None = None
+    long_description: str | None = None
+    is_global: bool | None = None
 
 
 class AchievementRead(BaseModel):
@@ -50,6 +55,31 @@ class AchievementRead(BaseModel):
     created_at: dt.datetime
     unlocked_at: dt.datetime | None
     has_proof: bool
+
+
+def slugify(value: str) -> str:
+    """ЧПУ-слаг из названия: нижний регистр, пробелы → дефис, прочая пунктуация убрана.
+
+    \\w (re.UNICODE) сохраняет буквы и для кириллицы ("Бег" → "бег"), поэтому слаг не пустеет
+    на русских названиях. Пустой результат (название из одной пунктуации) → "sport".
+    """
+    text = re.sub(r"[^\w\s-]", "", value.strip().lower(), flags=re.UNICODE)
+    text = re.sub(r"[\s_-]+", "-", text).strip("-")
+    return text or "sport"
+
+
+def _unique_slug(session: Session, name: str) -> str:
+    """Базовый слаг из name + суффикс -2, -3… при коллизии (slug уникален).
+
+    ponytail: гонка между проверкой и commit игнорируется — приложение однопользовательское.
+    """
+    base = slugify(name)
+    slug = base
+    n = 2
+    while session.exec(select(Sport).where(Sport.slug == slug)).first() is not None:
+        slug = f"{base}-{n}"
+        n += 1
+    return slug
 
 
 def _get_or_404(session: Session, sport_id: int) -> Sport:
@@ -75,6 +105,7 @@ def _commit_unique(session: Session, sport: Sport) -> Sport:
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_sport(payload: SportCreate, session: SessionDep, _: CurrentUser) -> Sport:
     sport = Sport(**payload.model_dump())
+    sport.slug = _unique_slug(session, sport.name)  # server-managed: стабильный, не из payload
     session.add(sport)
     return _commit_unique(session, sport)
 
