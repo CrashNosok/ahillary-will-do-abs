@@ -4,12 +4,13 @@
 
 import { useMemo, useState } from 'react';
 import { ApiError, type Challenge } from '../lib/api';
-import { useChallenges, useJoinChallenge } from '../lib/challenges';
+import { useChallenges, useJoinChallenge, useUploadChallengeProof } from '../lib/challenges';
 import { useSports } from '../lib/sports';
+import VideoProofUploader from './VideoProofUploader';
 
 function errorMessage(err: unknown): string | null {
   if (err instanceof ApiError) return err.message;
-  if (err) return 'Не удалось присоединиться. Проверьте, что сервер запущен.';
+  if (err) return 'Что-то пошло не так. Проверьте, что сервер запущен.';
   return null;
 }
 
@@ -61,6 +62,9 @@ function ChallengeCard({ challenge, sportName }: { challenge: Challenge; sportNa
   // Эндпоинта «мои участия» пока нет (M6·F25): стартуем как не-участник и отмечаем участие
   // из ответа join. Повторный join существующего участия даёт 409 — это тоже «участвую».
   const [joined, setJoined] = useState(false);
+  // Видео-пруф доступен только участнику (бэкенд: 404, если не участвуешь) — отсюда после join.
+  const proof = useUploadChallengeProof();
+  const hasProof = proof.isSuccess;
 
   const onJoin = () =>
     join.mutate(challenge.id, {
@@ -104,7 +108,7 @@ function ChallengeCard({ challenge, sportName }: { challenge: Challenge; sportNa
         </p>
       )}
 
-      <div className="mt-auto pt-2">
+      <div className="mt-auto flex flex-col gap-3 pt-2">
         {joined ? (
           <button
             type="button"
@@ -122,6 +126,19 @@ function ChallengeCard({ challenge, sportName }: { challenge: Challenge; sportNa
           >
             {join.isPending ? '…' : 'Участвовать'}
           </button>
+        )}
+
+        {/* Пруф результата (M6·F27) — общий VideoProofUploader, доступен только участнику. */}
+        {joined && (
+          <div className="flex flex-col gap-2 border-t border-line pt-3">
+            <p className="text-xs font-medium text-muted">Загрузите видео-пруф результата:</p>
+            <VideoProofUploader
+              onPick={(file) => proof.mutate({ challengeId: challenge.id, file })}
+              isPending={proof.isPending}
+              hasProof={hasProof}
+              error={proof.isError ? errorMessage(proof.error) : null}
+            />
+          </div>
         )}
       </div>
     </article>

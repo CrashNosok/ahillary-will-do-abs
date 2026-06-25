@@ -13,6 +13,7 @@ import {
 } from '../lib/api';
 import { useSportAchievements, useUnlockAchievement, useUploadProof } from '../lib/achievements';
 import { useSports } from '../lib/sports';
+import VideoProofUploader from './VideoProofUploader';
 
 // Тиры по возрастанию сложности — для сортировки карточек внутри спорта.
 const TIER_ORDER: Record<AchievementTier, number> = {
@@ -162,8 +163,8 @@ function AchievementCard({ achievement, sportId }: { achievement: Achievement; s
       ? 'border-accent/30 bg-gradient-to-br from-panel to-surface'
       : 'border-amber/30 bg-surface';
 
-  function onPick(file: File | undefined) {
-    if (file) upload.mutate({ achievementId: achievement.id, file });
+  function onPick(file: File) {
+    upload.mutate({ achievementId: achievement.id, file });
   }
 
   return (
@@ -201,32 +202,12 @@ function AchievementCard({ achievement, sportId }: { achievement: Achievement; s
       {/* Загрузка видео → превью → разблокировка (S5.6). На открытой ачивке скрыто. */}
       {!isUnlocked && (
         <div className="mt-auto flex flex-col gap-2 border-t border-line pt-4">
-          <label
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              onPick(e.dataTransfer.files[0]);
-            }}
-            className="cursor-pointer rounded-lg border border-dashed border-line bg-surface px-3 py-2 text-center text-sm font-medium text-muted transition-colors duration-[var(--duration-fast)] hover:border-accent/50 hover:text-fg"
-          >
-            <input
-              type="file"
-              accept="video/*"
-              className="hidden"
-              onChange={(e) => onPick(e.target.files?.[0])}
-            />
-            {upload.isPending
-              ? 'Загружаем видео…'
-              : hasProof
-                ? 'Видео загружено ✓ — заменить'
-                : 'Загрузить видео'}
-          </label>
-
-          {upload.isError && (
-            <p role="alert" className="text-xs font-medium text-amber">
-              {errorText(upload.error)}
-            </p>
-          )}
+          <VideoProofUploader
+            onPick={onPick}
+            isPending={upload.isPending}
+            hasProof={hasProof}
+            error={upload.isError ? errorText(upload.error) : null}
+          />
 
           <button
             type="button"
