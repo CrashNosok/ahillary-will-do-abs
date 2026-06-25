@@ -62,7 +62,7 @@ def build_prompt(sport: Sport, level: AthleteLevel) -> str:
     """
     sport_block = {
         "name": sport.name,
-        "type": sport.type.value,
+        "category": sport.category.value,
         "description": sport.description,
     }
     return (

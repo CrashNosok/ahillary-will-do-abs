@@ -43,8 +43,8 @@ def client():
     app.dependency_overrides.clear()
 
 
-def _make_sport(client, name="Калистеника", sport_type="skill") -> int:
-    return client.post("/sports", json={"name": name, "type": sport_type}).json()["id"]
+def _make_sport(client, name="Калистеника", category="action") -> int:
+    return client.post("/sports", json={"name": name, "category": category}).json()["id"]
 
 
 def test_create_exercise_returns_201_with_fields(client):
@@ -79,8 +79,8 @@ def test_create_exercise_unknown_sport_returns_404(client):
 
 
 def test_list_exercises_by_sport(client):
-    sport_a = _make_sport(client, name="Бег", sport_type="cardio")
-    sport_b = _make_sport(client, name="Силовая", sport_type="strength")
+    sport_a = _make_sport(client, name="Бег", category="endurance")
+    sport_b = _make_sport(client, name="Силовая", category="strength")
     client.post("/exercises", json={"sport_id": sport_a, "name": "Интервалы"})
     client.post("/exercises", json={"sport_id": sport_a, "name": "Кросс"})
     client.post("/exercises", json={"sport_id": sport_b, "name": "Жим лёжа"})

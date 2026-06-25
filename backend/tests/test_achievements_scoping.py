@@ -61,7 +61,7 @@ def other(engine, tmp_path):
     thumb.write_bytes(b"\xff\xd8\xff\xe0jpeg")  # реальный файл — 404 должен дать owner-check
     with Session(engine) as session:
         session.add(User(email="other@example.com", password_hash=hash_password("x")))  # id=2
-        sport = Sport(name="Вейкборд", type="skill", description="Катание за катером")
+        sport = Sport(name="Вейкборд", category="action", description="Катание за катером")
         session.add(sport)
         session.commit()
         session.refresh(sport)

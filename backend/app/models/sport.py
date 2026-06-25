@@ -1,7 +1,7 @@
 """Каталог тренировок (S1.2/S3.1): вид спорта и упражнение.
 
 sport — дисциплина (калистеника, бег, силовая…); на неё ссылаются сессии и ачивки.
-type делит дисциплины на силовые/кардио/навыковые (валидируется на CRUD, S3.1).
+category делит дисциплины по таксономии M1 (валидируется на CRUD, S3.1).
 exercise — конкретное упражнение внутри вида спорта (FK sport_id); на него ссылаются
 подходы/логи/рекорды. kind отделяет силовое/кардио/навык, unit — дефолтная единица.
 """
@@ -12,11 +12,10 @@ from sqlmodel import Field, SQLModel
 
 
 class SportCategory(StrEnum):
-    """Таксономия дисциплин M1 — на неё переезжает каталог sport (M1·B13).
+    """Таксономия дисциплин M1 — категория вида спорта (Sport.category, M1·B14).
 
-    Заводится сейчас как основа; перевод поля Sport.type, API, фронта и данных
-    на эти категории — отдельные карточки M1. До тех пор активен legacy-алиас
-    SportType (strength/cardio/skill), которым пользуется существующий код.
+    Сменила старую тройку strength/cardio/skill: cardio→endurance, skill→action
+    (миграция M1·B14). value == name, колонка sport.category — plain VARCHAR.
     """
 
     strength = "strength"
@@ -30,24 +29,12 @@ class SportCategory(StrEnum):
     other = "other"
 
 
-class SportType(StrEnum):
-    """Временный legacy-алиас (M1·B13): старая тройка типов дисциплины.
-
-    Ещё используется каталогом sport, API (/sports), фронтом и данными — будет
-    заменён на SportCategory, когда соответствующие карточки M1 мигрируют значения.
-    """
-
-    strength = "strength"
-    cardio = "cardio"
-    skill = "skill"
-
-
 class Sport(SQLModel, table=True):
     __tablename__ = "sport"
 
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
-    type: SportType
+    category: SportCategory
     description: str | None = None
 
 

@@ -70,7 +70,7 @@ def other(engine, tmp_path):
     media_file.write_bytes(b"not-really-a-jpeg")
     with Session(engine) as session:
         session.add(User(email="other@example.com", password_hash=hash_password("x")))  # id=2
-        sport = Sport(name="Чужой спорт", type="strength")
+        sport = Sport(name="Чужой спорт", category="strength")
         session.add(sport)
         session.commit()
         session.refresh(sport)
@@ -137,7 +137,7 @@ def test_get_other_media_returns_404(client, other):
 
 def test_owner_sees_own_not_other(client, other):
     # своя тренировка создаётся через API (user_id=1) и видна; чужая (user_id=2) — нет
-    sport = client.post("/sports", json={"name": "Мой спорт", "type": "strength"}).json()["id"]
+    sport = client.post("/sports", json={"name": "Мой спорт", "category": "strength"}).json()["id"]
     ex = client.post("/exercises", json={"sport_id": sport, "name": "Мой жим"}).json()["id"]
     own = client.post(
         "/workouts", json={"date": "2026-06-22", "sets": [{"exercise_id": ex, "reps": 5}]}

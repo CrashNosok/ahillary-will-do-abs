@@ -19,7 +19,7 @@ import app.models  # noqa: F401 — регистрирует все таблиц
 from app.core.db import get_session
 from app.core.security import hash_password
 from app.main import app
-from app.models.sport import Exercise, Sport, SportType
+from app.models.sport import Exercise, Sport, SportCategory
 from app.models.user import User
 from app.models.workout import CardioLog, StrengthSet, WorkoutSession
 
@@ -50,9 +50,9 @@ def ctx():
     app.dependency_overrides.clear()
 
 
-def _sport(engine, name: str, type_: SportType = SportType.strength) -> int:
+def _sport(engine, name: str, category: SportCategory = SportCategory.strength) -> int:
     with Session(engine) as session:
-        sp = Sport(name=name, type=type_)
+        sp = Sport(name=name, category=category)
         session.add(sp)
         session.commit()
         session.refresh(sp)
@@ -180,7 +180,7 @@ def test_strength_requires_auth():
 
 def test_cardio_dynamics_over_time(ctx):
     client, engine = ctx
-    sport_id = _sport(engine, "Бег", SportType.cardio)
+    sport_id = _sport(engine, "Бег", SportCategory.endurance)
     eid = _exercise(engine, sport_id, "Бег 10к")
     # 10 км за 3000 c (50 мин) при пульсе 150:
     #   темп = 3000/10 = 300 сек/км
@@ -203,7 +203,7 @@ def test_cardio_dynamics_over_time(ctx):
 
 def test_cardio_partial_metrics_skip_points(ctx):
     client, engine = ctx
-    sport_id = _sport(engine, "Вело", SportType.cardio)
+    sport_id = _sport(engine, "Вело", SportCategory.endurance)
     eid = _exercise(engine, sport_id, "Шоссе")
     # только дистанция, без времени/пульса → есть distance, нет pace/avg_hr/efficiency
     _cardio_session(engine, "2026-06-12", eid, 30.0, None, None)

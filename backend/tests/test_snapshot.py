@@ -25,7 +25,7 @@ from app.models.body import BodyMeasurement, InbodyMeasurement
 from app.models.deficit import DeficitDay
 from app.models.goal import SmartGoal
 from app.models.nutrition import FoodEntry
-from app.models.sport import Exercise, Sport, SportType
+from app.models.sport import Exercise, Sport, SportCategory
 from app.models.user import User
 from app.models.workout import CardioLog, PersonalRecord, StrengthSet, WorkoutSession
 from app.services import snapshot as snapshot_service
@@ -115,8 +115,8 @@ def _seed_full(engine) -> None:
         s.add(DeficitDay(date=_d(1), user_id=1, eaten_kcal=2000, burn_kcal=2500, deficit_kcal=500))
         s.add(DeficitDay(date=_d(2), user_id=1, eaten_kcal=1800, burn_kcal=2300, deficit_kcal=500))
         # Спорт/упражнения.
-        strength_sport = Sport(name="Силовая", type=SportType.strength)
-        cardio_sport = Sport(name="Бег", type=SportType.cardio)
+        strength_sport = Sport(name="Силовая", category=SportCategory.strength)
+        cardio_sport = Sport(name="Бег", category=SportCategory.endurance)
         s.add(strength_sport)
         s.add(cardio_sport)
         s.commit()

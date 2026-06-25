@@ -50,7 +50,7 @@ def client(engine):
 
 def _seed_sport(engine, name: str = "Вейкборд") -> int:
     with Session(engine) as s:
-        sport = Sport(name=name, type="skill", description="Катание за катером")
+        sport = Sport(name=name, category="action", description="Катание за катером")
         s.add(sport)
         s.commit()
         s.refresh(sport)

@@ -7,7 +7,7 @@ from app.models.deficit import DeficitDay
 from app.models.goal import GoalStatus, SmartGoal
 from app.models.nutrition import FoodEntry
 from app.models.recommendation import Recommendation
-from app.models.sport import Exercise, Sport, SportCategory, SportType
+from app.models.sport import Exercise, Sport, SportCategory
 from app.models.user import User
 from app.models.workout import (
     CardioLog,
@@ -36,7 +36,6 @@ __all__ = [
     "SkillLog",
     "Sport",
     "SportCategory",
-    "SportType",
     "SmartGoal",
     "StrengthSet",
     "User",

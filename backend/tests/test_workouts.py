@@ -52,9 +52,8 @@ def client(engine):
 
 
 def _make_exercise(client, name="Жим лёжа") -> int:
-    sport_id = client.post("/sports", json={"name": name + " спорт", "type": "strength"}).json()[
-        "id"
-    ]
+    payload = {"name": name + " спорт", "category": "strength"}
+    sport_id = client.post("/sports", json=payload).json()["id"]
     return client.post("/exercises", json={"sport_id": sport_id, "name": name}).json()["id"]
 
 

@@ -113,9 +113,8 @@ def client(engine):
 
 
 def _make_exercise(client, name="Жим лёжа") -> int:
-    sport_id = client.post("/sports", json={"name": name + " спорт", "type": "strength"}).json()[
-        "id"
-    ]
+    payload = {"name": name + " спорт", "category": "strength"}
+    sport_id = client.post("/sports", json=payload).json()["id"]
     return client.post("/exercises", json={"sport_id": sport_id, "name": name}).json()["id"]
 
 
@@ -185,7 +184,7 @@ def test_better_1rm_at_lower_weight_is_a_pr(client):
 
 
 def _make_cardio_exercise(client) -> int:
-    sport_id = client.post("/sports", json={"name": "Бег", "type": "cardio"}).json()["id"]
+    sport_id = client.post("/sports", json={"name": "Бег", "category": "endurance"}).json()["id"]
     return client.post("/exercises", json={"sport_id": sport_id, "name": "5 км"}).json()["id"]
 
 

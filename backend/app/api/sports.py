@@ -1,7 +1,7 @@
 """CRUD виды спорта (S3.1).
 
-Пользователь заводит дисциплины: sport(name, type, description). type валидируется
-схемой запроса (strength/cardio/skill → иначе 422). name уникален — повтор отдаёт 409.
+Пользователь заводит дисциплины: sport(name, category, description). category валидируется
+схемой запроса (таксономия SportCategory M1·B14 → иначе 422). name уникален — повтор отдаёт 409.
 Все роуты под сессией (CurrentUser) — приложение однопользовательское.
 """
 
@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 from app.api.deps import CurrentUser
 from app.core.db import get_session
 from app.models.achievement import Achievement, AchievementProof
-from app.models.sport import Sport, SportType
+from app.models.sport import Sport, SportCategory
 from app.services import achievement as achievement_service
 from app.services.achievement_schema import AthleteLevel, InvalidAchievementSetError
 from app.services.llm import LLMError
@@ -28,13 +28,13 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 class SportCreate(BaseModel):
     name: str
-    type: SportType
+    category: SportCategory
     description: str | None = None
 
 
 class SportUpdate(BaseModel):
     name: str | None = None
-    type: SportType | None = None
+    category: SportCategory | None = None
     description: str | None = None
 
 
