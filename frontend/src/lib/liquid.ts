@@ -54,6 +54,14 @@ export function fullGradient(activeKeys: readonly string[]): string {
   return `linear-gradient(0deg, ${stops})`;
 }
 
+/** Однородная (одно-тоновая, с глубиной) заливка ПОЛНОЙ ячейки (3/3): неделя — «розовый»
+ *  (фуксия→роза), день — прохладный синий (индиго→лазурь); тона сочетаются. Частичные (1/3, 2/3)
+ *  остаются раздельными цветами категорий (fullGradient). Искры — только на полной ячейке. */
+export const WEEK_FULL_FILL =
+  'linear-gradient(0deg, oklch(55% 0.2 330), oklch(68% 0.23 348), oklch(80% 0.16 356))';
+export const DAY_FULL_FILL =
+  'linear-gradient(0deg, oklch(52% 0.17 268), oklch(64% 0.16 248), oklch(77% 0.14 232))';
+
 /** Цвет свечения вокруг полной жидкости/медали. */
 export function glowColor(mystery: boolean): string {
   return mystery ? 'oklch(72% 0.26 345)' : 'oklch(84% 0.16 150)';
