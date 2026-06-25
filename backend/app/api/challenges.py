@@ -8,14 +8,18 @@ video_proof); в challenge_proof пишутся пути + метаданные 
 PATCH /challenges/{id}/participation — переход статуса участника: active → {completed,
 abandoned}, abandoned → {active}, completed терминален. Переход в completed = «verify»:
 требует хотя бы один видео-пруф (409 без него).
+POST /challenges/{id}/sponsors — привязать спонсора к челленджу с суммой поддержки
+(M6·B36): пишет challenge_sponsor(amount, currency); 404 на чужой/несуществующий
+челлендж или спонсора, 409 на повторную привязку (unique challenge_id+sponsor_id).
 Все роуты под сессией (CurrentUser). is_base не выставляется пользователем — базовые
 (встроенные) челленджи заводятся отдельно; обычное создание даёт пользовательский (False).
 """
 
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -26,7 +30,9 @@ from app.models.challenge import (
     ChallengeParticipant,
     ChallengeParticipantStatus,
     ChallengeProof,
+    ChallengeSponsor,
 )
+from app.models.sponsor import Sponsor
 from app.models.sport import Sport
 from app.services import challenge_proof as proof_service
 
@@ -54,6 +60,15 @@ class ChallengeCreate(BaseModel):
 
 class ParticipationUpdate(BaseModel):
     status: ChallengeParticipantStatus  # невалидное значение → 422 (валидирует Pydantic)
+
+
+class ChallengeSponsorCreate(BaseModel):
+    sponsor_id: int
+    # amount — деньги: Decimal с положительной суммой и max(12,2), как колонка модели;
+    # граница 422, чтобы не упасть на DB-уровне. currency обязательна и без дефолта —
+    # валюту не угадываем молча (см. модель ChallengeSponsor).
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    currency: str = Field(min_length=1)
 
 
 def _my_participation_or_404(
@@ -181,3 +196,38 @@ def update_participation_status(
     session.commit()
     session.refresh(participant)
     return participant
+
+
+@router.post("/{challenge_id}/sponsors", status_code=status.HTTP_201_CREATED)
+def add_challenge_sponsor(
+    challenge_id: int,
+    payload: ChallengeSponsorCreate,
+    session: SessionDep,
+    _: CurrentUser,
+) -> ChallengeSponsor:
+    """Привязать спонсора к челленджу с суммой поддержки.
+
+    404 — нет челленджа или спонсора; 409 — спонсор уже привязан к этому челленджу
+    (unique challenge_id+sponsor_id). FK проверяем явно (PRAGMA FK может быть выкл).
+    """
+    if session.get(Challenge, challenge_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Челлендж не найден")
+    if session.get(Sponsor, payload.sponsor_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Спонсор не найден")
+    link = ChallengeSponsor(
+        challenge_id=challenge_id,
+        sponsor_id=payload.sponsor_id,
+        amount=payload.amount,
+        currency=payload.currency,
+    )
+    session.add(link)
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        # unique (challenge_id, sponsor_id): повторная привязка упирается сюда, не плодит дубль.
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Спонсор уже привязан к челленджу"
+        ) from exc
+    session.refresh(link)
+    return link
