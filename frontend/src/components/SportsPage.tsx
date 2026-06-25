@@ -11,7 +11,13 @@ import {
   type Sport,
   type SportCategory,
 } from '../lib/api';
-import { useCreateExercise, useCreateSport, useExercises, useSports } from '../lib/sports';
+import {
+  useCreateExercise,
+  useCreateSport,
+  useExercises,
+  useSportCategories,
+  useSports,
+} from '../lib/sports';
 
 const inputCls =
   'rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent';
@@ -23,7 +29,10 @@ function errorMessage(err: unknown): string | null {
 }
 
 export default function SportsPage() {
-  const { data: sports, isPending } = useSports();
+  // '' = все категории; иначе фильтруем каталог через GET /sports?category= (M1·B15).
+  const [filter, setFilter] = useState<SportCategory | ''>('');
+  const { data: sports, isPending } = useSports(filter || undefined);
+  const { data: categories } = useSportCategories();
   const { data: exercises } = useExercises();
 
   // Группируем упражнения по виду спорта один раз — карточки читают свою группу.
@@ -55,11 +64,34 @@ export default function SportsPage() {
         <CreateSportForm />
 
         <div className="flex flex-col gap-5">
-          <h2 className="text-display">Дисциплины</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-display">Дисциплины</h2>
+            <label className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted">Категория</span>
+              <select
+                name="category_filter"
+                aria-label="Фильтр по категории"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as SportCategory | '')}
+                className={`${inputCls} py-2 [color-scheme:dark]`}
+              >
+                <option value="">Все категории</option>
+                {(categories ?? []).map((c) => (
+                  <option key={c} value={c}>
+                    {sportCategoryLabel(c)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {isPending ? (
             <p className="text-muted">Загрузка…</p>
           ) : !sports || sports.length === 0 ? (
-            <p className="text-muted">Видов спорта пока нет — создайте первый слева.</p>
+            <p className="text-muted">
+              {filter
+                ? 'В этой категории видов спорта нет.'
+                : 'Видов спорта пока нет — создайте первый слева.'}
+            </p>
           ) : (
             <ul className="flex flex-col gap-5">
               {sports.map((sport) => (

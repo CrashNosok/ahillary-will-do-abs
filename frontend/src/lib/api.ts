@@ -669,7 +669,11 @@ export const api = {
   logout: () => request<{ status: string }>('/auth/logout', { method: 'POST' }),
 
   // Виды спорта (S3.1): каталог дисциплин (бэкенд сортирует по имени).
-  listSports: () => request<Sport[]>('/sports'),
+  // category — фильтр по таксономии (M1·B15): без него все, иначе только эта категория.
+  listSports: (category?: SportCategory) =>
+    request<Sport[]>(category == null ? '/sports' : `/sports?category=${category}`),
+  // Канонический список категорий дисциплин (M1·B15) — источник опций для фильтра каталога.
+  listSportCategories: () => request<SportCategory[]>('/sports/categories'),
   createSport: (input: SportInput) =>
     request<Sport>('/sports', { method: 'POST', body: JSON.stringify(input) }),
 
