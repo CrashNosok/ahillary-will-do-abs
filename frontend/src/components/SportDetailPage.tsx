@@ -7,7 +7,8 @@
 import { type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, sportCategoryLabel } from '../lib/api';
-import { useSport, useSportOverview } from '../lib/sports';
+import { useMySports, useSport, useSportOverview } from '../lib/sports';
+import LevelLadder from './LevelLadder';
 
 const eventDateFmt = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
@@ -32,6 +33,10 @@ export default function SportDetailPage() {
   // Шапка/состояния страницы — на useSport (M5·F21); тело (секции/ачивки) — на overview (M5·B27).
   const { data: sport, isPending, error } = useSport(id);
   const { data: overview, isPending: overviewPending, error: overviewError } = useSportOverview(id);
+  // Текущий уровень владельца — из его привязок /me/sports (M2·B19); null, если дисциплина
+  // не привязана к пользователю (тогда лестница показывается без подсветки).
+  const { data: mySports } = useMySports();
+  const currentLevelId = mySports?.find((s) => s.sport_id === id)?.current_level_id ?? null;
 
   if (!Number.isFinite(id) || (error instanceof ApiError && error.status === 404)) {
     return <StateScreen message="Вид спорта не найден." />;
@@ -87,14 +92,7 @@ export default function SportDetailPage() {
           isEmpty={levels.length === 0}
           emptyText="Ступеней пока нет."
         >
-          {levels.map((lvl) => (
-            <li key={lvl.id} className="flex flex-col gap-0.5">
-              <span className="font-medium">
-                {lvl.rank}. {lvl.label} <span className="text-sm text-muted">· {lvl.code}</span>
-              </span>
-              {lvl.description && <span className="text-sm text-muted">{lvl.description}</span>}
-            </li>
-          ))}
+          <LevelLadder levels={levels} currentLevelId={currentLevelId} />
         </Section>
 
         <Section
