@@ -39,6 +39,13 @@ export function liquidGradient(activeKeys: readonly string[], mystery: boolean):
   return `linear-gradient(0deg, ${stops})`;
 }
 
+/** Единый премиум-градиент ПОЛНОГО дня (3/3): смесь трёх дневных категорий — зелёный (Еда) →
+ *  оранжевый (Активность) → фиолетово-магентовый (Тренировки). Верхушка уведена к магенте, чтобы
+ *  сочетаться с розовым недели (Вес+Замеры). Частичные дни (1/3, 2/3) остаются раздельными
+ *  категориями (liquidGradient в порядке внесения). */
+export const DAY_FULL_FILL =
+  'linear-gradient(0deg, oklch(84% 0.18 160), oklch(83% 0.15 66), oklch(62% 0.21 322))';
+
 /** Цвет свечения вокруг полной жидкости/медали. */
 export function glowColor(mystery: boolean): string {
   return mystery ? 'oklch(72% 0.26 345)' : 'oklch(84% 0.16 150)';

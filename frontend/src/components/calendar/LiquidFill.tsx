@@ -62,10 +62,13 @@ export function LiquidFill({
   level,
   activeKeys,
   mystery = false,
+  fillColor,
 }: {
   level: number;
   activeKeys: readonly string[];
   mystery?: boolean;
+  /** Готовая заливка (напр. единый премиум-градиент полного дня) — заменяет смешение категорий. */
+  fillColor?: string;
 }) {
   const clamped = level < 0 ? 0 : level > 1 ? 1 : level;
   // Маунт-флип: стартуем с пустого и на следующем кадре наливаем до уровня —
@@ -76,7 +79,7 @@ export function LiquidFill({
     return () => cancelAnimationFrame(id);
   }, []);
   const shown = mounted ? clamped : 0;
-  const gradient = liquidGradient(activeKeys, mystery);
+  const gradient = fillColor ?? liquidGradient(activeKeys, mystery);
   const inset = `inset(${(1 - shown) * 100}% 0 0 0)`;
 
   return (
