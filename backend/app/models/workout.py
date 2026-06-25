@@ -47,6 +47,9 @@ class WorkoutSession(SQLModel, table=True):
     kind: str | None = None
     duration_min: float | None = None  # длительность тренировки, мин
     rpe: float | None = None  # субъективное усилие 0–10
+    # «Превзошёл себя» (M2·B16): флаг сессии, в которой побит личный рекорд. Сейчас всегда
+    # False — выставлять его будет PR-движок (S3.10) в последующей карточке; здесь только схема.
+    surpassed_self: bool = Field(default=False)
     created_at: dt.datetime = Field(default_factory=utcnow)
 
 

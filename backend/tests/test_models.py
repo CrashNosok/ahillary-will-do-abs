@@ -178,3 +178,14 @@ def test_workout_session_activity_link_is_composite_fk():
     fk = composite[0]
     assert set(fk["constrained_columns"]) == {"user_id", "activity_date"}
     assert set(fk["referred_columns"]) == {"user_id", "date"}
+
+
+# --- M2·B16: флаг «превзошёл себя» на сессии тренировки ---
+
+
+def test_workout_session_surpassed_self_defaults_false():
+    # критерий M2·B16: новая колонка surpassed_self — bool с дефолтом False
+    from app.models.workout import WorkoutSession
+
+    ws = WorkoutSession(user_id=1, date=date(2026, 6, 25))
+    assert ws.surpassed_self is False
