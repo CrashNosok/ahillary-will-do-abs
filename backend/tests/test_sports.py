@@ -96,6 +96,49 @@ def test_list_sports_returns_all(client):
     assert len(resp.json()) == 2
 
 
+def test_list_sports_filters_by_category(client):
+    client.post("/sports", json={"name": "Бег", "category": "endurance"})
+    client.post("/sports", json={"name": "Плавание", "category": "endurance"})
+    client.post("/sports", json={"name": "Жим", "category": "strength"})
+    resp = client.get("/sports", params={"category": "endurance"})
+    assert resp.status_code == 200
+    names = {s["name"] for s in resp.json()}
+    assert names == {"Бег", "Плавание"}  # только endurance, без strength
+
+
+def test_list_sports_filter_empty_category_returns_empty(client):
+    client.post("/sports", json={"name": "Жим", "category": "strength"})
+    resp = client.get("/sports", params={"category": "combat"})
+    assert resp.status_code == 200
+    assert resp.json() == []  # дисциплин этой категории нет
+
+
+def test_list_sports_rejects_invalid_category_filter(client):
+    resp = client.get("/sports", params={"category": "flexibility"})
+    assert resp.status_code == 422  # фильтр вне таксономии SportCategory
+
+
+def test_list_sports_categories_returns_full_taxonomy(client):
+    resp = client.get("/sports/categories")
+    assert resp.status_code == 200
+    assert resp.json() == [
+        "strength",
+        "endurance",
+        "combat",
+        "team",
+        "racket",
+        "action",
+        "precision",
+        "artistic",
+        "other",
+    ]
+
+
+def test_sports_categories_require_auth():
+    app.dependency_overrides.clear()
+    assert TestClient(app).get("/sports/categories").status_code == 401
+
+
 def test_read_sport_by_id(client):
     created = client.post("/sports", json={"name": "Планш", "category": "action"}).json()
     resp = client.get(f"/sports/{created['id']}")

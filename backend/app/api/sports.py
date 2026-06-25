@@ -80,8 +80,25 @@ def create_sport(payload: SportCreate, session: SessionDep, _: CurrentUser) -> S
 
 
 @router.get("")
-def list_sports(session: SessionDep, _: CurrentUser) -> list[Sport]:
-    return session.exec(select(Sport).order_by(Sport.name)).all()
+def list_sports(
+    session: SessionDep,
+    _: CurrentUser,
+    category: Annotated[SportCategory | None, Query()] = None,
+) -> list[Sport]:
+    """Каталог дисциплин (S3.1). category= фильтрует по таксономии (M1·B15; вне неё → 422)."""
+    stmt = select(Sport)
+    if category is not None:
+        stmt = stmt.where(Sport.category == category)
+    return session.exec(stmt.order_by(Sport.name)).all()
+
+
+@router.get("/categories")
+def list_sport_categories(_: CurrentUser) -> list[SportCategory]:
+    """Канонический список категорий дисциплин (таксономия M1·B15) — источник для фильтров UI.
+
+    Объявлен ДО /{sport_id}, иначе "categories" попадёт в int-параметр пути и даст 422.
+    """
+    return list(SportCategory)
 
 
 @router.get("/{sport_id}")
