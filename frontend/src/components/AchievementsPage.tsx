@@ -63,6 +63,8 @@ export default function AchievementsPage() {
 
   const loading = sportsPending || results.some((r) => r.isPending);
   const hasSports = !!sports && sports.length > 0;
+  // Есть ли хоть одно подтверждённое достижение во всех видах спорта.
+  const anyEarned = results.some((r) => (r.data ?? []).some((a) => a.status === 'unlocked'));
 
   return (
     <section
@@ -77,8 +79,7 @@ export default function AchievementsPage() {
           Достижения
         </h1>
         <p className="mt-4 text-lg leading-relaxed text-muted">
-          Ачивки по каждому виду спорта — от базовых тиров к продвинутым. Открытые горят акцентом,
-          закрытые приглушены.
+          Подтверждённые достижения по видам спорта — то, что ты открыл и заверил видео.
         </p>
       </div>
 
@@ -87,6 +88,11 @@ export default function AchievementsPage() {
       ) : !hasSports ? (
         <p className="text-muted">
           Видов спорта пока нет — заведите их на странице «Виды спорта», затем сгенерируйте ачивки.
+        </p>
+      ) : !anyEarned ? (
+        <p className="text-muted">
+          Пока нет подтверждённых достижений. Открой ачивку и загрузи видео-подтверждение — она
+          появится здесь.
         </p>
       ) : (
         <div className="flex flex-col gap-[var(--space-section)]">
@@ -100,11 +106,11 @@ export default function AchievementsPage() {
 }
 
 function SportAchievements({ sport, achievements }: { sport: Sport; achievements: Achievement[] }) {
-  // Тируем карточки по сложности, при равном тире — по порядку создания (id).
-  const sorted = [...achievements].sort(
-    (a, b) => tierRank(a.level) - tierRank(b.level) || a.id - b.id,
-  );
-  const unlocked = achievements.filter((a) => a.status === 'unlocked').length;
+  // Показываем только достигнутые и подтверждённые (unlocked); тируем по сложности.
+  const earned = [...achievements]
+    .filter((a) => a.status === 'unlocked')
+    .sort((a, b) => tierRank(a.level) - tierRank(b.level) || a.id - b.id);
+  if (earned.length === 0) return null; // спорт без подтверждённых достижений не показываем
 
   return (
     <section aria-labelledby={`sport-${sport.id}-heading`} className="flex flex-col gap-5">
@@ -115,24 +121,16 @@ function SportAchievements({ sport, achievements }: { sport: Sport; achievements
         <span className="rounded-full bg-accent px-3 py-1 text-sm font-medium text-accent-ink">
           {sportCategoryLabel(sport.category)}
         </span>
-        {achievements.length > 0 && (
-          <span className="ml-auto text-sm font-medium text-muted">
-            {unlocked} / {achievements.length} открыто
-          </span>
-        )}
+        <span className="ml-auto text-sm font-medium text-muted">{earned.length} подтверждено</span>
       </div>
 
-      {sorted.length === 0 ? (
-        <p className="text-muted">Ачивки ещё не сгенерированы.</p>
-      ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sorted.map((achievement) => (
-            <li key={achievement.id}>
-              <AchievementCard achievement={achievement} sportId={sport.id} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {earned.map((achievement) => (
+          <li key={achievement.id}>
+            <AchievementCard achievement={achievement} sportId={sport.id} />
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
