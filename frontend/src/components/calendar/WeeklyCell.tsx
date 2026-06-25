@@ -10,7 +10,7 @@
 
 import type { DayFlags } from '../../lib/api';
 import { WEEKLY } from '../../lib/weekly';
-import { glowColor, measureGlow } from '../../lib/liquid';
+import { glowColor, measureGlow, WEEK_FULL_FILL } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -68,7 +68,13 @@ export function WeeklyCell({
       } ${isCurrentWeek ? 'border-accent/70' : count > 0 ? 'border-line' : 'border-line/50'}`}
       style={boxShadow ? { boxShadow } : undefined}
     >
-      {count > 0 && <LiquidFill level={level} activeKeys={activeKeys} />}
+      {count > 0 && (
+        <LiquidFill
+          level={level}
+          activeKeys={activeKeys}
+          fillColor={isFull ? WEEK_FULL_FILL : undefined}
+        />
+      )}
 
       <span className="pointer-events-none absolute top-0.5 left-1 z-10 text-[0.5rem] font-semibold uppercase tracking-wide text-muted sm:text-[0.55rem]">
         нед

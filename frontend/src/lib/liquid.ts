@@ -39,6 +39,14 @@ export function liquidGradient(activeKeys: readonly string[], mystery: boolean):
   return `linear-gradient(0deg, ${stops})`;
 }
 
+/** Однородная заливка ПОЛНОЙ ячейки (3/3). Частичные (1/3, 2/3) остаются радужным смешением
+ *  категорий (liquidGradient); при полном заполнении радугу заменяем одним красивым тоном —
+ *  «однородность + искры». Неделя сохраняет свой рознично-аметистовый цвет (как при 2/3
+ *  Вес+Замеры), день получает прохладный индиго→лазурь, который с ним сочетается (холодные
+ *  самоцветные тона рядом). Лёгкий вертикальный 2-тон даёт глубину, оставаясь однородным. */
+export const WEEK_FULL_FILL = 'linear-gradient(0deg, oklch(59% 0.19 302), oklch(77% 0.21 345))';
+export const DAY_FULL_FILL = 'linear-gradient(0deg, oklch(54% 0.17 266), oklch(76% 0.14 232))';
+
 /** Цвет свечения вокруг полной жидкости/медали. */
 export function glowColor(mystery: boolean): string {
   return mystery ? 'oklch(72% 0.26 345)' : 'oklch(84% 0.16 150)';
