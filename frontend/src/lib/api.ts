@@ -117,6 +117,59 @@ export type SportInput = {
   description: string | null;
 };
 
+/** Ступень дисциплины (M5·B23): грейд прогресса. rank — порядок (1 — низшая). */
+export type SportLevel = {
+  id: number;
+  sport_id: number;
+  code: string;
+  label: string;
+  rank: number;
+  description: string | null;
+};
+
+/** Событие дисциплины (M5·B24): забег/турнир/сбор. starts_on/ends_on — даты (YYYY-MM-DD). */
+export type SportEvent = {
+  id: number;
+  sport_id: number;
+  title: string;
+  description: string | null;
+  location: string | null;
+  starts_on: string;
+  ends_on: string | null;
+  url: string | null;
+};
+
+/** Наставник дисциплины (M5·B25): тренер/гид. photo_path — путь на диске (не URL). */
+export type SportMentor = {
+  id: number;
+  sport_id: number;
+  name: string;
+  bio: string | null;
+  contact: string | null;
+  url: string | null;
+  photo_path: string | null;
+};
+
+/** Рекомендация дисциплины (M5·B26): совет/гайд. from/to_level_id — опц. переход ступеней. */
+export type SportRecommendation = {
+  id: number;
+  sport_id: number;
+  from_level_id: number | null;
+  to_level_id: number | null;
+  title: string;
+  body: string;
+};
+
+/** Сводка по дисциплине (M5·B27): сам вид спорта + его каталог + счётчик ачивок владельца. */
+export type SportOverview = {
+  sport: Sport;
+  levels: SportLevel[];
+  events: SportEvent[];
+  mentors: SportMentor[];
+  recommendations: SportRecommendation[];
+  achievement_count: number;
+};
+
 /** Дисциплина пользователя (M2·B19): связка user_sport + данные каталога вида спорта.
  *  current_level_id/rating — личные атрибуты (уровень/рейтинг); таблицы уровней пока нет,
  *  поэтому current_level_id — просто int без FK. joined_at — когда привязал дисциплину. */
@@ -732,6 +785,9 @@ export const api = {
   listSportCategories: () => request<SportCategory[]>('/sports/categories'),
   createSport: (input: SportInput) =>
     request<Sport>('/sports', { method: 'POST', body: JSON.stringify(input) }),
+  // Сводка по дисциплине (M5·B27): вид спорта + ступени/события/менторы/рекомендации + счётчик ачивок.
+  // Бэкенд отдаёт 404 для неизвестного id (ApiError.status === 404).
+  getSportOverview: (sportId: number) => request<SportOverview>(`/sports/${sportId}/overview`),
 
   // Ачивки вида спорта (S5.2): набор достижений со статусами (locked/in_progress/unlocked).
   listAchievements: (sportId: number) => request<Achievement[]>(`/sports/${sportId}/achievements`),

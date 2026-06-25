@@ -10,6 +10,7 @@ import {
   type Sport,
   type SportCategory,
   type SportInput,
+  type SportOverview,
   type UserSport,
   type UserSportLink,
 } from './api';
@@ -39,6 +40,16 @@ export function useSportCategories() {
 /** Все упражнения одним запросом — экран сам группирует их по виду спорта. */
 export function useExercises() {
   return useQuery<Exercise[]>({ queryKey: EXERCISES_KEY, queryFn: () => api.listExercises() });
+}
+
+/** Сводка по дисциплине (M5·B27) для детальной страницы /sports/:id; ключ включает id.
+ *  enabled отсекает невалидный id (NaN из роут-параметра) — без запроса /sports/NaN/overview. */
+export function useSportOverview(sportId: number) {
+  return useQuery<SportOverview>({
+    queryKey: ['sport-overview', sportId],
+    queryFn: () => api.getSportOverview(sportId),
+    enabled: Number.isFinite(sportId),
+  });
 }
 
 export function useCreateSport() {
