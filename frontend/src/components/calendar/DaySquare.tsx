@@ -31,9 +31,15 @@ export function DaySquare({
   draining?: boolean;
   onSelect?: () => void;
 }) {
-  const active = flags ? DAILY.filter((c) => flags[c.key]) : [];
-  const activeKeys = active.map((c) => c.key);
-  const count = active.length;
+  // Категории в порядке появления (daily_order с бэкенда) задают слои заливки снизу-вверх:
+  // первый внесённый — внизу, последний — сверху. Фолбэк — фиксированный порядок DAILY
+  // (старые ответы /dashboard без поля).
+  const orderedKeys =
+    flags?.daily_order && flags.daily_order.length
+      ? flags.daily_order
+      : DAILY.filter((c) => flags?.[c.key]).map((c) => c.key);
+  const activeKeys = orderedKeys;
+  const count = orderedKeys.length;
   const isComplete = count === DAILY.length;
   const hasMedia = !!flags?.has_workout_media;
   const level = draining ? 0 : count / DAILY.length;
@@ -46,8 +52,8 @@ export function DaySquare({
     .filter(Boolean)
     .join(', ');
 
-  const summary = active.length
-    ? active.map((c) => c.label.toLowerCase()).join(', ')
+  const summary = orderedKeys.length
+    ? orderedKeys.map((k) => DAILY.find((c) => c.key === k)?.label.toLowerCase() ?? k).join(', ')
     : 'нет данных';
   const dateLabel = cap(dayLabelFmt.format(new Date(iso + 'T00:00:00')));
 

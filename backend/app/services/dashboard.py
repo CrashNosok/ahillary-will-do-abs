@@ -46,6 +46,9 @@ class DayFlag:
     has_surpassed_self: bool
     has_workout_media: bool
     has_full_measurements: bool
+    # Заполненные дневные категории в порядке появления (по времени первого ввода за день):
+    # ['has_training', 'has_food', ...]. Фронт заливает «жидкость» дня в этом порядке (снизу-вверх).
+    daily_order: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,18 @@ def _dates(
     return {d for d in session.exec(stmt).all() if d is not None}
 
 
+def _first_ts_by_date(
+    session: Session, date_col, ts_col, user_id_col, user_id: int, start: dt.date, end: dt.date
+) -> dict[dt.date, dt.datetime]:
+    """date → самое раннее время записи владельца за день (min ts). Для порядка категорий дня."""
+    stmt = (
+        select(date_col, func.min(ts_col))
+        .where(date_col >= start, date_col <= end, user_id_col == user_id)
+        .group_by(date_col)
+    )
+    return {d: ts for d, ts in session.exec(stmt).all() if d is not None and ts is not None}
+
+
 def day_flags(start: dt.date, end: dt.date, session: Session, *, user_id: int) -> list[DayFlag]:
     """Флаги по каждому дню диапазона включительно для user_id. start > end → ValueError."""
     if start > end:
@@ -109,6 +124,35 @@ def day_flags(start: dt.date, end: dt.date, session: Session, *, user_id: int) -
     workout_media = _workout_media_dates(session, user_id, start, end)
     full_measurements = body & weight  # «полный» замер дня = обхваты И вес одновременно
 
+    # Время первого ввода каждой дневной категории за день — для порядка заливки (еда: created_at,
+    # активность: parsed_at, тренировка: created_at).
+    food_ts = _first_ts_by_date(
+        session, FoodEntry.date, FoodEntry.created_at, FoodEntry.user_id, user_id, start, end
+    )
+    activity_ts = _first_ts_by_date(
+        session, ActivityDay.date, ActivityDay.parsed_at, ActivityDay.user_id, user_id, start, end
+    )
+    training_ts = _first_ts_by_date(
+        session,
+        WorkoutSession.date,
+        WorkoutSession.created_at,
+        WorkoutSession.user_id,
+        user_id,
+        start,
+        end,
+    )
+
+    def _daily_order(day: dt.date) -> tuple[str, ...]:
+        present = []
+        if day in food:
+            present.append(("has_food", food_ts.get(day)))
+        if day in activity:
+            present.append(("has_activity", activity_ts.get(day)))
+        if day in training:
+            present.append(("has_training", training_ts.get(day)))
+        present.sort(key=lambda kt: (kt[1] is None, kt[1]))  # по времени; None — в конец
+        return tuple(key for key, _ in present)
+
     days: list[DayFlag] = []
     day = start
     while day <= end:
@@ -125,6 +169,7 @@ def day_flags(start: dt.date, end: dt.date, session: Session, *, user_id: int) -
                 has_surpassed_self=day in surpassed,
                 has_workout_media=day in workout_media,
                 has_full_measurements=day in full_measurements,
+                daily_order=_daily_order(day),
             )
         )
         day += dt.timedelta(days=1)

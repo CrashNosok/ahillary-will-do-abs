@@ -8,6 +8,8 @@ import datetime as dt
 
 from sqlmodel import Field, SQLModel
 
+from app.models._time import utcnow
+
 
 class FoodEntry(SQLModel, table=True):
     __tablename__ = "food_entry"
@@ -25,3 +27,5 @@ class FoodEntry(SQLModel, table=True):
     fat_g: float | None = None
     carb_g: float | None = None
     import_id: str | None = Field(default=None, index=True)
+    # Момент внесения — для порядка заливки дня в календаре (категории в порядке появления).
+    created_at: dt.datetime = Field(default_factory=utcnow)

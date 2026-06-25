@@ -45,6 +45,8 @@ class DayFlags(BaseModel):
     has_surpassed_self: bool
     has_workout_media: bool
     has_full_measurements: bool
+    # Заполненные дневные категории в порядке появления (для порядка заливки дня).
+    daily_order: list[str]
 
 
 class TodaySummary(BaseModel):

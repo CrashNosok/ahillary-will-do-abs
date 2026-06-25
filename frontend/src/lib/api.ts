@@ -593,6 +593,9 @@ export type DayFlags = {
   has_surpassed_self: boolean;
   has_workout_media: boolean;
   has_full_measurements: boolean;
+  // Заполненные дневные категории в порядке появления (для порядка заливки дня). Может
+  // отсутствовать у старых ответов — фронт тогда падает на фиксированный порядок DAILY.
+  daily_order?: string[];
 };
 
 /** Контракт M4·F14: `DayFlags` обязан нести три новых сигнала-флага (boolean,
