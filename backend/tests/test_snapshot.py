@@ -78,11 +78,11 @@ def _seed_full(engine) -> None:
             )
         )
         # InBody: старый (база) и свежий замер.
-        s.add(InbodyMeasurement(date=_d(30), weight_kg=85.0, body_fat_pct=25.0))
-        s.add(InbodyMeasurement(date=_d(5), weight_kg=80.0, body_fat_pct=22.0))
+        s.add(InbodyMeasurement(date=_d(30), weight_kg=85.0, body_fat_pct=25.0, user_id=1))
+        s.add(InbodyMeasurement(date=_d(5), weight_kg=80.0, body_fat_pct=22.0, user_id=1))
         # Замеры тела: талия 90 → 85.
-        s.add(BodyMeasurement(date=_d(30), waist_cm=90.0))
-        s.add(BodyMeasurement(date=_d(5), waist_cm=85.0))
+        s.add(BodyMeasurement(date=_d(30), waist_cm=90.0, user_id=1))
+        s.add(BodyMeasurement(date=_d(5), waist_cm=85.0, user_id=1))
         # Питание: два дня.
         s.add(
             FoodEntry(

@@ -50,7 +50,9 @@ def ctx():
 
 def _add_inbody(engine, date: str, weight_kg: float | None) -> None:
     with Session(engine) as session:
-        session.add(InbodyMeasurement(date=dt.date.fromisoformat(date), weight_kg=weight_kg))
+        session.add(
+            InbodyMeasurement(date=dt.date.fromisoformat(date), weight_kg=weight_kg, user_id=1)
+        )
         session.commit()
 
 
@@ -144,6 +146,7 @@ def _add_inbody_full(
                 muscle_mass_kg=muscle_mass_kg,
                 visceral_fat=visceral_fat,
                 water=water,
+                user_id=1,
             )
         )
         session.commit()
@@ -339,7 +342,11 @@ def test_energy_requires_auth():
 
 def _add_inbody_fat(engine, date: str, body_fat_pct: float) -> None:
     with Session(engine) as session:
-        session.add(InbodyMeasurement(date=dt.date.fromisoformat(date), body_fat_pct=body_fat_pct))
+        session.add(
+            InbodyMeasurement(
+                date=dt.date.fromisoformat(date), body_fat_pct=body_fat_pct, user_id=1
+            )
+        )
         session.commit()
 
 

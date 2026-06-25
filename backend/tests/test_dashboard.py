@@ -77,7 +77,7 @@ def test_flags_reflect_each_source(session):
     _food(session, day)
     _activity(session, day)
     _training(session, day)
-    session.add(BodyMeasurement(date=day, waist_cm=80))
+    session.add(BodyMeasurement(date=day, waist_cm=80, user_id=1))
     session.commit()
 
     [d] = dashboard.day_flags(day, day, session)
@@ -91,7 +91,7 @@ def test_flags_reflect_each_source(session):
 
 def test_measurement_flag_covers_inbody(session):
     day = dt.date(2026, 6, 11)
-    session.add(InbodyMeasurement(date=day, weight_kg=90))
+    session.add(InbodyMeasurement(date=day, weight_kg=90, user_id=1))
     session.commit()
     [d] = dashboard.day_flags(day, day, session)
     assert d.has_measurement is True
@@ -101,9 +101,9 @@ def test_measurement_flag_covers_inbody(session):
 def test_weekly_flags_split_weight_body_photo(session):
     # Недельные категории раздельны: вес(inbody)/замеры(body)/фото — каждый сам по себе.
     w, b, p = dt.date(2026, 6, 1), dt.date(2026, 6, 2), dt.date(2026, 6, 3)
-    session.add(InbodyMeasurement(date=w, weight_kg=88))
-    session.add(BodyMeasurement(date=b, waist_cm=80))
-    session.add(ProgressPhoto(date=p, source_image_path="x.jpg"))
+    session.add(InbodyMeasurement(date=w, weight_kg=88, user_id=1))
+    session.add(BodyMeasurement(date=b, waist_cm=80, user_id=1))
+    session.add(ProgressPhoto(date=p, source_image_path="x.jpg", user_id=1))
     session.commit()
 
     days = {d.date: d for d in dashboard.day_flags(w, p, session)}

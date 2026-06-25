@@ -110,3 +110,20 @@ def test_foreign_keys_reference_expected_tables():
         for col in fk["constrained_columns"]
     }
     assert actual == _EXPECTED_FKS
+
+
+# --- M0·B4: владелец данных в body-кластере ---
+# Каждая таблица кластера получает user_id FK -> user (изоляция данных по пользователю).
+_B4_USER_FK_TABLES = ("body_measurement", "inbody_measurement", "progress_photo", "hr_zones")
+
+
+def test_body_cluster_tables_have_user_id_fk():
+    # критерий M0·B4: у каждой таблицы body-кластера user_id ссылается на user
+    insp = inspect(_memory_engine())
+    for table in _B4_USER_FK_TABLES:
+        fks = {
+            col: fk["referred_table"]
+            for fk in insp.get_foreign_keys(table)
+            for col in fk["constrained_columns"]
+        }
+        assert fks.get("user_id") == "user", table
