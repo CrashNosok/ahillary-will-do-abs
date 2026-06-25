@@ -12,6 +12,7 @@ import { FoodQuickImport } from './FoodQuickImport';
 import { ActivityForm } from './ActivityForm';
 import { WeekWeightForm, WeekMeasurementsForm, WeekPhotoForm } from './WeeklyForms';
 import { WorkoutForm } from './WorkoutForm';
+import { DayWorkoutMediaStrip } from './DayWorkoutMediaStrip';
 
 const dateFmt = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
@@ -134,6 +135,8 @@ export function DayEditorPanel({
             {isOpen ? 'Свернуть' : done ? 'Изменить' : 'Внести'}
           </button>
         </div>
+        {/* Полоса медиа дня — только в строке тренировок (M3·F12), видна и без раскрытия формы. */}
+        {r.tab === 'training' && <DayWorkoutMediaStrip date={iso} />}
         {isOpen && (
           <div className="entry-embed mb-3 rounded-xl border border-line bg-ink/40 p-3">
             {renderForm(r.tab, iso, () => setSaved((s) => new Set(s).add(r.tab)))}

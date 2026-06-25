@@ -75,6 +75,8 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+      // Сохранение могло добавить медиа → освежаем полосу медиа дня (M3·F12).
+      qc.invalidateQueries({ queryKey: ['workout-media'] });
       onSaved?.();
     },
   });
