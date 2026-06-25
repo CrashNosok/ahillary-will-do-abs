@@ -7,6 +7,7 @@ import { useLogout, useMe } from '../lib/auth';
  *  рабочими (см. App.tsx) для старых ссылок — просто не дублируются в меню. */
 const NAV = [
   { to: '/', label: 'Дашборд', end: true },
+  { to: '/profile', label: 'Мой кабинет', end: false },
   { to: '/data-entry', label: 'Ввод данных', end: false },
   { to: '/progress', label: 'Прогресс', end: false },
   { to: '/achievements', label: 'Достижения', end: false },

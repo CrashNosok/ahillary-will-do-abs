@@ -11,6 +11,7 @@ import GoalPage from './components/GoalPage';
 import ImportPage from './components/ImportPage';
 import InbodyImportPage from './components/InbodyImportPage';
 import PlaceholderPage from './components/PlaceholderPage';
+import ProfilePage from './components/ProfilePage';
 import ProgressPage from './components/ProgressPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import RecommendationsPage from './components/RecommendationsPage';
@@ -37,6 +38,7 @@ export default function App() {
             }
           >
             <Route index element={<Dashboard />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route path="data-entry" element={<DataEntryPage />} />
             <Route path="progress" element={<ProgressPage />} />
             <Route path="sports" element={<SportsPage />} />
