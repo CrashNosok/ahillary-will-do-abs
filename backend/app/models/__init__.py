@@ -9,6 +9,7 @@ from app.models.nutrition import FoodEntry
 from app.models.recommendation import Recommendation
 from app.models.sport import Exercise, Sport, SportCategory
 from app.models.user import User
+from app.models.user_sport import UserSport
 from app.models.workout import (
     CardioLog,
     PersonalRecord,
@@ -39,6 +40,7 @@ __all__ = [
     "SmartGoal",
     "StrengthSet",
     "User",
+    "UserSport",
     "WorkoutMedia",
     "WorkoutSession",
 ]
