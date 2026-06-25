@@ -8,6 +8,7 @@ from app.models.challenge import (
     ChallengeParticipant,
     ChallengeParticipantStatus,
     ChallengeProof,
+    ChallengeSponsor,
 )
 from app.models.deficit import DeficitDay
 from app.models.goal import GoalStatus, SmartGoal
@@ -44,6 +45,7 @@ __all__ = [
     "ChallengeParticipant",
     "ChallengeParticipantStatus",
     "ChallengeProof",
+    "ChallengeSponsor",
     "DeficitDay",
     "Exercise",
     "FoodEntry",
