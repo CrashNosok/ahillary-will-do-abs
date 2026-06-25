@@ -137,7 +137,7 @@ def list_sport_achievements(
 def generate_sport_achievements(
     sport_id: int,
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     level: Annotated[AthleteLevel, Query()] = AthleteLevel.beginner,
 ) -> list[Achievement]:
     """LLM-генератор ачивок (S5.1): тированный набор под дисциплину и уровень атлета.
@@ -147,7 +147,7 @@ def generate_sport_achievements(
     """
     sport = _get_or_404(session, sport_id)
     try:
-        return achievement_service.generate_achievements(session, sport, level)
+        return achievement_service.generate_achievements(session, sport, level, user_id=user.id)
     except (LLMError, InvalidAchievementSetError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

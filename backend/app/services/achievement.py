@@ -85,6 +85,7 @@ def generate_achievements(
     sport: Sport,
     level: AthleteLevel,
     *,
+    user_id: int,
     model: str | None = None,
     attempts: int = 3,
 ) -> list[Achievement]:
@@ -104,6 +105,7 @@ def generate_achievements(
 
     created = [
         Achievement(
+            user_id=user_id,
             sport_id=sport.id,
             title=spec.title,
             description=spec.description,

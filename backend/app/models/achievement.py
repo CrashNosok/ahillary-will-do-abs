@@ -17,6 +17,7 @@ class Achievement(SQLModel, table=True):
     __tablename__ = "achievement"
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)  # владелец ачивки (M0·B6)
     sport_id: int | None = Field(default=None, foreign_key="sport.id", index=True)
     title: str
     description: str | None = None
