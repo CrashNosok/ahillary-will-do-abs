@@ -61,7 +61,8 @@ def _seed_achievements(engine, sport_id: int, *specs: tuple[str, str, str]) -> N
     """specs: (title, level, status)."""
     with Session(engine) as s:
         s.add_all(
-            Achievement(sport_id=sport_id, title=t, level=lvl, status=st) for t, lvl, st in specs
+            Achievement(user_id=1, sport_id=sport_id, title=t, level=lvl, status=st)
+            for t, lvl, st in specs
         )
         s.commit()
 

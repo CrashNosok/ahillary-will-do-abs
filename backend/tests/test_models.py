@@ -90,6 +90,7 @@ _EXPECTED_FKS = {
     ("personal_record", "exercise_id"): "exercise",
     ("personal_record", "user_id"): "user",  # владелец рекорда (M0·B3)
     ("achievement", "sport_id"): "sport",
+    ("achievement", "user_id"): "user",  # владелец ачивки (M0·B6)
     ("achievement_proof", "achievement_id"): "achievement",
     ("recommendation", "goal_id"): "smart_goal",
     ("recommendation", "user_id"): "user",  # владелец рекомендации (M0·B5)

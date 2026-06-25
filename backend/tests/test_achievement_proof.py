@@ -48,7 +48,7 @@ def engine():
     SQLModel.metadata.create_all(eng)
     with Session(eng) as session:
         session.add(User(email=EMAIL, password_hash=hash_password(PASSWORD)))
-        session.add(Achievement(id=1, sport_id=None, title="Первый подтяг"))
+        session.add(Achievement(id=1, user_id=1, sport_id=None, title="Первый подтяг"))
         session.commit()
     return eng
 

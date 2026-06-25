@@ -100,10 +100,13 @@ def test_generate_persists_tiered_achievements(engine, monkeypatch):
 
     with Session(engine) as session:
         sport = session.get(Sport, sport_id)
-        created = achievement_service.generate_achievements(session, sport, AthleteLevel.beginner)
+        created = achievement_service.generate_achievements(
+            session, sport, AthleteLevel.beginner, user_id=1
+        )
 
     assert len(created) == len(ACHIEVEMENT_SET_EXAMPLE["achievements"])
     assert all(a.sport_id == sport_id for a in created)
+    assert all(a.user_id == 1 for a in created)  # M0·B6: владелец проставлен
     assert all(a.status == "locked" for a in created)
     # Тируется по сложности: в поле level лежат >= 2 разных тира.
     assert len({a.level for a in created}) >= 2
@@ -121,7 +124,9 @@ def test_generate_beginner_has_no_advanced_tier(engine, monkeypatch):
 
     with Session(engine) as session:
         sport = session.get(Sport, sport_id)
-        created = achievement_service.generate_achievements(session, sport, AthleteLevel.beginner)
+        created = achievement_service.generate_achievements(
+            session, sport, AthleteLevel.beginner, user_id=1
+        )
 
     assert all(a.level in {"foundation", "intermediate"} for a in created)
 
@@ -133,7 +138,7 @@ def test_generate_retries_invalid_then_valid(engine, monkeypatch):
 
     with Session(engine) as session:
         sport = session.get(Sport, sport_id)
-        achievement_service.generate_achievements(session, sport, AthleteLevel.beginner)
+        achievement_service.generate_achievements(session, sport, AthleteLevel.beginner, user_id=1)
         rows = session.exec(select(Achievement)).all()
 
     assert len(rows) == len(ACHIEVEMENT_SET_EXAMPLE["achievements"])
@@ -148,7 +153,7 @@ def test_generate_all_invalid_persists_nothing(engine, monkeypatch):
         sport = session.get(Sport, sport_id)
         with pytest.raises(InvalidAchievementSetError):
             achievement_service.generate_achievements(
-                session, sport, AthleteLevel.beginner, attempts=3
+                session, sport, AthleteLevel.beginner, user_id=1, attempts=3
             )
         assert session.exec(select(Achievement)).all() == []
 
@@ -165,7 +170,9 @@ def test_generate_llm_error_propagates_and_persists_nothing(engine, monkeypatch)
     with Session(engine) as session:
         sport = session.get(Sport, sport_id)
         with pytest.raises(llm.LLMError):
-            achievement_service.generate_achievements(session, sport, AthleteLevel.beginner)
+            achievement_service.generate_achievements(
+                session, sport, AthleteLevel.beginner, user_id=1
+            )
         assert session.exec(select(Achievement)).all() == []
 
 
