@@ -79,7 +79,9 @@ export function DayEditorPanel({
   const [saved, setSaved] = useState<ReadonlySet<string>>(new Set());
   // Очищенные прямо в попапе — строка сразу становится «Внести» (флаги-проп ещё старые).
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
-  const [clearing, setClearing] = useState<string | null>(null);
+  const [clearing, setClearing] = useState<string | null>(null); // таб в процессе очистки
+  const [confirming, setConfirming] = useState<string | null>(null); // таб с инлайн-подтверждением
+  const [clearError, setClearError] = useState<string | null>(null); // таб, где очистка не удалась
   useScrollLock();
 
   useEffect(() => {
@@ -100,11 +102,11 @@ export function DayEditorPanel({
     [qc],
   );
 
-  // Очистить данные категории за этот день/неделю (с архивацией на бэке). Строка сразу
-  // становится «Внести», календарь перечитывается при закрытии (+сразу инвалидируем).
-  const onClear = async (tab: string) => {
-    if (!window.confirm('Очистить эти данные? Их можно восстановить из архива.')) return;
+  // Очистить данные категории за этот день/неделю (с архивацией на бэке). Подтверждение —
+  // инлайн (см. рендер), без браузерного confirm. Строка сразу становится «Внести».
+  const doClear = async (tab: string) => {
     setClearing(tab);
+    setClearError(null);
     try {
       await api.clearDayData(tab, iso);
       setCleared((s) => new Set(s).add(tab));
@@ -113,13 +115,14 @@ export function DayEditorPanel({
         n.delete(tab);
         return n;
       });
+      setConfirming(null);
       setOpen(null);
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['workout-media'] });
       qc.invalidateQueries({ queryKey: ['body-photos'] });
       qc.invalidateQueries({ queryKey: ['progress'] });
     } catch {
-      window.alert('Не удалось очистить. Попробуйте ещё раз.');
+      setClearError(tab);
     } finally {
       setClearing(null);
     }
@@ -151,7 +154,11 @@ export function DayEditorPanel({
           <button
             type="button"
             aria-expanded={isOpen}
-            onClick={() => setOpen(isOpen ? null : r.tab)}
+            onClick={() => {
+              setOpen(isOpen ? null : r.tab);
+              setConfirming(null);
+              setClearError(null);
+            }}
             className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors duration-[var(--duration-fast)] ${
               isOpen
                 ? 'border-accent bg-accent/15 text-accent'
@@ -168,17 +175,51 @@ export function DayEditorPanel({
         {isOpen && (
           <div className="entry-embed mb-3 rounded-xl border border-line bg-ink/40 p-3">
             {renderForm(r.tab, iso, () => setSaved((s) => new Set(s).add(r.tab)))}
-            {/* «Очистить» — только когда есть что чистить (данные внесены). Удаляет с архивацией. */}
+            {/* «Очистить» — только когда есть что чистить. Инлайн-подтверждение (без браузерного
+                confirm): кнопка → строка «Очистить? · Да/Отмена». Удаляет с архивацией. */}
             {done && (
-              <div className="mt-3 flex justify-end border-t border-line/60 pt-3">
-                <button
-                  type="button"
-                  onClick={() => onClear(r.tab)}
-                  disabled={clearing === r.tab}
-                  className="rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors duration-[var(--duration-fast)] hover:bg-red-500/10 disabled:opacity-50"
-                >
-                  {clearing === r.tab ? 'Очистка…' : 'Очистить данные'}
-                </button>
+              <div className="mt-3 border-t border-line/60 pt-3">
+                {clearError === r.tab && (
+                  <p className="mb-2 text-xs text-red-400">
+                    Не удалось очистить. Попробуйте ещё раз.
+                  </p>
+                )}
+                {confirming === r.tab ? (
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span className="mr-auto text-xs text-muted">
+                      Очистить данные? Их можно восстановить из архива.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => doClear(r.tab)}
+                      disabled={clearing === r.tab}
+                      className="rounded-full border border-red-500/50 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors duration-[var(--duration-fast)] hover:bg-red-500/20 disabled:opacity-50"
+                    >
+                      {clearing === r.tab ? 'Очистка…' : 'Да, очистить'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirming(null)}
+                      disabled={clearing === r.tab}
+                      className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors duration-[var(--duration-fast)] hover:text-fg disabled:opacity-50"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirming(r.tab);
+                        setClearError(null);
+                      }}
+                      className="rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors duration-[var(--duration-fast)] hover:bg-red-500/10"
+                    >
+                      Очистить данные
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
