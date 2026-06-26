@@ -28,8 +28,10 @@ from app.models.sport import (
 )
 from app.services import achievement as achievement_service
 from app.services import sport as sport_service
+from app.services import sport_summary
 from app.services.achievement_schema import AthleteLevel, InvalidAchievementSetError
 from app.services.llm import LLMError
+from app.services.sport_summary import SportSummary
 
 router = APIRouter(prefix="/sports", tags=["sports"])
 
@@ -168,6 +170,14 @@ def create_suggestion(
     session.commit()
     session.refresh(suggestion)
     return suggestion
+
+
+@router.get("/summaries")
+def list_sport_summaries(session: SessionDep, user: CurrentUser) -> list[SportSummary]:
+    """Сводка по видам (глобальные счётчики + персональная статистика пользователя) для карточек
+    каталога/«Мои виды спорта». Возвращает только виды с данными — фронт дефолтит остальные нулями.
+    Объявлено ДО /{sport_id}, иначе "summaries" уйдёт в int-параметр пути."""
+    return list(sport_summary.summaries(session, user.id).values())
 
 
 @router.get("/suggestions")

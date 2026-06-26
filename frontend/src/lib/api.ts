@@ -134,6 +134,21 @@ export type SuggestionInput = {
   note?: string | null;
 };
 
+/** Сводка по виду спорта: глобальные счётчики + персональная статистика пользователя.
+ *  Прогресс (ачивки/тренировки) у пользователя, не на связке — не сбрасывается при отвязке. */
+export type SportSummary = {
+  sport_id: number;
+  levels: number;
+  events: number;
+  mentors: number;
+  challenges: number;
+  achievements_total: number;
+  achievements_unlocked: number;
+  workouts: number;
+  current_level: string | null;
+  linked: boolean;
+};
+
 /** Ступень дисциплины (M5·B23): грейд прогресса. rank — порядок (1 — низшая). */
 export type SportLevel = {
   id: number;
@@ -908,6 +923,8 @@ export const api = {
       body: JSON.stringify(input),
     }),
   listSuggestions: () => request<SportSuggestion[]>('/sports/suggestions'),
+  // Сводка по видам (счётчики + персональная статистика) для карточек каталога/«Мои виды спорта».
+  listSportSummaries: () => request<SportSummary[]>('/sports/summaries'),
   // Один вид спорта по id (M5·F21): лёгкая шапка детальной страницы. 404 для неизвестного id.
   getSport: (sportId: number) => request<Sport>(`/sports/${sportId}`),
   // Сводка по дисциплине (M5·B27): вид спорта + ступени/события/менторы/рекомендации + счётчик ачивок.

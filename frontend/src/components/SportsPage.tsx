@@ -11,6 +11,7 @@ import {
   sportCategoryLabel,
   type Sport,
   type SportCategory,
+  type SportSummary,
 } from '../lib/api';
 import {
   useCreateSuggestion,
@@ -18,9 +19,31 @@ import {
   useMySports,
   useSportCategories,
   useSports,
+  useSportSummaries,
   useSuggestions,
   useUnlinkSport,
 } from '../lib/sports';
+
+// Русские множественные формы для счётчиков (1 ступень / 2 ступени / 5 ступеней).
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+const ZERO_SUMMARY: Omit<SportSummary, 'sport_id'> = {
+  levels: 0,
+  events: 0,
+  mentors: 0,
+  challenges: 0,
+  achievements_total: 0,
+  achievements_unlocked: 0,
+  workouts: 0,
+  current_level: null,
+  linked: false,
+};
 
 const inputCls =
   'rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent';
@@ -38,21 +61,31 @@ const statusLabel = (s: string): string =>
 
 export default function SportsPage() {
   const [filter, setFilter] = useState<SportCategory | ''>('');
-  // Тянем ВСЕ виды и делим на клиенте: «мои» (привязанные) и каталог (остальные) — фильтр
-  // категории применяется только к каталогу, «мои» показываем всегда целиком.
+  // Тянем ВСЕ виды + сводку (счётчики/прогресс) и делим на клиенте: «мои» (привязанные ИЛИ с
+  // прогрессом) и каталог (остальные). Фильтр категории — только к каталогу.
   const { data: allSports, isPending } = useSports();
   const { data: categories } = useSportCategories();
   const { data: mySports } = useMySports();
+  const { data: summaries } = useSportSummaries();
   const linkedIds = useMemo(() => new Set((mySports ?? []).map((s) => s.sport_id)), [mySports]);
+  const summaryById = useMemo(() => {
+    const m = new Map<number, SportSummary>();
+    for (const s of summaries ?? []) m.set(s.sport_id, s);
+    return m;
+  }, [summaries]);
+  const summaryOf = (id: number): SportSummary =>
+    summaryById.get(id) ?? { sport_id: id, ...ZERO_SUMMARY };
 
-  const mine = useMemo(
-    () => (allSports ?? []).filter((s) => linkedIds.has(s.id)),
-    [allSports, linkedIds],
-  );
+  // «Мои виды спорта» = привязан ИЛИ есть прогресс (ачивки/тренировки) — прогресс не сбрасывается
+  // при отвязке и продолжает показываться здесь же.
+  const isMine = (s: Sport) => {
+    const sum = summaryOf(s.id);
+    return linkedIds.has(s.id) || sum.achievements_unlocked > 0 || sum.workouts > 0;
+  };
+  const mine = useMemo(() => (allSports ?? []).filter(isMine), [allSports, linkedIds, summaryById]);
   const catalog = useMemo(
-    () =>
-      (allSports ?? []).filter((s) => !linkedIds.has(s.id) && (!filter || s.category === filter)),
-    [allSports, linkedIds, filter],
+    () => (allSports ?? []).filter((s) => !isMine(s) && (!filter || s.category === filter)),
+    [allSports, linkedIds, summaryById, filter],
   );
 
   return (
@@ -79,7 +112,12 @@ export default function SportsPage() {
           <ul className={cardGridCls}>
             {mine.map((sport) => (
               <li key={sport.id}>
-                <SportCard sport={sport} linked />
+                <SportCard
+                  sport={sport}
+                  linked={linkedIds.has(sport.id)}
+                  summary={summaryOf(sport.id)}
+                  mine
+                />
               </li>
             ))}
           </ul>
@@ -123,7 +161,12 @@ export default function SportsPage() {
           <ul className={cardGridCls}>
             {catalog.map((sport) => (
               <li key={sport.id}>
-                <SportCard sport={sport} linked={false} />
+                <SportCard
+                  sport={sport}
+                  linked={false}
+                  summary={summaryOf(sport.id)}
+                  mine={false}
+                />
               </li>
             ))}
           </ul>
@@ -140,7 +183,17 @@ export default function SportsPage() {
  *   - НЕ привязан → сплошной акцент «Привязать» (призыв к действию);
  *   - привязан → мягкий акцент «✓ Привязан», на ховере краснеет в «Отвязать» (удаление).
  *  Привязанная карточка слегка подсвечена акцентной рамкой. */
-function SportCard({ sport, linked }: { sport: Sport; linked: boolean }) {
+function SportCard({
+  sport,
+  linked,
+  summary,
+  mine,
+}: {
+  sport: Sport;
+  linked: boolean;
+  summary: SportSummary;
+  mine: boolean;
+}) {
   const link = useLinkSport();
   const unlink = useUnlinkSport();
   const pending = link.isPending || unlink.isPending;
@@ -200,11 +253,56 @@ function SportCard({ sport, linked }: { sport: Sport; linked: boolean }) {
       {sport.description && (
         <p className="text-sm leading-relaxed text-muted">{sport.description}</p>
       )}
+      {/* Сводка: в «Мои» — персональная статистика, в каталоге — глобальные счётчики вида. */}
+      {mine ? <PersonalStats summary={summary} /> : <CatalogStats summary={summary} />}
       {error && (
         <p role="alert" className="text-sm font-medium text-amber">
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+/** Глобальные счётчики вида (одинаковы для всех): ступени · события · челленджи · ачивки.
+ *  Показываем только ненулевое; ничего нет → ничего не рисуем. */
+function CatalogStats({ summary: s }: { summary: SportSummary }) {
+  const parts = [
+    s.levels && `${s.levels} ${plural(s.levels, 'ступень', 'ступени', 'ступеней')}`,
+    s.events && `${s.events} ${plural(s.events, 'событие', 'события', 'событий')}`,
+    s.challenges &&
+      `${s.challenges} ${plural(s.challenges, 'челлендж', 'челленджа', 'челленджей')}`,
+    s.achievements_total &&
+      `${s.achievements_total} ${plural(s.achievements_total, 'ачивка', 'ачивки', 'ачивок')}`,
+  ].filter(Boolean) as string[];
+  if (parts.length === 0) return null;
+  return <p className="mt-auto pt-1 text-xs text-muted">{parts.join(' · ')}</p>;
+}
+
+/** Персональная статистика (в «Мои виды спорта»): ачивки выполнено/всего · уровень · тренировки.
+ *  Акцентные пилюли. Прогресса нет → подсказка начать. Прогресс сохраняется и после отвязки. */
+function PersonalStats({ summary: s }: { summary: SportSummary }) {
+  const pills = [
+    s.achievements_total > 0 && `${s.achievements_unlocked}/${s.achievements_total} ачивок`,
+    s.current_level && `Уровень: ${s.current_level}`,
+    s.workouts > 0 &&
+      `${s.workouts} ${plural(s.workouts, 'тренировка', 'тренировки', 'тренировок')}`,
+  ].filter(Boolean) as string[];
+  if (pills.length === 0) {
+    return (
+      <p className="mt-auto pt-1 text-xs text-muted">Прогресса пока нет — начните тренироваться.</p>
+    );
+  }
+  return (
+    <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
+      {pills.map((p) => (
+        <span
+          key={p}
+          className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent"
+        >
+          {p}
+        </span>
+      ))}
     </div>
   );
 }

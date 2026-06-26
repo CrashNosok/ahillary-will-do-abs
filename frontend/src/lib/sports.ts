@@ -12,6 +12,7 @@ import {
   type SportInput,
   type SportOverview,
   type SportSuggestion,
+  type SportSummary,
   type SuggestionInput,
   type UserSport,
   type UserSportLink,
@@ -87,21 +88,27 @@ export function useMySports() {
   return useQuery<UserSport[]>({ queryKey: MY_SPORTS_KEY, queryFn: api.listMySports });
 }
 
-/** Привязать дисциплину к себе; успех инвалидирует список моих дисциплин. */
+/** Привязать дисциплину к себе; успех обновляет «мои дисциплины» и сводку (карточки). */
 export function useLinkSport() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: UserSportLink) => api.linkSport(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: MY_SPORTS_KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: MY_SPORTS_KEY });
+      qc.invalidateQueries({ queryKey: ['sport-summaries'] });
+    },
   });
 }
 
-/** Отвязать дисциплину; успех инвалидирует список моих дисциплин. */
+/** Отвязать дисциплину; успех обновляет «мои дисциплины» и сводку (прогресс при этом сохраняется). */
 export function useUnlinkSport() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (sportId: number) => api.unlinkSport(sportId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: MY_SPORTS_KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: MY_SPORTS_KEY });
+      qc.invalidateQueries({ queryKey: ['sport-summaries'] });
+    },
   });
 }
 
@@ -110,6 +117,14 @@ const SUGGESTIONS_KEY = ['sport-suggestions'] as const;
 /** Свои заявки «предложить вид спорта». */
 export function useSuggestions() {
   return useQuery<SportSuggestion[]>({ queryKey: SUGGESTIONS_KEY, queryFn: api.listSuggestions });
+}
+
+/** Сводка по видам (счётчики + персональная статистика) — для карточек каталога/«Мои». */
+export function useSportSummaries() {
+  return useQuery<SportSummary[]>({
+    queryKey: ['sport-summaries'],
+    queryFn: api.listSportSummaries,
+  });
 }
 
 /** Отправить заявку «предложить вид спорта»; успех инвалидирует список заявок. */
