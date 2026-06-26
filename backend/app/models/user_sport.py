@@ -28,3 +28,6 @@ class UserSport(SQLModel, table=True):
     current_level_id: int | None = Field(default=None)
     rating: float | None = Field(default=None)
     joined_at: dt.datetime = Field(default_factory=utcnow)
+    # Мягкая отвязка: персональные данные (уровень/рейтинг) живут на связке и НЕ удаляются при
+    # отвязке — unlink лишь снимает флаг. Повторная привязка восстанавливает прежний уровень.
+    linked: bool = Field(default=True)

@@ -116,6 +116,18 @@ def test_unlink_removes_from_list(client, engine):
     assert client.get("/me/sports").json() == []
 
 
+def test_relink_after_unlink_restores_level(client, engine):
+    # Мягкая отвязка: уровень сохраняется и восстанавливается при повторной привязке без него.
+    sid = _make_sport(engine, "Сноуборд", "action")
+    client.post("/me/sports", json={"sport_id": sid, "current_level_id": 3})
+    client.delete(f"/me/sports/{sid}")  # отвязали — из активных ушёл, но строка осталась
+    assert client.get("/me/sports").json() == []
+    resp = client.post("/me/sports", json={"sport_id": sid})  # повторно, без уровня
+    assert resp.status_code == 201
+    assert resp.json()["current_level_id"] == 3  # прежний уровень сохранён
+    assert len(client.get("/me/sports").json()) == 1
+
+
 def test_unlink_not_linked_returns_404(client, engine):
     sid = _make_sport(engine, "Бокс", "combat")
     assert client.delete(f"/me/sports/{sid}").status_code == 404  # спорт есть, связки нет

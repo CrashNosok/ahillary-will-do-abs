@@ -67,3 +67,16 @@ def test_progress_persists_without_link(session):
     assert sid in s
     assert s[sid].workouts == 1 and s[sid].achievements_unlocked == 1
     assert s[sid].linked is False and s[sid].current_level is None
+
+
+def test_level_persists_after_soft_unlink(session):
+    # Мягко отвязанная связка (linked=False) хранит уровень → linked=False, но current_level виден.
+    sid = _sport(session, "Падел", SportCategory.racket)
+    lvl = SportLevel(sport_id=sid, code="c", label="C", rank=3)
+    session.add(lvl)
+    session.commit()
+    session.add(UserSport(user_id=1, sport_id=sid, current_level_id=lvl.id, linked=False))
+    session.commit()
+
+    s = summaries(session, user_id=1)[sid]
+    assert s.linked is False and s.current_level == "C"

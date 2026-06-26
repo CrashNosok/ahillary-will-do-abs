@@ -76,11 +76,16 @@ export default function SportsPage() {
   const summaryOf = (id: number): SportSummary =>
     summaryById.get(id) ?? { sport_id: id, ...ZERO_SUMMARY };
 
-  // «Мои виды спорта» = привязан ИЛИ есть прогресс (ачивки/тренировки) — прогресс не сбрасывается
-  // при отвязке и продолжает показываться здесь же.
+  // «Мои виды спорта» = привязан ИЛИ есть прогресс (ачивки/тренировки/уровень) — прогресс не
+  // сбрасывается при отвязке (мягкая отвязка хранит уровень) и продолжает показываться здесь же.
   const isMine = (s: Sport) => {
     const sum = summaryOf(s.id);
-    return linkedIds.has(s.id) || sum.achievements_unlocked > 0 || sum.workouts > 0;
+    return (
+      linkedIds.has(s.id) ||
+      sum.achievements_unlocked > 0 ||
+      sum.workouts > 0 ||
+      sum.current_level != null
+    );
   };
   const mine = useMemo(() => (allSports ?? []).filter(isMine), [allSports, linkedIds, summaryById]);
   const catalog = useMemo(

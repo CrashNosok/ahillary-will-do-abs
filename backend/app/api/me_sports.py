@@ -62,10 +62,12 @@ def list_my_sports(session: SessionDep, user: CurrentUser) -> list[UserSportRead
 
     JOIN user_sport↔sport одним запросом (без N+1). Скоуп по user.id — только свои связки.
     """
+    # Только активные связки (linked=True): отвязанные остаются в БД (хранят уровень), но из
+    # «моих дисциплин» (форма тренировки, чипы привязки) исчезают.
     rows = session.exec(
         select(UserSport, Sport)
         .join(Sport, UserSport.sport_id == Sport.id)
-        .where(UserSport.user_id == user.id)
+        .where(UserSport.user_id == user.id, UserSport.linked.is_(True))
         .order_by(Sport.name)
     ).all()
     return [_to_read(link, sport) for link, sport in rows]
@@ -73,19 +75,35 @@ def list_my_sports(session: SessionDep, user: CurrentUser) -> list[UserSportRead
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def link_sport(payload: UserSportLink, session: SessionDep, user: CurrentUser) -> UserSportRead:
-    """Привязать дисциплину к пользователю. 404 — нет такого sport; 409 — уже привязана."""
+    """Привязать дисциплину. 404 — нет такого sport; 409 — уже привязана (активна).
+
+    Если связка существует, но отвязана (linked=False) — повторная привязка восстанавливает её
+    вместе с прежним уровнем/рейтингом (мягкая отвязка). Уровень/рейтинг из payload применяются,
+    только если переданы (не None), иначе сохранённые значения остаются.
+    """
     sport = session.get(Sport, payload.sport_id)
     if sport is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Вид спорта не найден")
-    if session.get(UserSport, (user.id, payload.sport_id)) is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Дисциплина уже привязана")
-    link = UserSport(
-        user_id=user.id,
-        sport_id=payload.sport_id,
-        current_level_id=payload.current_level_id,
-        rating=payload.rating,
-    )
-    session.add(link)
+    existing = session.get(UserSport, (user.id, payload.sport_id))
+    if existing is not None:
+        if existing.linked:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Дисциплина уже привязана"
+            )
+        existing.linked = True
+        if payload.current_level_id is not None:
+            existing.current_level_id = payload.current_level_id
+        if payload.rating is not None:
+            existing.rating = payload.rating
+        link = existing
+    else:
+        link = UserSport(
+            user_id=user.id,
+            sport_id=payload.sport_id,
+            current_level_id=payload.current_level_id,
+            rating=payload.rating,
+        )
+        session.add(link)
     try:
         session.commit()
     except IntegrityError as exc:
@@ -100,9 +118,11 @@ def link_sport(payload: UserSportLink, session: SessionDep, user: CurrentUser) -
 
 @router.delete("/{sport_id}", status_code=status.HTTP_204_NO_CONTENT)
 def unlink_sport(sport_id: int, session: SessionDep, user: CurrentUser) -> None:
-    """Отвязать дисциплину от пользователя. 404, если связки нет (в т.ч. чужая)."""
+    """Мягко отвязать дисциплину: снять флаг linked, но СОХРАНИТЬ связку с уровнем/рейтингом —
+    прогресс не сбрасывается. 404, если активной связки нет (в т.ч. уже отвязана/чужая)."""
     link = session.get(UserSport, (user.id, sport_id))
-    if link is None:
+    if link is None or not link.linked:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Дисциплина не привязана")
-    session.delete(link)
+    link.linked = False
+    session.add(link)
     session.commit()

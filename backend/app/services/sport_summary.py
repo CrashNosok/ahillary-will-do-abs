@@ -57,9 +57,11 @@ def summaries(session: Session, user_id: int) -> dict[int, SportSummary]:
     )
     workouts = _counts(session, WorkoutSession.sport_id, WorkoutSession.user_id == user_id)
 
-    # Привязки пользователя + текущий уровень (label по current_level_id).
+    # Связки пользователя. linked_ids — только АКТИВНЫЕ (linked=True): по ним рисуется «привязан».
+    # Уровень берём со связки в т.ч. ОТВЯЗАННОЙ (мягкая отвязка) — он не сбрасывается.
     links = session.exec(select(UserSport).where(UserSport.user_id == user_id)).all()
-    linked_ids = {link.sport_id for link in links}
+    linked_ids = {link.sport_id for link in links if link.linked}
+    all_link_ids = {link.sport_id for link in links}
     level_id_by_sport = {
         link.sport_id: link.current_level_id for link in links if link.current_level_id is not None
     }
@@ -79,7 +81,7 @@ def summaries(session: Session, user_id: int) -> dict[int, SportSummary]:
         | set(challenges)
         | set(ach_total)
         | set(workouts)
-        | linked_ids
+        | all_link_ids
     )
     out: dict[int, SportSummary] = {}
     for sid in sport_ids:
