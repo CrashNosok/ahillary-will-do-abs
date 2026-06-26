@@ -211,12 +211,12 @@ export function DayEditorPanel({
             {undo?.tab === r.tab ? (
               // Сразу после очистки: «Отменить» (вернуть из архива). Пропадёт через несколько секунд.
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <span className="mr-auto text-xs text-muted">Очищено. Данные в архиве.</span>
+                <span className="mr-auto text-xs text-muted">Очищено.</span>
                 <button
                   type="button"
                   onClick={onUndo}
                   disabled={restoring}
-                  className="rounded-full border border-accent/50 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:bg-accent/20 disabled:opacity-50"
+                  className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors duration-[var(--duration-fast)] hover:border-accent/40 hover:text-fg disabled:opacity-50"
                 >
                   {restoring ? 'Возврат…' : 'Отменить'}
                 </button>
@@ -235,9 +235,7 @@ export function DayEditorPanel({
                     )}
                     {confirming === r.tab ? (
                       <div className="flex flex-wrap items-center justify-end gap-2">
-                        <span className="mr-auto text-xs text-muted">
-                          Очистить данные? Их можно восстановить из архива.
-                        </span>
+                        <span className="mr-auto text-xs text-muted">Очистить эти данные?</span>
                         <button
                           type="button"
                           onClick={() => doClear(r.tab)}
