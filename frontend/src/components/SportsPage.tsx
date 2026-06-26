@@ -14,12 +14,13 @@ import {
 } from '../lib/api';
 import {
   useCreateExercise,
-  useCreateSport,
+  useCreateSuggestion,
   useExercises,
   useLinkSport,
   useMySports,
   useSportCategories,
   useSports,
+  useSuggestions,
   useUnlinkSport,
 } from '../lib/sports';
 
@@ -42,6 +43,14 @@ export default function SportsPage() {
   const { data: mySports } = useMySports();
   const linkedIds = useMemo(() => new Set((mySports ?? []).map((s) => s.sport_id)), [mySports]);
 
+  // «Рекомендуем попробовать»: основные (is_global) виды, которые ещё НЕ привязаны. Берём весь
+  // каталог (без фильтра категории) — фильтр ниже только для списка «Все дисциплины».
+  const { data: allSports } = useSports();
+  const recommended = useMemo(
+    () => (allSports ?? []).filter((s) => s.is_global && !linkedIds.has(s.id)),
+    [allSports, linkedIds],
+  );
+
   // Группируем упражнения по виду спорта один раз — карточки читают свою группу.
   const bySport = useMemo(() => {
     const map = new Map<number, Exercise[]>();
@@ -63,16 +72,18 @@ export default function SportsPage() {
           Виды спорта
         </h1>
         <p className="mt-4 text-lg leading-relaxed text-muted">
-          Заводите дисциплины и наполняйте их библиотеку упражнений — всё из интерфейса.
+          Привязывайте дисциплины, пробуйте новое из рекомендаций, предлагайте недостающее.
         </p>
       </div>
 
+      <RecommendedToTry sports={recommended} />
+
       <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
-        <CreateSportForm />
+        <SuggestSportForm />
 
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-display">Дисциплины</h2>
+            <h2 className="text-display">Все дисциплины</h2>
             <label className="flex items-center gap-2">
               <span className="text-sm font-medium text-muted">Категория</span>
               <select
@@ -97,7 +108,7 @@ export default function SportsPage() {
             <p className="text-muted">
               {filter
                 ? 'В этой категории видов спорта нет.'
-                : 'Видов спорта пока нет — создайте первый слева.'}
+                : 'Видов спорта пока нет — предложите первый слева.'}
             </p>
           ) : (
             <ul className="flex flex-col gap-5">
@@ -118,93 +129,178 @@ export default function SportsPage() {
   );
 }
 
-function CreateSportForm() {
-  const create = useCreateSport();
+const statusLabel = (s: string): string =>
+  ({ pending: 'на ревью', approved: 'добавлен', rejected: 'отклонён' })[s] ?? s;
+
+/** «Рекомендуем попробовать»: основные виды, которые юзер ещё не привязал — карточки с быстрым
+ *  «Попробовать» (привязать). Пусто (всё привязано) → секцию не показываем. */
+function RecommendedToTry({ sports }: { sports: Sport[] }) {
+  if (sports.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="text-display">Рекомендуем попробовать</h2>
+      <p className="text-muted">Основные дисциплины, которые вы ещё не привязали.</p>
+      <ul className="flex flex-wrap gap-3">
+        {sports.map((s) => (
+          <li key={s.id}>
+            <RecommendedCard sport={s} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RecommendedCard({ sport }: { sport: Sport }) {
+  const link = useLinkSport();
+  return (
+    <div className="flex max-w-xs flex-col gap-2 rounded-2xl border border-line bg-gradient-to-br from-panel to-surface p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          to={`/sports/${sport.id}`}
+          className="font-display font-semibold tracking-tight transition-colors duration-[var(--duration-fast)] hover:text-accent"
+        >
+          {sport.name}
+        </Link>
+        <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-medium text-accent">
+          {sportCategoryLabel(sport.category)}
+        </span>
+      </div>
+      {sport.description && <p className="text-sm text-muted">{sport.description}</p>}
+      <button
+        type="button"
+        onClick={() => link.mutate({ sport_id: sport.id })}
+        disabled={link.isPending}
+        className="w-fit rounded-full border border-accent/50 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:bg-accent/20 disabled:opacity-60"
+      >
+        {link.isPending ? '…' : 'Попробовать (привязать)'}
+      </button>
+    </div>
+  );
+}
+
+/** «Предложить вид спорта» — заявка на ревью (если нужного нет в каталоге). Под формой — свои
+ *  заявки со статусом. Заявка НЕ создаёт вид сразу (решение пользователя: очередь на ревью). */
+function SuggestSportForm() {
+  const suggest = useCreateSuggestion();
+  const { data: suggestions } = useSuggestions();
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<SportCategory>('strength');
-  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState<SportCategory | ''>('');
+  const [note, setNote] = useState('');
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    create.mutate(
-      { name: trimmed, category, description: description.trim() || null },
+    suggest.mutate(
+      { name: trimmed, category: category || null, note: note.trim() || null },
       {
         onSuccess: () => {
           setName('');
-          setCategory('strength');
-          setDescription('');
+          setCategory('');
+          setNote('');
         },
       },
     );
   }
 
-  const error = errorMessage(create.error);
+  const error = errorMessage(suggest.error);
 
   return (
-    <form
-      onSubmit={onSubmit}
-      noValidate
-      aria-label="Новый вид спорта"
-      className="flex h-fit flex-col gap-5 rounded-[var(--radius-card)] border border-line bg-surface p-6"
-    >
-      <h2 className="text-display">Новый вид спорта</h2>
-
-      <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-muted">Название</span>
-        <input
-          name="name"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Калистеника, Бег, Силовая…"
-          className={inputCls}
-        />
-      </label>
-
-      <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-muted">Категория</span>
-        <select
-          name="category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value as SportCategory)}
-          className={`${inputCls} [color-scheme:dark]`}
-        >
-          {SPORT_CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-muted">Описание</span>
-        <textarea
-          name="description"
-          rows={2}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Необязательно — пара слов о дисциплине."
-          className={`${inputCls} resize-y`}
-        />
-      </label>
-
-      {error && (
-        <p role="alert" className="text-sm font-medium text-amber">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        disabled={create.isPending}
-        className="mt-1 rounded-xl bg-accent px-5 py-3 font-display font-semibold text-accent-ink transition-all duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-10px] hover:shadow-accent/60 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+    <div className="flex h-fit flex-col gap-5 rounded-[var(--radius-card)] border border-line bg-surface p-6">
+      <form
+        onSubmit={onSubmit}
+        noValidate
+        aria-label="Предложить вид спорта"
+        className="flex flex-col gap-5"
       >
-        {create.isPending ? 'Создаём…' : 'Создать вид спорта'}
-      </button>
-    </form>
+        <div>
+          <h2 className="text-display">Предложить вид спорта</h2>
+          <p className="mt-2 text-sm text-muted">
+            Нет нужного? Отправьте заявку — добавим после проверки.
+          </p>
+        </div>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-muted">Название</span>
+          <input
+            name="name"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Сквош, гребля, скалолазание…"
+            className={inputCls}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-muted">Категория (если знаете)</span>
+          <select
+            name="category"
+            value={category}
+            onChange={(e) => setCategory(e.target.value as SportCategory | '')}
+            className={`${inputCls} [color-scheme:dark]`}
+          >
+            <option value="">Не уверен</option>
+            {SPORT_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-muted">Комментарий</span>
+          <textarea
+            name="note"
+            rows={2}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Необязательно — что за вид, почему нужен."
+            className={`${inputCls} resize-y`}
+          />
+        </label>
+
+        {error && (
+          <p role="alert" className="text-sm font-medium text-amber">
+            {error}
+          </p>
+        )}
+        {suggest.isSuccess && (
+          <p role="status" className="text-sm font-medium text-accent">
+            Заявка отправлена — спасибо!
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={suggest.isPending}
+          className="mt-1 rounded-xl bg-accent px-5 py-3 font-display font-semibold text-accent-ink transition-all duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-10px] hover:shadow-accent/60 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {suggest.isPending ? 'Отправляем…' : 'Предложить'}
+        </button>
+      </form>
+
+      {suggestions && suggestions.length > 0 && (
+        <div className="border-t border-line pt-4">
+          <p className="text-sm font-medium text-muted">Мои заявки</p>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {suggestions.map((s) => (
+              <li key={s.id} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                <span className="font-medium">{s.name}</span>
+                {s.category && (
+                  <span className="text-muted">· {sportCategoryLabel(s.category)}</span>
+                )}
+                <span className="ml-auto rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+                  {statusLabel(s.status)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
