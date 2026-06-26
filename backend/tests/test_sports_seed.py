@@ -19,13 +19,13 @@ def test_seed_creates_five_sports_by_category(tmp_path, monkeypatch):
     with Session(db.engine) as session:
         added = seed_sports(session)
 
-    assert added == 5  # критерий: 5 спортов
+    assert added == len(BASE_SPORTS)  # критерий: все базовые виды заведены
 
     with Session(db.engine) as session:
         sports = session.exec(select(Sport).order_by(Sport.name)).all()
         by_name = {s.name: s for s in sports}
 
-    assert len(sports) == 5
+    assert len(sports) == len(BASE_SPORTS)
     # критерий: категории зал=strength, кайт/эндуро/вейк=action, падел=racket
     assert by_name["Зал"].category == SportCategory.strength
     assert by_name["Кайт"].category == SportCategory.action
@@ -63,8 +63,8 @@ def test_seed_keeps_existing_sports_and_fills_gaps(tmp_path, monkeypatch):
     with Session(db.engine) as session:
         added = seed_sports(session)
 
-    assert added == 4  # «Зал» уже есть — добавились только Кайт/Эндуро/Вейк/Падел
+    assert added == len(BASE_SPORTS) - 1  # «Зал» уже есть → добавились все базовые, кроме него
 
     with Session(db.engine) as session:
         names = session.exec(select(Sport.name)).all()
-    assert sorted(names) == sorted(["Бег", "Зал", "Кайт", "Эндуро", "Вейк", "Падел"])
+    assert set(names) == {"Бег", *(s[0] for s in BASE_SPORTS)}  # ручной «Бег» + все базовые

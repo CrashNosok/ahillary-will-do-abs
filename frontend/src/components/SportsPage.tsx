@@ -1,6 +1,7 @@
-/** Каталог дисциплин: единый список ВСЕХ видов спорта одинаковыми простыми карточками
- *  (название · категория · мини-описание · Привязать/Отвязать) + «Предложить вид спорта» снизу.
- *  Упражнения живут на странице вида (/sports/:id), а не в каталоге. */
+/** Каталог дисциплин: «Мои виды спорта» (привязанные) наверху, ниже «Каталог» (остальные) с
+ *  фильтром по категории; привязал → переехал наверх. Карточки одинаковые (имя · нейтральный чип
+ *  категории · мини-описание · кнопка-тоггл Привязать/Привязан→Отвязать). «Предложить вид спорта»
+ *  — внизу. Упражнения — на странице вида (/sports/:id). */
 
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
@@ -24,6 +25,8 @@ import {
 const inputCls =
   'rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent';
 
+const cardGridCls = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
+
 function errorMessage(err: unknown): string | null {
   if (err instanceof ApiError) return err.message;
   if (err) return 'Не удалось сохранить. Проверьте, что сервер запущен.';
@@ -34,13 +37,23 @@ const statusLabel = (s: string): string =>
   ({ pending: 'на ревью', approved: 'добавлен', rejected: 'отклонён' })[s] ?? s;
 
 export default function SportsPage() {
-  // '' = все категории; иначе фильтруем каталог через GET /sports?category= (M1·B15).
   const [filter, setFilter] = useState<SportCategory | ''>('');
-  const { data: sports, isPending } = useSports(filter || undefined);
+  // Тянем ВСЕ виды и делим на клиенте: «мои» (привязанные) и каталог (остальные) — фильтр
+  // категории применяется только к каталогу, «мои» показываем всегда целиком.
+  const { data: allSports, isPending } = useSports();
   const { data: categories } = useSportCategories();
-  // Привязанные дисциплины (M2·B19): карточка по ним рисует Привязать/Отвязать.
   const { data: mySports } = useMySports();
   const linkedIds = useMemo(() => new Set((mySports ?? []).map((s) => s.sport_id)), [mySports]);
+
+  const mine = useMemo(
+    () => (allSports ?? []).filter((s) => linkedIds.has(s.id)),
+    [allSports, linkedIds],
+  );
+  const catalog = useMemo(
+    () =>
+      (allSports ?? []).filter((s) => !linkedIds.has(s.id) && (!filter || s.category === filter)),
+    [allSports, linkedIds, filter],
+  );
 
   return (
     <section aria-labelledby="sports-heading" className="flex flex-col gap-[var(--space-section)]">
@@ -52,14 +65,31 @@ export default function SportsPage() {
           Виды спорта
         </h1>
         <p className="mt-4 text-lg leading-relaxed text-muted">
-          Все дисциплины приложения. Привязывайте к себе те, что ведёте; нет нужной — предложите её
-          внизу. Упражнения дисциплины — на её странице.
+          Привязанные дисциплины — вверху. Из каталога ниже добавляйте новые; нет нужной —
+          предложите её. Упражнения дисциплины — на её странице.
         </p>
       </div>
 
+      {/* Мои виды спорта (привязанные) — всегда наверху. */}
+      <div className="flex flex-col gap-5">
+        <h2 className="text-display">Мои виды спорта</h2>
+        {mine.length === 0 ? (
+          <p className="text-muted">Пока ничего не привязано — выберите из каталога ниже.</p>
+        ) : (
+          <ul className={cardGridCls}>
+            {mine.map((sport) => (
+              <li key={sport.id}>
+                <SportCard sport={sport} linked />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Каталог (непривязанные) + фильтр категории. */}
       <div className="flex flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-display">Дисциплины</h2>
+          <h2 className="text-display">Каталог</h2>
           <label className="flex items-center gap-2">
             <span className="text-sm font-medium text-muted">Категория</span>
             <select
@@ -81,17 +111,19 @@ export default function SportsPage() {
 
         {isPending ? (
           <p className="text-muted">Загрузка…</p>
-        ) : !sports || sports.length === 0 ? (
+        ) : catalog.length === 0 ? (
           <p className="text-muted">
             {filter
-              ? 'В этой категории видов спорта нет.'
-              : 'Видов спорта пока нет — предложите первый ниже.'}
+              ? 'В этой категории непривязанных видов нет.'
+              : mine.length > 0
+                ? 'Все виды уже привязаны 🎉 Нет нужного — предложите ниже.'
+                : 'Видов спорта пока нет — предложите первый ниже.'}
           </p>
         ) : (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {sports.map((sport) => (
+          <ul className={cardGridCls}>
+            {catalog.map((sport) => (
               <li key={sport.id}>
-                <SportCard sport={sport} linked={linkedIds.has(sport.id)} />
+                <SportCard sport={sport} linked={false} />
               </li>
             ))}
           </ul>
@@ -103,8 +135,11 @@ export default function SportsPage() {
   );
 }
 
-/** Простая карточка вида спорта (единый дизайн): имя (→ /sports/:id) · категория (нейтральный
- *  чип, цвет ≠ кнопки) · мини-описание · Привязать/Отвязать. */
+/** Карточка вида спорта (единый дизайн): имя (→ /sports/:id) · нейтральный чип категории ·
+ *  мини-описание · кнопка-тоггл. Цвет кнопки логичен по состоянию:
+ *   - НЕ привязан → сплошной акцент «Привязать» (призыв к действию);
+ *   - привязан → мягкий акцент «✓ Привязан», на ховере краснеет в «Отвязать» (удаление).
+ *  Привязанная карточка слегка подсвечена акцентной рамкой. */
 function SportCard({ sport, linked }: { sport: Sport; linked: boolean }) {
   const link = useLinkSport();
   const unlink = useUnlinkSport();
@@ -113,7 +148,11 @@ function SportCard({ sport, linked }: { sport: Sport; linked: boolean }) {
   const error = errorMessage(link.error ?? unlink.error);
 
   return (
-    <div className="flex h-full flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-gradient-to-br from-panel to-surface p-5">
+    <div
+      className={`flex h-full flex-col gap-3 rounded-[var(--radius-card)] border bg-gradient-to-br from-panel to-surface p-5 transition-colors duration-[var(--duration-fast)] ${
+        linked ? 'border-accent/40' : 'border-line'
+      }`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-1.5">
           <Link
@@ -122,24 +161,40 @@ function SportCard({ sport, linked }: { sport: Sport; linked: boolean }) {
           >
             {sport.name}
           </Link>
-          {/* Категория — нейтральный чип (НЕ акцентный, чтобы цвет не совпадал с кнопкой). */}
+          {/* Категория — нейтральный чип (НЕ акцентный, чтобы не сливаться с зелёной кнопкой). */}
           <span className="w-fit rounded-full border border-line bg-ink/30 px-2.5 py-0.5 text-xs font-medium text-muted">
             {sportCategoryLabel(sport.category)}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={toggle}
-          disabled={pending}
-          aria-pressed={linked}
-          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors duration-[var(--duration-fast)] disabled:cursor-not-allowed disabled:opacity-60 ${
-            linked
-              ? 'border-accent bg-accent/15 text-accent hover:bg-accent/25'
-              : 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20'
-          }`}
-        >
-          {pending ? '…' : linked ? 'Отвязать' : 'Привязать'}
-        </button>
+        {linked ? (
+          <button
+            type="button"
+            onClick={toggle}
+            disabled={pending}
+            aria-pressed
+            title="Нажмите, чтобы отвязать"
+            className="group/link inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? (
+              '…'
+            ) : (
+              <>
+                <span className="group-hover/link:hidden">✓ Привязан</span>
+                <span className="hidden group-hover/link:inline">Отвязать</span>
+              </>
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={toggle}
+            disabled={pending}
+            aria-pressed={false}
+            className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink transition-opacity duration-[var(--duration-fast)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending ? '…' : 'Привязать'}
+          </button>
+        )}
       </div>
 
       {sport.description && (

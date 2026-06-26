@@ -15,12 +15,20 @@ from app.models.user import User
 
 # Базовый каталог дисциплин (M7·B37): встроенные виды спорта приложения.
 # Идемпотентность держится на уникальном Sport.name — повтор пропускает уже заведённые.
-BASE_SPORTS: tuple[tuple[str, SportCategory], ...] = (
-    ("Зал", SportCategory.strength),
-    ("Кайт", SportCategory.action),
-    ("Эндуро", SportCategory.action),
-    ("Вейк", SportCategory.action),
-    ("Падел", SportCategory.racket),
+BASE_SPORTS: tuple[tuple[str, SportCategory, str], ...] = (
+    ("Зал", SportCategory.strength, "Силовые тренировки в тренажёрном зале — железо и тренажёры."),
+    ("Кайт", SportCategory.action, "Кайтсёрфинг — катание по воде на доске с воздушным змеем."),
+    ("Эндуро", SportCategory.action, "Внедорожные мотогонки по пересечённой местности."),
+    ("Вейк", SportCategory.action, "Вейкбординг — катание по воде на доске за катером/лебёдкой."),
+    ("Падел", SportCategory.racket, "Падел — ракеточный спорт на корте со стенами, играют парами."),
+    # +7 новых дисциплин (разные категории, для полноты каталога):
+    ("Бокс", SportCategory.combat, "Ударное единоборство руками в перчатках."),
+    ("Футбол", SportCategory.team, "Командная игра с мячом ногами на поле."),
+    ("Баскетбол", SportCategory.team, "Командная игра: забросить мяч в кольцо соперника."),
+    ("Теннис", SportCategory.racket, "Ракеточный спорт на корте через сетку, 1×1 или 2×2."),
+    ("Плавание", SportCategory.endurance, "Циклическая выносливость в воде разными стилями."),
+    ("Йога", SportCategory.artistic, "Гибкость, баланс и дыхание через асаны."),
+    ("Сноуборд", SportCategory.action, "Катание по снегу на доске — трассы и парк."),
 )
 
 # Лестницы уровней базовых дисциплин (M7·B38): по сидированной дисциплине — упорядоченный
@@ -100,10 +108,10 @@ def seed_sports(session: Session) -> int:
     это встроенные дисциплины приложения, а не заведённые пользователем.
     """
     added = 0
-    for name, category in BASE_SPORTS:
+    for name, category, description in BASE_SPORTS:
         if session.exec(select(Sport).where(Sport.name == name)).first() is not None:
             continue
-        session.add(Sport(name=name, category=category, is_global=True))
+        session.add(Sport(name=name, category=category, description=description, is_global=True))
         added += 1
     if added:
         session.commit()

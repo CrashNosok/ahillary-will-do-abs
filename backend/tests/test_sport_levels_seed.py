@@ -15,7 +15,7 @@ def _prepare_db(tmp_path, monkeypatch):
 
 def test_level_ladders_only_for_seeded_sports():
     # Защита от рассинхрона: каждая лестница должна ссылаться на реально сидируемую дисциплину.
-    seeded_names = {name for name, _ in BASE_SPORTS}
+    seeded_names = {name for name, _, _ in BASE_SPORTS}
     assert set(BASE_SPORT_LEVELS) <= seeded_names
 
 
