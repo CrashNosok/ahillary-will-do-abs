@@ -11,6 +11,7 @@ from app.models.challenge import (
     ChallengeSponsor,
 )
 from app.models.deficit import DeficitDay
+from app.models.deleted import DeletedRecord
 from app.models.goal import GoalStatus, SmartGoal
 from app.models.nutrition import FoodEntry
 from app.models.recommendation import Recommendation
@@ -47,6 +48,7 @@ __all__ = [
     "ChallengeProof",
     "ChallengeSponsor",
     "DeficitDay",
+    "DeletedRecord",
     "Exercise",
     "FoodEntry",
     "GoalStatus",

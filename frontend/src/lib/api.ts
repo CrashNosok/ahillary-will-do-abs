@@ -825,6 +825,14 @@ export const api = {
     }),
   logout: () => request<{ status: string }>('/auth/logout', { method: 'POST' }),
 
+  // Очистить (с архивацией) данные категории за дату. category = вкладка редактора:
+  // food/activity/training/weight/measurements/photos. Данные уходят в архив (deleted_record).
+  clearDayData: (category: string, date: string) =>
+    request<{ cleared: number }>('/day-data/clear', {
+      method: 'POST',
+      body: JSON.stringify({ category, date }),
+    }),
+
   // Виды спорта (S3.1): каталог дисциплин (бэкенд сортирует по имени).
   // category — фильтр по таксономии (M1·B15): без него все, иначе только эта категория.
   listSports: (category?: SportCategory) =>

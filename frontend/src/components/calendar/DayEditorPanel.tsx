@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { DayFlags } from '../../lib/api';
+import { api, type DayFlags } from '../../lib/api';
 import { useScrollLock } from '../../lib/useScrollLock';
 import { FoodQuickImport } from './FoodQuickImport';
 import { ActivityForm } from './ActivityForm';
@@ -77,6 +77,9 @@ export function DayEditorPanel({
   const [open, setOpen] = useState<string | null>(null);
   // Категории, сохранённые прямо в попапе — чтобы строка сразу стала «Изменить».
   const [saved, setSaved] = useState<ReadonlySet<string>>(new Set());
+  // Очищенные прямо в попапе — строка сразу становится «Внести» (флаги-проп ещё старые).
+  const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
+  const [clearing, setClearing] = useState<string | null>(null);
   useScrollLock();
 
   useEffect(() => {
@@ -97,8 +100,33 @@ export function DayEditorPanel({
     [qc],
   );
 
+  // Очистить данные категории за этот день/неделю (с архивацией на бэке). Строка сразу
+  // становится «Внести», календарь перечитывается при закрытии (+сразу инвалидируем).
+  const onClear = async (tab: string) => {
+    if (!window.confirm('Очистить эти данные? Их можно восстановить из архива.')) return;
+    setClearing(tab);
+    try {
+      await api.clearDayData(tab, iso);
+      setCleared((s) => new Set(s).add(tab));
+      setSaved((s) => {
+        const n = new Set(s);
+        n.delete(tab);
+        return n;
+      });
+      setOpen(null);
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['workout-media'] });
+      qc.invalidateQueries({ queryKey: ['body-photos'] });
+      qc.invalidateQueries({ queryKey: ['progress'] });
+    } catch {
+      window.alert('Не удалось очистить. Попробуйте ещё раз.');
+    } finally {
+      setClearing(null);
+    }
+  };
+
   const renderRow = (r: Row) => {
-    const done = !!flags?.[r.key] || saved.has(r.tab);
+    const done = (!!flags?.[r.key] || saved.has(r.tab)) && !cleared.has(r.tab);
     const isOpen = open === r.tab;
     return (
       <li key={r.key} className="border-b border-line/60 last:border-0">
@@ -140,6 +168,19 @@ export function DayEditorPanel({
         {isOpen && (
           <div className="entry-embed mb-3 rounded-xl border border-line bg-ink/40 p-3">
             {renderForm(r.tab, iso, () => setSaved((s) => new Set(s).add(r.tab)))}
+            {/* «Очистить» — только когда есть что чистить (данные внесены). Удаляет с архивацией. */}
+            {done && (
+              <div className="mt-3 flex justify-end border-t border-line/60 pt-3">
+                <button
+                  type="button"
+                  onClick={() => onClear(r.tab)}
+                  disabled={clearing === r.tab}
+                  className="rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors duration-[var(--duration-fast)] hover:bg-red-500/10 disabled:opacity-50"
+                >
+                  {clearing === r.tab ? 'Очистка…' : 'Очистить данные'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </li>
