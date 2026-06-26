@@ -18,17 +18,21 @@ type WeeklyFlags = Pick<DayFlags, 'has_weight' | 'has_body' | 'has_photo'>;
 
 export function WeeklyCell({
   weeklyFlags,
+  orderedKeys,
   draining = false,
   isCurrentWeek = false,
   onSelect,
 }: {
   weeklyFlags: WeeklyFlags;
+  /** Недельные категории в порядке заполнения (по первому дню недели, где появились) — задаёт
+   *  порядок слоёв заливки. Считается в WeekRow из дней недели. */
+  orderedKeys: string[];
   draining?: boolean;
   isCurrentWeek?: boolean;
   onSelect?: () => void;
 }) {
   const active = WEEKLY.filter((c) => weeklyFlags[c.key]);
-  const activeKeys = active.map((c) => c.key);
+  const activeKeys = orderedKeys; // порядок заполнения (не фиксированный WEEKLY)
   const count = active.length;
   const isFull = count === WEEKLY.length;
   // Полные замеры за неделю = есть и Вес, и Замеры (Фото опционально). Это бонус-условие.

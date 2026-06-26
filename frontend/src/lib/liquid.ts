@@ -39,11 +39,20 @@ export function liquidGradient(activeKeys: readonly string[], mystery: boolean):
   return `linear-gradient(0deg, ${stops})`;
 }
 
-/** Единый премиум-градиент ПОЛНОГО дня (3/3): 3 цвета — зелёный (Еда) → оранжевый (Активность) →
- *  фиолетово-магентовый (Тренировки). Верхушка к магенте — для стыковки с розовым недели.
- *  Частичные дни (1/3, 2/3) остаются раздельными категориями (liquidGradient в порядке внесения). */
-export const DAY_FULL_FILL =
-  'linear-gradient(0deg, oklch(84% 0.18 160), oklch(83% 0.15 66), oklch(62% 0.21 322))';
+/** Премиум-цвета категорий дня для ПОЛНОЙ заливки (3/3): еда — зелёный, активность — оранжевый,
+ *  тренировки — фиолетово-магентовый (магента к розовому недели). По одному тону на категорию. */
+const DAY_FULL_COLORS: Record<string, string> = {
+  has_food: 'oklch(84% 0.18 160)',
+  has_activity: 'oklch(83% 0.15 66)',
+  has_training: 'oklch(62% 0.21 322)',
+};
+
+/** Заливка ПОЛНОГО дня (3/3): те же премиум-цвета категорий, но В ПОРЯДКЕ ВНЕСЕНИЯ (как частичный
+ *  день) — первый внесённый снизу, последний сверху. Градиент подстраивается под порядок. */
+export function dayFullFill(orderedKeys: readonly string[]): string {
+  const colors = orderedKeys.map((k) => DAY_FULL_COLORS[k] ?? keyColor(k));
+  return colors.length ? `linear-gradient(0deg, ${colors.join(', ')})` : 'transparent';
+}
 
 /** Цвет свечения вокруг полной жидкости/медали. */
 export function glowColor(mystery: boolean): string {

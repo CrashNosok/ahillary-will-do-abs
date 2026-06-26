@@ -233,6 +233,15 @@ function WeekRow({
     has_body: flagsList.some((d) => d.has_body),
     has_photo: flagsList.some((d) => d.has_photo),
   };
+  // Порядок недельных категорий «в порядке заполнения»: по первому дню недели (даты Пн→Вс), где
+  // категория появилась; ничья (в один день) → порядок WEEKLY. Задаёт порядок слоёв заливки.
+  const weeklyOrderedKeys = WEEKLY.map((c) => ({
+    key: c.key,
+    idx: flagsList.findIndex((d) => d[c.key]),
+  }))
+    .filter((o) => o.idx >= 0)
+    .sort((a, b) => a.idx - b.idx)
+    .map((o) => o.key);
   const isCurrentWeek = weekStart !== '' && weekStart <= todayIso && todayIso <= weekEnd;
   // Дата, на которую пишутся недельные данные (вес/замеры/фото): прошлая неделя → её последний
   // день, текущая → сегодня, будущая (напр. при переключении на июль) → её ПЕРВЫЙ день. Раньше
@@ -287,6 +296,7 @@ function WeekRow({
       ))}
       <WeeklyCell
         weeklyFlags={weeklyFlags}
+        orderedKeys={weeklyOrderedKeys}
         isCurrentWeek={isCurrentWeek}
         onSelect={realCells.length > 0 ? openWeekly : undefined}
       />

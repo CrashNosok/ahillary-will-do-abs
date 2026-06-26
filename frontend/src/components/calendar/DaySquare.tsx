@@ -9,7 +9,7 @@
 
 import type { DayFlags } from '../../lib/api';
 import { DAILY } from '../../lib/weekly';
-import { DAY_FULL_FILL, glowColor, mediaRingShadow } from '../../lib/liquid';
+import { dayFullFill, glowColor, mediaRingShadow } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
@@ -90,7 +90,7 @@ export function DaySquare({
         <LiquidFill
           level={level}
           activeKeys={activeKeys}
-          fillColor={isComplete ? DAY_FULL_FILL : undefined}
+          fillColor={isComplete ? dayFullFill(activeKeys) : undefined}
         />
       )}
 
