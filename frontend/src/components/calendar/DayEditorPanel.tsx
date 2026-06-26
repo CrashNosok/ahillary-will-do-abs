@@ -177,7 +177,7 @@ export function DayEditorPanel({
             setConfirming(null);
             setClearError(null);
           }}
-          className="group flex w-full items-center justify-between gap-3 py-2 text-left focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none"
+          className="group flex w-full cursor-pointer items-center justify-between gap-3 py-2 text-left focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none"
         >
           <span className="flex min-w-0 items-center gap-2">
             <span
