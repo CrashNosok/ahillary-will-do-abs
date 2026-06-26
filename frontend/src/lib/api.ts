@@ -826,11 +826,18 @@ export const api = {
   logout: () => request<{ status: string }>('/auth/logout', { method: 'POST' }),
 
   // Очистить (с архивацией) данные категории за дату. category = вкладка редактора:
-  // food/activity/training/weight/measurements/photos. Данные уходят в архив (deleted_record).
+  // food/activity/training/weight/measurements/photos. Возвращает id архива — для «Отменить».
   clearDayData: (category: string, date: string) =>
-    request<{ cleared: number }>('/day-data/clear', {
+    request<{ cleared: number; archived_ids: number[] }>('/day-data/clear', {
       method: 'POST',
       body: JSON.stringify({ category, date }),
+    }),
+
+  // Восстановить из архива по id (кнопка «Отменить» сразу после очистки).
+  restoreDayData: (ids: number[]) =>
+    request<{ restored: number }>('/day-data/restore', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
     }),
 
   // Виды спорта (S3.1): каталог дисциплин (бэкенд сортирует по имени).
