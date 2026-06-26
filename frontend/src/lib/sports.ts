@@ -11,6 +11,8 @@ import {
   type SportCategory,
   type SportInput,
   type SportOverview,
+  type SportSuggestion,
+  type SuggestionInput,
   type UserSport,
   type UserSportLink,
 } from './api';
@@ -100,5 +102,21 @@ export function useUnlinkSport() {
   return useMutation({
     mutationFn: (sportId: number) => api.unlinkSport(sportId),
     onSuccess: () => qc.invalidateQueries({ queryKey: MY_SPORTS_KEY }),
+  });
+}
+
+const SUGGESTIONS_KEY = ['sport-suggestions'] as const;
+
+/** Свои заявки «предложить вид спорта». */
+export function useSuggestions() {
+  return useQuery<SportSuggestion[]>({ queryKey: SUGGESTIONS_KEY, queryFn: api.listSuggestions });
+}
+
+/** Отправить заявку «предложить вид спорта»; успех инвалидирует список заявок. */
+export function useCreateSuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SuggestionInput) => api.createSuggestion(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: SUGGESTIONS_KEY }),
   });
 }

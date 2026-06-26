@@ -117,6 +117,23 @@ export type SportInput = {
   description: string | null;
 };
 
+/** Заявка «предложить вид спорта» (если нужного нет в каталоге) — на ревью. */
+export type SportSuggestion = {
+  id: number;
+  name: string;
+  category: SportCategory | null;
+  note: string | null;
+  status: string; // pending | approved | rejected
+  created_at: string;
+};
+
+/** Тело заявки: название + опц. категория и заметка. */
+export type SuggestionInput = {
+  name: string;
+  category?: SportCategory | null;
+  note?: string | null;
+};
+
 /** Ступень дисциплины (M5·B23): грейд прогресса. rank — порядок (1 — низшая). */
 export type SportLevel = {
   id: number;
@@ -884,6 +901,13 @@ export const api = {
   listSportCategories: () => request<SportCategory[]>('/sports/categories'),
   createSport: (input: SportInput) =>
     request<Sport>('/sports', { method: 'POST', body: JSON.stringify(input) }),
+  // «Предложить вид спорта» — заявка на ревью (status=pending); список — свои заявки.
+  createSuggestion: (input: SuggestionInput) =>
+    request<SportSuggestion>('/sports/suggestions', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  listSuggestions: () => request<SportSuggestion[]>('/sports/suggestions'),
   // Один вид спорта по id (M5·F21): лёгкая шапка детальной страницы. 404 для неизвестного id.
   getSport: (sportId: number) => request<Sport>(`/sports/${sportId}`),
   // Сводка по дисциплине (M5·B27): вид спорта + ступени/события/менторы/рекомендации + счётчик ачивок.

@@ -2,13 +2,12 @@
  *  → POST /workouts/simple (пишет на дату дня). Под формой — «Расширенный ввод», уводящий на
  *  детальный логгер (/workouts) за тот же день: подходы с весами, дистанция/темп, попытки. */
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   api,
   ApiError,
-  SPORT_CATEGORIES,
   type SportCategory,
   type WorkoutKind,
   type WorkoutMetrics,
@@ -18,14 +17,25 @@ import { inputCls, SaveButton, errText, numOrNull } from './formKit';
 import { MediaThumb, useFilePreviews } from './mediaKit';
 import { MediaLightbox } from './MediaLightbox';
 
-const KINDS: { id: WorkoutKind; label: string }[] = [
-  { id: 'strength', label: 'Сила' },
-  { id: 'cardio', label: 'Кардио' },
-  { id: 'skill', label: 'Скилл' },
-  { id: 'other', label: 'Другое' },
-];
-const chip =
-  'rounded-full px-3 py-1 text-xs font-medium transition-colors duration-[var(--duration-fast)]';
+// Бэкенд /workouts/simple всё ещё требует kind — выводим его из категории выбранного вида спорта
+// (тип/категорию руками больше не выбираем). KIND_LABEL — для сводки ранее внесённых логов.
+const CATEGORY_KIND: Record<SportCategory, WorkoutKind> = {
+  strength: 'strength',
+  endurance: 'cardio',
+  combat: 'other',
+  team: 'other',
+  racket: 'other',
+  action: 'skill',
+  precision: 'skill',
+  artistic: 'skill',
+  other: 'other',
+};
+const KIND_LABEL: Record<string, string> = {
+  strength: 'Сила',
+  cardio: 'Кардио',
+  skill: 'Скилл',
+  other: 'Другое',
+};
 
 // Метрики Welltory «Анализ тренировки» (ядро 9671): ключ = поле бэкенда (snake_case), label —
 // подпись. Заполняются вручную или распознаванием со скрина (api.previewWorkout). duration_min
@@ -45,8 +55,6 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   const qc = useQueryClient();
   const navigate = useNavigate();
 
-  const [kind, setKind] = useState<WorkoutKind>('strength');
-  const [category, setCategory] = useState<SportCategory | null>(null);
   const [sportId, setSportId] = useState<number | null>(null);
   const [duration, setDuration] = useState('');
   const [rpe, setRpe] = useState<number | null>(null);
@@ -63,27 +71,18 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   // Превью медиа (objectURL + fallback HEIC/HEVC) — общий хук из mediaKit (M2·F10).
   const previews = useFilePreviews(files);
 
-  // Категории — только у привязанных дисциплин (M2·F6). Берём из /me/sports, оставляем уникальные
-  // и упорядочиваем по канону SPORT_CATEGORIES (стабильный порядок чипов, без дублей).
+  // Привязанные дисциплины (M2·B19): из них выбираем вид ПРЯМО (плоский список, без шага категории).
   const { data: mySports, isPending: sportsPending } = useMySports();
-  const myCategories = useMemo(() => {
-    const have = new Set((mySports ?? []).map((s) => s.category));
-    return SPORT_CATEGORIES.filter((c) => have.has(c.value));
-  }, [mySports]);
-  // Виды спорта выбранной категории (M2·F7): фильтруем привязанные дисциплины по категории —
-  // в дропдауне можно выбрать конкретный вид, а не только первый.
-  const categorySports = useMemo(
-    () => (category ? (mySports ?? []).filter((s) => s.category === category) : []),
-    [mySports, category],
-  );
-  // Auto-select первого вида (паттерн CardioLoggerForm): нет привязок категории → сброс в null;
-  // выбранный вид выпал из списка (сменили/сняли категорию) → встаём на первый доступный.
+  // Auto-select первого привязанного; если выбранный вид отвязали — встаём на первый доступный.
   useEffect(() => {
     setSportId((prev) => {
-      if (categorySports.length === 0) return null;
-      return categorySports.some((s) => s.sport_id === prev) ? prev : categorySports[0].sport_id;
+      if (!mySports || mySports.length === 0) return null;
+      return mySports.some((s) => s.sport_id === prev) ? prev : mySports[0].sport_id;
     });
-  }, [categorySports]);
+  }, [mySports]);
+  const selectedSport = mySports?.find((s) => s.sport_id === sportId) ?? null;
+  // kind бэкенду всё ещё нужен — выводим из категории выбранного вида (нет вида → other).
+  const kind: WorkoutKind = selectedSport ? CATEGORY_KIND[selectedSport.category] : 'other';
 
   // Ранее внесённые тренировки дня (предзаполнение «Изменить»): простые логи append-only и
   // их может быть несколько за день, поэтому показываем их сводкой над формой ввода нового лога.
@@ -167,7 +166,7 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
     save.mutate();
   };
 
-  const kindLabel = (k: string) => KINDS.find((x) => x.id === k)?.label ?? k;
+  const kindLabel = (k: string) => KIND_LABEL[k] ?? k;
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
@@ -196,102 +195,51 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
         </div>
       )}
 
-      {/* Тип */}
+      {/* Вид спорта — выбираем ПРЯМО из привязанных дисциплин (плоский список). Нет привязок —
+          кнопка увести в каталог; «Добавить спорт» рядом — привязать/предложить новый. Тип/kind
+          выводится из категории выбранного вида (см. CATEGORY_KIND). */}
       <div className="flex flex-col gap-1">
-        <span className="text-xs text-muted">Тип</span>
-        <div role="radiogroup" aria-label="Тип тренировки" className="flex flex-wrap gap-1.5">
-          {KINDS.map((k) => (
-            <button
-              key={k.id}
-              type="button"
-              role="radio"
-              aria-checked={k.id === kind}
-              onClick={() => {
-                setKind(k.id);
-                reset();
-              }}
-              className={`${chip} ${
-                k.id === kind
-                  ? 'bg-accent text-accent-ink'
-                  : 'border border-line text-muted hover:border-accent/50 hover:text-fg'
-              }`}
-            >
-              {k.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Категория — только дисциплины, привязанные к себе (M2·F6). Нет привязок → подсказка
-          увести в каталог; привязки есть → чипы их категорий (необязательный выбор-тоггл). */}
-      <div className="flex flex-col gap-1">
-        <span className="text-xs text-muted">Категория (необязательно)</span>
+        <span className="text-xs text-muted">Вид спорта</span>
         {sportsPending ? (
           <span className="text-xs text-muted">Загрузка…</span>
-        ) : myCategories.length === 0 ? (
+        ) : !mySports || mySports.length === 0 ? (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted">
-              Привяжите вид спорта, чтобы выбрать категорию.
-            </span>
+            <span className="text-xs text-muted">Нет привязанных видов спорта.</span>
             <button
               type="button"
-              onClick={() => navigate('/data-entry?tab=sports')}
-              className="rounded-full border border-line px-3 py-1 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-accent/60"
+              onClick={() => navigate('/sports')}
+              className="rounded-full border border-accent/50 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:bg-accent/20"
             >
-              Виды спорта →
+              + Добавить спорт
             </button>
           </div>
         ) : (
-          <div
-            role="radiogroup"
-            aria-label="Категория дисциплины"
-            className="flex flex-wrap gap-1.5"
-          >
-            {myCategories.map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                role="radio"
-                aria-checked={c.value === category}
-                onClick={() => {
-                  setCategory((p) => (p === c.value ? null : c.value));
-                  reset();
-                }}
-                className={`${chip} ${
-                  c.value === category
-                    ? 'bg-accent text-accent-ink'
-                    : 'border border-line text-muted hover:border-accent/50 hover:text-fg'
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Вид спорта"
+              value={sportId == null ? '' : String(sportId)}
+              onChange={(e) => {
+                setSportId(e.target.value ? Number(e.target.value) : null);
+                reset();
+              }}
+              className={inputCls}
+            >
+              {mySports.map((s) => (
+                <option key={s.sport_id} value={String(s.sport_id)}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => navigate('/sports')}
+              className="shrink-0 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-accent/60"
+            >
+              + Добавить спорт
+            </button>
           </div>
         )}
       </div>
-
-      {/* Вид спорта — конкретная дисциплина выбранной категории (M2·F7). Виден только при выбранной
-          категории с привязками; первый вид авто-выбран (паттерн CardioLoggerForm). */}
-      {category && categorySports.length > 0 && (
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-muted">Вид спорта</span>
-          <select
-            aria-label="Вид спорта"
-            value={sportId == null ? '' : String(sportId)}
-            onChange={(e) => {
-              setSportId(e.target.value ? Number(e.target.value) : null);
-              reset();
-            }}
-            className={inputCls}
-          >
-            {categorySports.map((s) => (
-              <option key={s.sport_id} value={String(s.sport_id)}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
 
       <label className="flex max-w-[10rem] flex-col gap-1">
         <span className="text-xs text-muted">Длительность, мин</span>
