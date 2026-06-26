@@ -20,9 +20,11 @@ from app.models.deficit import DeficitDay
 from app.models.nutrition import FoodEntry
 
 
-def _eaten_kcal(date: dt.date, session: Session) -> int | None:
-    """Сумма kcal всех food_entry за день. Нет ни одной записи → None (источник отсутствует)."""
-    kcals = session.exec(select(FoodEntry.kcal).where(FoodEntry.date == date)).all()
+def _eaten_kcal(date: dt.date, session: Session, user_id: int) -> int | None:
+    """Сумма kcal food_entry владельца за день. Нет записей → None (источника нет)."""
+    kcals = session.exec(
+        select(FoodEntry.kcal).where(FoodEntry.date == date, FoodEntry.user_id == user_id)
+    ).all()
     if not kcals:
         return None
     return round(sum(k or 0.0 for k in kcals))
@@ -42,7 +44,7 @@ def recompute(date: dt.date, session: Session, user_id: int) -> DeficitDay:
     обновляет ту же запись, а не плодит дубли. `user_id` — владелец дня (M0·B5):
     проставляется на запись (NOT NULL FK на user.id).
     """
-    eaten = _eaten_kcal(date, session)
+    eaten = _eaten_kcal(date, session, user_id)
     burn = _burn_kcal(date, session, user_id)
     deficit = eaten - burn if eaten is not None and burn is not None else None
 

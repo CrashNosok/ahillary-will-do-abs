@@ -272,7 +272,12 @@ def import_food_diary(
         for entry in parsed.entries:
             entry.date = override_date
     if replace_day:
-        for stale in session.exec(select(FoodEntry).where(FoodEntry.date == parsed.date)).all():
+        # Затираем еду этого дня ТОЛЬКО у владельца импорта — иначе чужой импорт удалил бы
+        # данные других пользователей за ту же дату (изоляция M0).
+        stale_rows = session.exec(
+            select(FoodEntry).where(FoodEntry.date == parsed.date, FoodEntry.user_id == user_id)
+        ).all()
+        for stale in stale_rows:
             session.delete(stale)
     batch_id = import_id or uuid.uuid4().hex
     for entry in parsed.entries:

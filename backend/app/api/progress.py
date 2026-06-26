@@ -220,7 +220,7 @@ def _round(value: float | None) -> float | None:
 @router.get("/energy")
 def get_energy_progress(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     start: dt.date | None = None,
     end: dt.date | None = None,
 ) -> EnergyProgressOut:
@@ -242,7 +242,7 @@ def get_energy_progress(
             func.sum(FoodEntry.fat_g),
             func.sum(FoodEntry.carb_g),
         )
-        .where(FoodEntry.date >= start, FoodEntry.date <= end)
+        .where(FoodEntry.user_id == user.id, FoodEntry.date >= start, FoodEntry.date <= end)
         .group_by(FoodEntry.date)
         .order_by(FoodEntry.date)
     ).all()
@@ -255,7 +255,7 @@ def get_energy_progress(
     # Активность: kcal_out / шаги / минуты движения из дневного агрегата.
     activity = session.exec(
         select(ActivityDay.date, ActivityDay.total_kcal, ActivityDay.steps, ActivityDay.moving_min)
-        .where(ActivityDay.date >= start, ActivityDay.date <= end)
+        .where(ActivityDay.user_id == user.id, ActivityDay.date >= start, ActivityDay.date <= end)
         .order_by(ActivityDay.date)
     ).all()
     kcal_out = _series((d, total) for d, total, _, _ in activity)
@@ -265,7 +265,7 @@ def get_energy_progress(
     # Дефицит: только полные дни (deficit_kcal != None), неполные дни выпадают из ряда.
     deficit_rows = session.exec(
         select(DeficitDay.date, DeficitDay.deficit_kcal)
-        .where(DeficitDay.date >= start, DeficitDay.date <= end)
+        .where(DeficitDay.user_id == user.id, DeficitDay.date >= start, DeficitDay.date <= end)
         .order_by(DeficitDay.date)
     ).all()
     deficit = _series(deficit_rows)
@@ -539,7 +539,7 @@ class StrengthProgressOut(BaseModel):
 @router.get("/strength")
 def get_strength_progress(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     start: dt.date | None = None,
     end: dt.date | None = None,
 ) -> StrengthProgressOut:
@@ -558,7 +558,11 @@ def get_strength_progress(
         .select_from(StrengthSet)
         .join(WorkoutSession, StrengthSet.session_id == WorkoutSession.id)
         .join(Exercise, StrengthSet.exercise_id == Exercise.id, isouter=True)
-        .where(WorkoutSession.date >= start, WorkoutSession.date <= end)
+        .where(
+            WorkoutSession.user_id == user.id,
+            WorkoutSession.date >= start,
+            WorkoutSession.date <= end,
+        )
         .order_by(WorkoutSession.date, StrengthSet.id)
     ).all()
 
@@ -626,7 +630,7 @@ class CardioProgressOut(BaseModel):
 @router.get("/cardio")
 def get_cardio_progress(
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
     start: dt.date | None = None,
     end: dt.date | None = None,
 ) -> CardioProgressOut:
@@ -642,7 +646,11 @@ def get_cardio_progress(
         )
         .select_from(CardioLog)
         .join(WorkoutSession, CardioLog.session_id == WorkoutSession.id)
-        .where(WorkoutSession.date >= start, WorkoutSession.date <= end)
+        .where(
+            WorkoutSession.user_id == user.id,
+            WorkoutSession.date >= start,
+            WorkoutSession.date <= end,
+        )
         .order_by(WorkoutSession.date, CardioLog.id)
     ).all()
 

@@ -96,11 +96,14 @@ def _is_improvement(value: float, current: float | None, higher_is_better: bool)
     return value > current if higher_is_better else value < current
 
 
-def _current_best(session: Session, exercise_id: int, metric: str, higher: bool) -> float | None:
+def _current_best(
+    session: Session, exercise_id: int, metric: str, higher: bool, user_id: int
+) -> float | None:
     rows = session.exec(
         select(PersonalRecord.value)
         .where(PersonalRecord.exercise_id == exercise_id)
         .where(PersonalRecord.metric == metric)
+        .where(PersonalRecord.user_id == user_id)  # рекорды владельца, не чужие (изоляция M0)
     ).all()
     if not rows:
         return None
@@ -114,7 +117,7 @@ def apply_prs(
     new_records: list[PersonalRecord] = []
     for c in candidates:
         unit, higher = METRICS[c.metric]
-        current = _current_best(session, c.exercise_id, c.metric, higher)
+        current = _current_best(session, c.exercise_id, c.metric, higher, user_id)
         if not _is_improvement(c.value, current, higher):
             continue
         rec = PersonalRecord(
