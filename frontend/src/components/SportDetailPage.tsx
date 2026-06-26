@@ -5,10 +5,16 @@
  *  Ачивки — рабочий список дисциплины (все статусы): здесь открываем новые через загрузку
  *  видео-пруфа → «Разблокировать» (AchievementCard). Витрина заработанного — на /achievements. */
 
-import { type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ApiError, type Sponsor, sportCategoryLabel } from '../lib/api';
-import { useMySports, useSport, useSportOverview } from '../lib/sports';
+import { ApiError, type Exercise, type Sponsor, sportCategoryLabel } from '../lib/api';
+import {
+  useCreateExercise,
+  useExercises,
+  useMySports,
+  useSport,
+  useSportOverview,
+} from '../lib/sports';
 import { useAchievementsForSport } from '../lib/achievements';
 import { useSponsors } from '../lib/sponsors';
 import { AchievementCard, tierRank } from './AchievementsPage';
@@ -62,6 +68,9 @@ export default function SportDetailPage() {
   const sortedAchievements = [...(achievements ?? [])].sort(
     (a, b) => tierRank(a.level) - tierRank(b.level) || a.id - b.id,
   );
+  // Упражнения дисциплины (общие): переехали сюда из каталога. Тянем все, фильтруем по виду.
+  const { data: allExercises } = useExercises();
+  const exercises = (allExercises ?? []).filter((e) => e.sport_id === id);
 
   if (!Number.isFinite(id) || (error instanceof ApiError && error.status === 404)) {
     return <StateScreen message="Вид спорта не найден." />;
@@ -133,6 +142,10 @@ export default function SportDetailPage() {
           </ul>
         )}
       </div>
+
+      {/* Упражнения дисциплины (общие) — переехали из каталога. Список + добавление общего
+          упражнения. Кастомные (по пользователю) — в кабинете (отдельная фича). */}
+      <ExercisesSection sportId={id} exercises={exercises} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Section
@@ -320,5 +333,92 @@ function renderSponsorPill(s: Sponsor) {
     <span title={title} className={sponsorPillCls}>
       {s.name}
     </span>
+  );
+}
+
+const exInputCls =
+  'rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent';
+
+/** Упражнения дисциплины (общие): список + добавление общего упражнения. Переехало из каталога
+ *  (S3.2). Кастомные (по пользователю) — отдельная фича в кабинете. */
+function ExercisesSection({ sportId, exercises }: { sportId: number; exercises: Exercise[] }) {
+  const create = useCreateExercise();
+  const [name, setName] = useState('');
+  const [unit, setUnit] = useState('');
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    create.mutate(
+      { sport_id: sportId, name: trimmed, unit: unit.trim() || null, notes: null },
+      {
+        onSuccess: () => {
+          setName('');
+          setUnit('');
+        },
+      },
+    );
+  }
+  const error =
+    create.error instanceof ApiError
+      ? create.error.message
+      : create.error
+        ? 'Не удалось добавить.'
+        : null;
+
+  return (
+    <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-6">
+      <h2 className="font-display text-xl font-semibold tracking-tight">Упражнения</h2>
+      {exercises.length === 0 ? (
+        <p className="text-muted">Общих упражнений пока нет — добавьте первое.</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {exercises.map((ex) => (
+            <li key={ex.id} className="flex flex-wrap items-baseline gap-x-2">
+              <span className="font-medium">{ex.name}</span>
+              {ex.unit && <span className="text-sm text-muted">· {ex.unit}</span>}
+              {ex.notes && <span className="text-sm text-muted">— {ex.notes}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        onSubmit={onSubmit}
+        noValidate
+        aria-label="Добавить упражнение"
+        className="flex flex-col gap-3 border-t border-line pt-4"
+      >
+        <div className="grid gap-3 sm:grid-cols-[1.4fr_0.8fr]">
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Название упражнения"
+            aria-label="Название упражнения"
+            className={exInputCls}
+          />
+          <input
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            placeholder="Единица (кг, повторы…)"
+            aria-label="Единица"
+            className={exInputCls}
+          />
+        </div>
+        {error && (
+          <p role="alert" className="text-sm font-medium text-amber">
+            {error}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={create.isPending}
+          className="w-fit rounded-xl border border-line px-4 py-2 text-sm font-medium text-fg transition-colors duration-[var(--duration-fast)] hover:border-accent/50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {create.isPending ? 'Добавляем…' : 'Добавить общее упражнение'}
+        </button>
+      </form>
+    </div>
   );
 }
