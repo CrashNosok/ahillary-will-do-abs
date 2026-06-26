@@ -12,6 +12,8 @@ from enum import StrEnum
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
+from app.models._time import utcnow
+
 
 class SportCategory(StrEnum):
     """Таксономия дисциплин M1 — категория вида спорта (Sport.category, M1·B14).
@@ -137,3 +139,18 @@ class Exercise(SQLModel, table=True):
     kind: str | None = None  # strength | cardio | skill — как логировать упражнение
     unit: str | None = None  # дефолтная единица: кг / повторы / сек / км
     notes: str | None = None  # произвольная заметка (техника, хват, оговорки) — S3.2
+
+
+class SportSuggestion(SQLModel, table=True):
+    """Заявка «предложить вид спорта» (если нужного нет в каталоге). На ревью: status
+    pending|approved|rejected. Одобрение в каталог пока вручную (без авто-создания Sport)."""
+
+    __tablename__ = "sport_suggestion"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)  # кто предложил
+    name: str  # предложенное название
+    category: SportCategory | None = None  # предложенная категория (опц.)
+    note: str | None = None  # почему/что за вид (опц.)
+    status: str = Field(default="pending", index=True)  # pending | approved | rejected
+    created_at: dt.datetime = Field(default_factory=utcnow)

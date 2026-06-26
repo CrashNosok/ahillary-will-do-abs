@@ -24,6 +24,7 @@ from app.models.sport import (
     SportLevel,
     SportMentor,
     SportRecommendation,
+    SportSuggestion,
 )
 from app.services import achievement as achievement_service
 from app.services import sport as sport_service
@@ -138,6 +139,45 @@ def list_sport_categories(_: CurrentUser) -> list[SportCategory]:
     Объявлен ДО /{sport_id}, иначе "categories" попадёт в int-параметр пути и даст 422.
     """
     return list(SportCategory)
+
+
+class SuggestionCreate(BaseModel):
+    name: str
+    category: SportCategory | None = None
+    note: str | None = None
+
+
+@router.post("/suggestions", status_code=status.HTTP_201_CREATED)
+def create_suggestion(
+    payload: SuggestionCreate, session: SessionDep, user: CurrentUser
+) -> SportSuggestion:
+    """«Предложить вид спорта» — заявка на ревью (status=pending). Пустое имя → 422.
+    Объявлено ДО /{sport_id}, иначе "suggestions" уйдёт в int-параметр пути."""
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Укажите название вида спорта"
+        )
+    suggestion = SportSuggestion(
+        user_id=user.id,
+        name=name,
+        category=payload.category,
+        note=(payload.note or "").strip() or None,
+    )
+    session.add(suggestion)
+    session.commit()
+    session.refresh(suggestion)
+    return suggestion
+
+
+@router.get("/suggestions")
+def list_suggestions(session: SessionDep, user: CurrentUser) -> list[SportSuggestion]:
+    """Свои заявки (новые сверху). Скоуп по user_id — чужих не видно."""
+    return session.exec(
+        select(SportSuggestion)
+        .where(SportSuggestion.user_id == user.id)
+        .order_by(SportSuggestion.id.desc())
+    ).all()
 
 
 @router.get("/{sport_id}")
