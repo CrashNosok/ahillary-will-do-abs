@@ -34,6 +34,7 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   const [files, setFiles] = useState<File[]>([]);
   const [lightboxAt, setLightboxAt] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Превью медиа (objectURL + fallback HEIC/HEVC) — общий хук из mediaKit (M2·F10).
@@ -350,24 +351,46 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
             media[], доступен и после сохранения (превью не сбрасываются). Открывает первый кадр;
             листание ‹/› внутри лайтбокса. Дублирует клик по миниатюре (F11), но даёт подписанный
             контрол, как требует карточка. */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Drag-and-drop фото/видео (как в еде): перетащить ИЛИ нажать (клик через ref — Safari). */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => fileRef.current?.click()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              fileRef.current?.click();
+            }
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const list = e.dataTransfer.files;
+            if (list && list.length) {
+              setFiles((prev) => [...prev, ...Array.from(list)]);
+              reset();
+            }
+          }}
+          className={`flex cursor-pointer items-center justify-center rounded-xl border border-dashed px-3 py-3 text-center text-sm transition-colors duration-[var(--duration-fast)] focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
+            dragOver ? 'border-accent bg-accent/5' : 'border-line hover:border-accent/50'
+          }`}
+        >
+          <span className="truncate text-muted">Перетащите фото / видео или нажмите</span>
+        </div>
+        {previews.length > 0 && (
           <button
             type="button"
-            onClick={() => fileRef.current?.click()}
-            className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-fg transition-colors duration-[var(--duration-fast)] hover:border-accent/50"
+            onClick={() => setLightboxAt(0)}
+            className="self-start rounded-full border border-line px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-accent/60"
           >
-            Добавить фото / видео
+            Просмотреть ({previews.length})
           </button>
-          {previews.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setLightboxAt(0)}
-              className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-accent/60"
-            >
-              Просмотреть ({previews.length})
-            </button>
-          )}
-        </div>
+        )}
         {previews.length > 0 && (
           <ul className="flex flex-wrap gap-2">
             {previews.map((p, i) => (

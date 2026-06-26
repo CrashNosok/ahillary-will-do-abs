@@ -24,6 +24,7 @@ export function ActivityForm({ date, onSaved }: { date: string; onSaved?: () => 
   const qc = useQueryClient();
   const [vals, setVals] = useState<Record<string, string>>({});
   const [err, setErr] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const hydrated = useRef(false);
 
   // Предзаполнение «Изменить»: подтягиваем день активности (upsert по дню) и кладём 8 метрик в поля.
@@ -88,8 +89,23 @@ export function ActivityForm({ date, onSaved }: { date: string; onSaved?: () => 
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
-      <label className="cursor-pointer self-start rounded-full border border-line px-3 py-1.5 text-xs font-medium text-fg transition-colors duration-[var(--duration-fast)] hover:border-accent/50">
-        {recognize.isPending ? 'Распознаём…' : 'Распознать со скрина'}
+      {/* Drag-and-drop скрина активности (как в еде): перетащить или нажать → распознавание. */}
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const file = e.dataTransfer.files[0];
+          if (file) recognize.mutate(file);
+        }}
+        className={`flex cursor-pointer items-center justify-center rounded-xl border border-dashed px-3 py-3 text-center text-sm transition-colors duration-[var(--duration-fast)] ${
+          dragOver ? 'border-accent bg-accent/5' : 'border-line hover:border-accent/50'
+        }`}
+      >
         <input
           type="file"
           accept="image/*"
@@ -99,6 +115,9 @@ export function ActivityForm({ date, onSaved }: { date: string; onSaved?: () => 
             if (file) recognize.mutate(file);
           }}
         />
+        <span className="truncate text-muted">
+          {recognize.isPending ? 'Распознаём…' : 'Перетащите скрин активности или нажмите'}
+        </span>
       </label>
       {recognize.isError && (
         <p className="text-xs font-medium text-amber">
