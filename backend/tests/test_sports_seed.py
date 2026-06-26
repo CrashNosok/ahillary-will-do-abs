@@ -30,7 +30,7 @@ def test_seed_creates_five_sports_by_category(tmp_path, monkeypatch):
     assert by_name["Зал"].category == SportCategory.strength
     assert by_name["Кайт"].category == SportCategory.action
     assert by_name["Эндуро"].category == SportCategory.action
-    assert by_name["Вейк"].category == SportCategory.action
+    assert by_name["Вейкборд"].category == SportCategory.action
     assert by_name["Падел"].category == SportCategory.racket
     # встроенные дисциплины помечены is_global
     assert all(s.is_global for s in sports)
