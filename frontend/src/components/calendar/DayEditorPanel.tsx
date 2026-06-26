@@ -167,7 +167,18 @@ export function DayEditorPanel({
     const isOpen = open === r.tab;
     return (
       <li key={r.key} className="border-b border-line/60 last:border-0">
-        <div className="flex items-center justify-between gap-3 py-2">
+        {/* Вся строка — кнопка-раскрытие (клик где угодно по строке открывает форму). «Внести/
+            Изменить» теперь визуальный бейдж (span), реагирует на hover всей строки (group). */}
+        <button
+          type="button"
+          aria-expanded={isOpen}
+          onClick={() => {
+            setOpen(isOpen ? null : r.tab);
+            setConfirming(null);
+            setClearError(null);
+          }}
+          className="group flex w-full items-center justify-between gap-3 py-2 text-left focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset focus-visible:outline-none"
+        >
           <span className="flex min-w-0 items-center gap-2">
             <span
               aria-hidden="true"
@@ -185,25 +196,18 @@ export function DayEditorPanel({
               </span>
             </span>
           </span>
-          <button
-            type="button"
-            aria-expanded={isOpen}
-            onClick={() => {
-              setOpen(isOpen ? null : r.tab);
-              setConfirming(null);
-              setClearError(null);
-            }}
+          <span
             className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors duration-[var(--duration-fast)] ${
               isOpen
                 ? 'border-accent bg-accent/15 text-accent'
                 : done
-                  ? 'border-line text-muted hover:border-accent/50 hover:text-fg'
-                  : 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20'
+                  ? 'border-line text-muted group-hover:border-accent/50 group-hover:text-fg'
+                  : 'border-accent/50 bg-accent/10 text-accent group-hover:bg-accent/20'
             }`}
           >
             {isOpen ? 'Свернуть' : done ? 'Изменить' : 'Внести'}
-          </button>
-        </div>
+          </span>
+        </button>
         {/* Полоса медиа дня — только в строке тренировок (M3·F12), видна и без раскрытия формы. */}
         {r.tab === 'training' && <DayWorkoutMediaStrip date={iso} />}
         {isOpen && (
