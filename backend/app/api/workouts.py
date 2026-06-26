@@ -39,6 +39,7 @@ from app.models.workout import (
     WorkoutMedia,
     WorkoutSession,
 )
+from app.services import llm, welltory_training
 from app.services.workout_metrics import (
     apply_prs,
     cardio_candidates,
@@ -211,8 +212,41 @@ class SimpleWorkoutRead(BaseModel):
     rpe: float | None
     notes: str | None
     surpassed_self: bool  # «превзошёл себя» (M2·B16/B17): отмечен ли личный рекорд в сессии
+    # Метрики Welltory «Анализ тренировки» (ядро 9671) — None, если не заполнено.
+    total_kcal: int | None
+    active_kcal: int | None
+    total_met: int | None
+    useful_met: int | None
+    hr_avg: int | None
+    hr_max: int | None
+    load_pct: int | None
+    score: int | None
     created_at: dt.datetime
     media: list[SimpleMediaRead]
+
+
+def _simple_read(ws: WorkoutSession, media: list[WorkoutMedia]) -> SimpleWorkoutRead:
+    """Сериализация простого лога + его медиа (один источник правды для create/list)."""
+    return SimpleWorkoutRead(
+        id=ws.id,
+        date=ws.date,
+        kind=ws.kind,
+        sport_id=ws.sport_id,
+        duration_min=ws.duration_min,
+        rpe=ws.rpe,
+        notes=ws.notes,
+        surpassed_self=ws.surpassed_self,
+        total_kcal=ws.total_kcal,
+        active_kcal=ws.active_kcal,
+        total_met=ws.total_met,
+        useful_met=ws.useful_met,
+        hr_avg=ws.hr_avg,
+        hr_max=ws.hr_max,
+        load_pct=ws.load_pct,
+        score=ws.score,
+        created_at=ws.created_at,
+        media=[SimpleMediaRead(id=m.id, media_type=m.media_type) for m in media],
+    )
 
 
 @router.post("/simple", status_code=status.HTTP_201_CREATED)
@@ -226,6 +260,15 @@ async def create_simple_workout(
     rpe: Annotated[float | None, Form()] = None,
     surpassed_self: Annotated[bool, Form()] = False,  # отметка «превзошёл себя» (M2·B17)
     note: Annotated[str | None, Form()] = None,
+    # Метрики Welltory (ядро 9671) — опциональны (ручной ввод или распознавание со скрина).
+    total_kcal: Annotated[int | None, Form()] = None,
+    active_kcal: Annotated[int | None, Form()] = None,
+    total_met: Annotated[int | None, Form()] = None,
+    useful_met: Annotated[int | None, Form()] = None,
+    hr_avg: Annotated[int | None, Form()] = None,
+    hr_max: Annotated[int | None, Form()] = None,
+    load_pct: Annotated[int | None, Form()] = None,
+    score: Annotated[int | None, Form()] = None,
     files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 — FastAPI-зависимость, не мутируется
 ) -> SimpleWorkoutRead:
     if kind not in _SIMPLE_KINDS:
@@ -242,13 +285,25 @@ async def create_simple_workout(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Усилие (RPE) — число от 0 до 10",
         )
-    # Тип сам по себе ничего не фиксирует — нужна хоть какая-то «начинка»: время, заметка или медиа.
+    # Тип сам по себе ничего не фиксирует — нужна хоть какая-то «начинка»: время, заметка, медиа
+    # или метрики (ккал/МЕТ/пульс/нагрузка/оценка) со скрина либо ручного ввода.
     note_clean = note.strip() if note else ""
     has_media = any(f and f.filename for f in files)
-    if duration_min is None and not note_clean and not has_media:
+    metrics = {
+        "total_kcal": total_kcal,
+        "active_kcal": active_kcal,
+        "total_met": total_met,
+        "useful_met": useful_met,
+        "hr_avg": hr_avg,
+        "hr_max": hr_max,
+        "load_pct": load_pct,
+        "score": score,
+    }
+    has_metrics = any(v is not None for v in metrics.values())
+    if duration_min is None and not note_clean and not has_media and not has_metrics:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Заполните хотя бы одно: длительность, заметку или фото/видео",
+            detail="Заполните хотя бы одно: длительность, заметку, метрики или фото/видео",
         )
     if sport_id is not None:
         _require_sport(session, sport_id)
@@ -264,6 +319,7 @@ async def create_simple_workout(
         rpe=rpe,
         surpassed_self=surpassed_self,
         notes=note_clean or None,
+        **metrics,
     )
     session.add(ws)
     session.commit()
@@ -299,17 +355,51 @@ async def create_simple_workout(
         for m in media:
             session.refresh(m)
 
-    return SimpleWorkoutRead(
-        id=ws.id,
-        date=ws.date,
-        kind=kind,
-        sport_id=ws.sport_id,
-        duration_min=ws.duration_min,
-        rpe=ws.rpe,
-        notes=ws.notes,
-        surpassed_self=ws.surpassed_self,
-        created_at=ws.created_at,
-        media=[SimpleMediaRead(id=m.id, media_type=m.media_type) for m in media],
+    return _simple_read(ws, media)
+
+
+class WorkoutPreview(BaseModel):
+    """Распознанные со скрина метрики (ядро 9671) для предзаполнения формы. raw_json — аудит."""
+
+    duration_min: int | None
+    total_kcal: int | None
+    active_kcal: int | None
+    total_met: int | None
+    useful_met: int | None
+    hr_avg: int | None
+    hr_max: int | None
+    load_pct: int | None
+    score: int | None
+    raw_json: dict
+
+
+@router.post("/preview")
+async def preview_workout(
+    _: CurrentUser,
+    file: Annotated[UploadFile, File()],
+) -> WorkoutPreview:
+    """Распознать метрики со скрина Welltory «Анализ тренировки» (vision) — БЕЗ сохранения.
+    Пользователь правит и сохраняет через /workouts/simple. Невалидный скрин → 422, vision
+    недоступен → 502. Объявлено до /{workout_id} (POST), чтобы «preview» не ушло в catch-all."""
+    image_bytes = await file.read()
+    if not image_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Пустой файл изображения"
+        )
+    try:
+        vision = welltory_training.parse_training_screen(image_bytes)
+    except welltory_training.VisionParseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Не удалось разобрать скрин тренировки: {exc}",
+        ) from exc
+    except llm.LLMError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Vision-модель недоступна: {exc}"
+        ) from exc
+    return WorkoutPreview(
+        raw_json=vision.raw,
+        **{name: getattr(vision, name) for name in welltory_training.FIELD_NAMES},
     )
 
 
@@ -365,20 +455,7 @@ def list_simple_workouts(
         media = session.exec(
             select(WorkoutMedia).where(WorkoutMedia.session_id == ws.id).order_by(WorkoutMedia.id)
         ).all()
-        out.append(
-            SimpleWorkoutRead(
-                id=ws.id,
-                date=ws.date,
-                kind=ws.kind,
-                sport_id=ws.sport_id,
-                duration_min=ws.duration_min,
-                rpe=ws.rpe,
-                notes=ws.notes,
-                surpassed_self=ws.surpassed_self,
-                created_at=ws.created_at,
-                media=[SimpleMediaRead(id=m.id, media_type=m.media_type) for m in media],
-            )
-        )
+        out.append(_simple_read(ws, media))
     return out
 
 

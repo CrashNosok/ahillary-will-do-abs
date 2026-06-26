@@ -71,6 +71,31 @@ def test_simple_workout_without_media(client):
     assert body["media"] == []
 
 
+def test_simple_workout_stores_welltory_metrics(client):
+    """Метрики Welltory (ядро 9671) сохраняются и возвращаются; и их одних достаточно как
+    «начинки» — без длительности/заметки/медиа."""
+    res = client.post(
+        "/workouts/simple",
+        data={
+            "kind": "strength",
+            "total_kcal": "573",
+            "active_kcal": "489",
+            "total_met": "509",
+            "useful_met": "241",
+            "hr_avg": "123",
+            "hr_max": "162",
+            "load_pct": "-8",
+            "score": "3",
+        },
+    )
+    assert res.status_code == 201, res.text
+    b = res.json()
+    assert b["duration_min"] is None  # только метрики — всё равно приняли
+    assert (b["total_kcal"], b["active_kcal"]) == (573, 489)
+    assert (b["total_met"], b["useful_met"]) == (509, 241)
+    assert (b["hr_avg"], b["hr_max"], b["load_pct"], b["score"]) == (123, 162, -8, 3)
+
+
 def test_simple_workout_media_only_no_duration(client):
     """Видео рекорда/трюка без длительности — длительность опциональна, медиа достаточно."""
     res = client.post(

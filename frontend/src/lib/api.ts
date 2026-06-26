@@ -328,8 +328,43 @@ export type SimpleWorkout = {
   rpe: number | null;
   notes: string | null;
   surpassed_self: boolean; // «превзошёл себя» (M2·B16/B17): отмечен ли личный рекорд в сессии
+  // Метрики Welltory «Анализ тренировки» (ядро 9671) — null, если не заполнено.
+  total_kcal: number | null;
+  active_kcal: number | null;
+  total_met: number | null;
+  useful_met: number | null;
+  hr_avg: number | null;
+  hr_max: number | null;
+  load_pct: number | null;
+  score: number | null;
   created_at: string;
   media: SimpleWorkoutMedia[];
+};
+
+/** Метрики тренировки (ядро 9671) — отдельный тип для ручного ввода/распознавания. */
+export type WorkoutMetrics = {
+  totalKcal: number | null;
+  activeKcal: number | null;
+  totalMet: number | null;
+  usefulMet: number | null;
+  hrAvg: number | null;
+  hrMax: number | null;
+  loadPct: number | null;
+  score: number | null;
+};
+
+/** Ответ распознавания скрина Welltory «Анализ тренировки» (POST /workouts/preview). */
+export type WorkoutMetricsPreview = {
+  duration_min: number | null;
+  total_kcal: number | null;
+  active_kcal: number | null;
+  total_met: number | null;
+  useful_met: number | null;
+  hr_avg: number | null;
+  hr_max: number | null;
+  load_pct: number | null;
+  score: number | null;
+  raw_json: unknown;
 };
 
 /** Ввод минимального лога: тип, длительность, усилие, заметка и медиа (фото/видео).
@@ -343,6 +378,7 @@ export type SimpleWorkoutInput = {
   rpe: number | null;
   note: string | null;
   surpassedSelf: boolean; // «превзошёл себя» (M2·F9): отметка личного рекорда сессии
+  metrics: WorkoutMetrics; // метрики Welltory (ядро 9671) — ручной ввод/распознавание
   files: File[];
 };
 
@@ -917,8 +953,25 @@ export const api = {
     if (input.rpe != null) form.append('rpe', String(input.rpe));
     if (input.note) form.append('note', input.note);
     if (input.surpassedSelf) form.append('surpassed_self', 'true');
+    const m = input.metrics; // метрики Welltory (ядро 9671) — каждая опциональна
+    if (m.totalKcal != null) form.append('total_kcal', String(m.totalKcal));
+    if (m.activeKcal != null) form.append('active_kcal', String(m.activeKcal));
+    if (m.totalMet != null) form.append('total_met', String(m.totalMet));
+    if (m.usefulMet != null) form.append('useful_met', String(m.usefulMet));
+    if (m.hrAvg != null) form.append('hr_avg', String(m.hrAvg));
+    if (m.hrMax != null) form.append('hr_max', String(m.hrMax));
+    if (m.loadPct != null) form.append('load_pct', String(m.loadPct));
+    if (m.score != null) form.append('score', String(m.score));
     for (const file of input.files) form.append('files', file);
     return postForm<SimpleWorkout>('/workouts/simple', form);
+  },
+
+  // Распознать метрики со скрина Welltory «Анализ тренировки» (vision) — без записи; правка и
+  // сохранение — через createSimpleWorkout. 422 — нечитаемый скрин, 502 — vision недоступен.
+  previewWorkout: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return postForm<WorkoutMetricsPreview>('/workouts/preview', form);
   },
 
   // Медиа дня (M2·B18): id+type всех медиа тренировок владельца за день; байты — workoutMediaUrl(id).

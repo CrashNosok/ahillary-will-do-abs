@@ -47,6 +47,16 @@ class WorkoutSession(SQLModel, table=True):
     kind: str | None = None
     duration_min: float | None = None  # длительность тренировки, мин
     rpe: float | None = None  # субъективное усилие 0–10
+    # Метрики со скрина Welltory «Анализ тренировки» (ядро экрана 9671): ручной ввод или
+    # распознавание (services/welltory_training.py). Все опциональны — None, если не заполнено.
+    total_kcal: int | None = None  # ВСЕГО ккал
+    active_kcal: int | None = None  # АКТИВ. ккал
+    total_met: int | None = None  # ВСЕГО МЕТ
+    useful_met: int | None = None  # ПОЛЕЗНЫЕ МЕТ
+    hr_avg: int | None = None  # пульс средний
+    hr_max: int | None = None  # пульс максимальный
+    load_pct: int | None = None  # НАГРУЗКА, % (может быть отрицательной)
+    score: int | None = None  # оценка тренировки Welltory (число)
     # «Превзошёл себя» (M2·B16): флаг сессии, в которой побит личный рекорд. Сейчас всегда
     # False — выставлять его будет PR-движок (S3.10) в последующей карточке; здесь только схема.
     surpassed_self: bool = Field(default=False)

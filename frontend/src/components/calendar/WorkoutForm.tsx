@@ -5,9 +5,16 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, SPORT_CATEGORIES, type SportCategory, type WorkoutKind } from '../../lib/api';
+import {
+  api,
+  ApiError,
+  SPORT_CATEGORIES,
+  type SportCategory,
+  type WorkoutKind,
+  type WorkoutMetrics,
+} from '../../lib/api';
 import { useMySports } from '../../lib/sports';
-import { inputCls, SaveButton, errText } from './formKit';
+import { inputCls, SaveButton, errText, numOrNull } from './formKit';
 import { MediaThumb, useFilePreviews } from './mediaKit';
 import { MediaLightbox } from './MediaLightbox';
 
@@ -19,6 +26,20 @@ const KINDS: { id: WorkoutKind; label: string }[] = [
 ];
 const chip =
   'rounded-full px-3 py-1 text-xs font-medium transition-colors duration-[var(--duration-fast)]';
+
+// Метрики Welltory «Анализ тренировки» (ядро 9671): ключ = поле бэкенда (snake_case), label —
+// подпись. Заполняются вручную или распознаванием со скрина (api.previewWorkout). duration_min
+// распознаётся отдельно и кладётся в поле «Длительность».
+const M_FIELDS = [
+  { key: 'total_kcal', label: 'Всего ккал' },
+  { key: 'active_kcal', label: 'Актив. ккал' },
+  { key: 'total_met', label: 'Всего МЕТ' },
+  { key: 'useful_met', label: 'Полезные МЕТ' },
+  { key: 'hr_avg', label: 'Пульс сред.' },
+  { key: 'hr_max', label: 'Пульс макс.' },
+  { key: 'load_pct', label: 'Нагрузка, %' },
+  { key: 'score', label: 'Оценка' },
+] as const;
 
 export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => void }) {
   const qc = useQueryClient();
@@ -34,7 +55,9 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   const [files, setFiles] = useState<File[]>([]);
   const [lightboxAt, setLightboxAt] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
+  const [dragOver, setDragOver] = useState(false); // дроп-зона фото/видео
+  const [metrics, setMetrics] = useState<Record<string, string>>({}); // метрики Welltory (9671)
+  const [screenDrag, setScreenDrag] = useState(false); // дроп-зона скрина «Распознать»
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Превью медиа (objectURL + fallback HEIC/HEVC) — общий хук из mediaKit (M2·F10).
@@ -71,6 +94,17 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   });
   const logged = dayWorkouts.data ?? [];
 
+  const buildMetrics = (): WorkoutMetrics => ({
+    totalKcal: numOrNull(metrics.total_kcal),
+    activeKcal: numOrNull(metrics.active_kcal),
+    totalMet: numOrNull(metrics.total_met),
+    usefulMet: numOrNull(metrics.useful_met),
+    hrAvg: numOrNull(metrics.hr_avg),
+    hrMax: numOrNull(metrics.hr_max),
+    loadPct: numOrNull(metrics.load_pct),
+    score: numOrNull(metrics.score),
+  });
+
   const save = useMutation({
     mutationFn: () =>
       api.createSimpleWorkout({
@@ -81,6 +115,7 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
         rpe,
         note: note.trim() || null,
         surpassedSelf,
+        metrics: buildMetrics(),
         files,
       }),
     onSuccess: () => {
@@ -98,6 +133,21 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
     save.reset();
   }
 
+  // Распознать метрики со скрина Welltory «Анализ тренировки» (vision) → заполнить поля + длит.
+  const recognize = useMutation({
+    mutationFn: (file: File) => api.previewWorkout(file),
+    onSuccess: (p) => {
+      const got = p as Record<string, number | null>;
+      setMetrics(() => {
+        const next: Record<string, string> = {};
+        for (const f of M_FIELDS) next[f.key] = got[f.key] != null ? String(got[f.key]) : '';
+        return next;
+      });
+      if (p.duration_min != null) setDuration(String(p.duration_min));
+      reset();
+    },
+  });
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     // Длительность опциональна, но если вписана — должна быть положительным числом.
@@ -107,9 +157,10 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
       setErr('Длительность — число минут больше нуля.');
       return;
     }
-    // Тип сам по себе ничего не фиксирует — нужна хоть какая-то начинка.
-    if (!hasDuration && !note.trim() && files.length === 0) {
-      setErr('Заполните хотя бы одно: длительность, заметку или фото/видео.');
+    // Тип сам по себе ничего не фиксирует — нужна хоть какая-то начинка (вкл. метрики Welltory).
+    const hasMetrics = M_FIELDS.some((f) => metrics[f.key]?.trim());
+    if (!hasDuration && !note.trim() && files.length === 0 && !hasMetrics) {
+      setErr('Заполните хотя бы одно: длительность, заметку, метрики или фото/видео.');
       return;
     }
     setErr(null);
@@ -258,6 +309,69 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
           placeholder="—"
         />
       </label>
+
+      {/* Welltory «Анализ тренировки» (ядро 9671): распознать со скрина (drag-and-drop, как в
+          активности) ИЛИ вписать вручную. Распознавание заполняет поля + длительность. */}
+      <div className="flex flex-col gap-2">
+        <span className="text-xs text-muted">Метрики со скрина Welltory (необязательно)</span>
+        <label
+          onDragOver={(e) => {
+            e.preventDefault();
+            setScreenDrag(true);
+          }}
+          onDragLeave={() => setScreenDrag(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setScreenDrag(false);
+            const f = e.dataTransfer.files[0];
+            if (f) recognize.mutate(f);
+          }}
+          className={`flex cursor-pointer items-center justify-center rounded-xl border border-dashed px-3 py-3 text-center text-sm transition-colors duration-[var(--duration-fast)] ${
+            screenDrag ? 'border-accent bg-accent/5' : 'border-line hover:border-accent/50'
+          }`}
+        >
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) recognize.mutate(f);
+            }}
+          />
+          <span className="truncate text-muted">
+            {recognize.isPending
+              ? 'Распознаём…'
+              : 'Перетащите скрин «Анализ тренировки» или нажмите'}
+          </span>
+        </label>
+        {recognize.isError && (
+          <p className="text-xs font-medium text-amber">
+            {recognize.error instanceof ApiError
+              ? recognize.error.message
+              : 'Не удалось распознать скрин.'}{' '}
+            Заполните вручную.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {M_FIELDS.map((f) => (
+            <label key={f.key} className="flex flex-col gap-1">
+              <span className="text-xs text-muted">{f.label}</span>
+              <input
+                className={`${inputCls} tabular-nums`}
+                type="number"
+                inputMode="numeric"
+                value={metrics[f.key] ?? ''}
+                onChange={(e) => {
+                  setMetrics((v) => ({ ...v, [f.key]: e.target.value }));
+                  reset();
+                }}
+                placeholder="—"
+              />
+            </label>
+          ))}
+        </div>
+      </div>
 
       {/* Усилие — ползунок 1–10 (M2·F8), опционально. Трек-градиент зелёный→красный = шкала
           «легко→до отказа»; пока не двигали — «Не указано» (полупрозрачный), «Сбросить» возвращает
