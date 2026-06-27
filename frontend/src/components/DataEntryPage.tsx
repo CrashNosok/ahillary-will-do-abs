@@ -9,7 +9,6 @@ import ActivityImportPage from './ActivityImportPage';
 import BodyMeasurementsPage from './BodyMeasurementsPage';
 import BodyPhotosPage from './BodyPhotosPage';
 import DayChargeProgress from './DayChargeProgress';
-import GoalPage from './GoalPage';
 import ImportPage from './ImportPage';
 import InbodyImportPage from './InbodyImportPage';
 import SportsPage from './SportsPage';
@@ -24,8 +23,7 @@ type TabId =
   | 'weight'
   | 'inbody'
   | 'photos'
-  | 'sports'
-  | 'goal';
+  | 'sports';
 
 // Дату выбранного дня (из календаря, ?date=) формы-вкладки берут как стартовую (если умеют).
 type EntryTabProps = { initialDate?: string };
@@ -41,7 +39,6 @@ const TABS: { id: TabId; label: string; Component: ComponentType<EntryTabProps> 
   { id: 'inbody', label: 'InBody', Component: InbodyImportPage },
   { id: 'photos', label: 'Фото', Component: BodyPhotosPage },
   { id: 'sports', label: 'Виды спорта', Component: SportsPage },
-  { id: 'goal', label: 'Цель', Component: GoalPage },
 ];
 
 const DEFAULT_TAB: TabId = 'food';

@@ -459,6 +459,90 @@ def list_simple_workouts(
     return out
 
 
+class SimpleWorkoutUpdate(BaseModel):
+    """Тело PATCH простого лога: скалярные поля (без медиа). Полная замена — фронт шлёт текущее
+    состояние формы. Те же опц. поля, что и при создании."""
+
+    kind: str
+    sport_id: int | None = None
+    duration_min: float | None = None
+    rpe: float | None = None
+    surpassed_self: bool = False
+    note: str | None = None
+    total_kcal: int | None = None
+    active_kcal: int | None = None
+    total_met: int | None = None
+    useful_met: int | None = None
+    hr_avg: int | None = None
+    hr_max: int | None = None
+    load_pct: int | None = None
+    score: int | None = None
+
+
+@router.patch("/simple/{workout_id}")
+def update_simple_workout(
+    workout_id: int, payload: SimpleWorkoutUpdate, session: SessionDep, user: CurrentUser
+) -> SimpleWorkoutRead:
+    """Правка простого («быстрого») лога — предзаполнение «Изменить» в попапе дня. Обновляет
+    скалярные поля (тип/вид/длительность/усилие/заметка/метрики); медиа не трогает (добавление
+    остаётся через создание). Чужой/несуществующий → 404; детальную сессию (kind=None) не правим.
+    Объявлено до catch-all /{workout_id}."""
+    ws = _get_or_404(session, workout_id, user.id)
+    if ws.kind is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тренировка не найдена")
+    if payload.kind not in _SIMPLE_KINDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Неизвестный тип тренировки"
+        )
+    if payload.duration_min is not None and payload.duration_min <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Длительность — положительное число минут",
+        )
+    if payload.rpe is not None and not (0 <= payload.rpe <= 10):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Усилие (RPE) — число от 0 до 10",
+        )
+    note_clean = payload.note.strip() if payload.note else ""
+    metrics = {
+        "total_kcal": payload.total_kcal,
+        "active_kcal": payload.active_kcal,
+        "total_met": payload.total_met,
+        "useful_met": payload.useful_met,
+        "hr_avg": payload.hr_avg,
+        "hr_max": payload.hr_max,
+        "load_pct": payload.load_pct,
+        "score": payload.score,
+    }
+    has_metrics = any(v is not None for v in metrics.values())
+    media = session.exec(
+        select(WorkoutMedia).where(WorkoutMedia.session_id == ws.id).order_by(WorkoutMedia.id)
+    ).all()
+    # Та же инварианта, что при создании: лог не может быть совсем пустым (учитываем уже
+    # прикреплённое медиа — его правка скаляров не удаляет).
+    if payload.duration_min is None and not note_clean and not has_metrics and not media:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Заполните хотя бы одно: длительность, заметку, метрики или фото/видео",
+        )
+    if payload.sport_id is not None:
+        _require_sport(session, payload.sport_id)
+
+    ws.kind = payload.kind
+    ws.sport_id = payload.sport_id
+    ws.duration_min = payload.duration_min
+    ws.rpe = payload.rpe
+    ws.surpassed_self = payload.surpassed_self
+    ws.notes = note_clean or None
+    for field, value in metrics.items():
+        setattr(ws, field, value)
+    session.add(ws)
+    session.commit()
+    session.refresh(ws)
+    return _simple_read(ws, media)
+
+
 @router.get("")
 def list_workouts(session: SessionDep, user: CurrentUser) -> list[WorkoutRead]:
     sessions = session.exec(

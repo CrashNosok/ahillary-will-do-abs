@@ -12,6 +12,7 @@ from app.models.challenge import (
 )
 from app.models.deficit import DeficitDay
 from app.models.deleted import DeletedRecord
+from app.models.exercise_target import ExerciseTarget
 from app.models.goal import GoalStatus, SmartGoal
 from app.models.nutrition import FoodEntry
 from app.models.recommendation import Recommendation
@@ -26,6 +27,7 @@ from app.models.sport import (
     SportRecommendation,
     SportSuggestion,
 )
+from app.models.sport_advice import SportAdvice
 from app.models.user import User
 from app.models.user_sport import UserSport
 from app.models.workout import (
@@ -51,6 +53,7 @@ __all__ = [
     "DeficitDay",
     "DeletedRecord",
     "Exercise",
+    "ExerciseTarget",
     "FoodEntry",
     "GoalStatus",
     "HrZones",
@@ -60,6 +63,7 @@ __all__ = [
     "Recommendation",
     "SkillLog",
     "Sport",
+    "SportAdvice",
     "SportCategory",
     "SportEvent",
     "SportLevel",

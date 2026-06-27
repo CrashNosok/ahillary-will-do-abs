@@ -21,6 +21,7 @@
   --color-accent: oklch(87% 0.19 128); /* лайм — энергия/прогресс */
   --color-accent-ink: oklch(24% 0.05 128); /* текст на акценте */
   --color-amber: oklch(80% 0.13 70); /* тёплый вторичный акцент */
+  --color-danger: oklch(64% 0.19 25); /* красный — цель ещё не достигнута/ошибка */
 
   /* — Категории данных дашборда (хитмап): 4 типа, раздельные оттенки — */
   --color-cat-food: oklch(85% 0.17 145); /* зелёный — еда */
@@ -282,8 +283,8 @@
   stroke-width: 0.9;
 }
 
-/* Медаль-гексагон с 3D-оборотом: завершившаяся неделя крутится, показывая лицо и оборот
- * (на обороте — «за что получена»). backface-visibility прячет нелицевую сторону. */
+/* Медаль-гексагон с 3D-переворотом: при наведении мышки поворачивается на 180°, показывая оборот
+ * («за что получена»). Сама НЕ вращается. backface-visibility прячет нелицевую сторону. */
 .medal-flip {
   perspective: 420px;
 }
@@ -293,16 +294,9 @@
   transform-style: preserve-3d;
   transition: transform var(--duration-normal) var(--ease-out-expo);
 }
-.medal-spin--on {
-  animation: medal-spin 7s linear infinite;
-}
-.medal-flip:hover .medal-spin:not(.medal-spin--on) {
+.medal-flip:hover .medal-spin,
+.medal-flip:focus-visible .medal-spin {
   transform: rotateY(180deg);
-}
-@keyframes medal-spin {
-  to {
-    transform: rotateY(360deg);
-  }
 }
 .medal-face {
   position: absolute;

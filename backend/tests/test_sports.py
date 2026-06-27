@@ -238,6 +238,22 @@ def test_delete_unknown_sport_returns_404(client):
     assert client.delete("/sports/999").status_code == 404
 
 
+def test_patch_global_sport_forbidden(client):
+    # is_global=True — общий каталог; править его залогиненному нельзя (403).
+    glob = client.post(
+        "/sports", json={"name": "Кайт", "category": "action", "is_global": True}
+    ).json()
+    assert client.patch(f"/sports/{glob['id']}", json={"name": "Кайтсёрф"}).status_code == 403
+
+
+def test_delete_global_sport_forbidden(client):
+    glob = client.post(
+        "/sports", json={"name": "Падел", "category": "racket", "is_global": True}
+    ).json()
+    assert client.delete(f"/sports/{glob['id']}").status_code == 403
+    assert client.get(f"/sports/{glob['id']}").status_code == 200  # не удалён
+
+
 def test_duplicate_name_returns_409(client):
     client.post("/sports", json={"name": "Бег", "category": "endurance"})
     resp = client.post("/sports", json={"name": "Бег", "category": "strength"})

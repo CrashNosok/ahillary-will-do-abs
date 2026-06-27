@@ -232,6 +232,7 @@ function WeekRow({
     has_weight: flagsList.some((d) => d.has_weight),
     has_body: flagsList.some((d) => d.has_body),
     has_photo: flagsList.some((d) => d.has_photo),
+    has_inbody: flagsList.some((d) => d.has_inbody),
   };
   // Порядок недельных категорий «в порядке заполнения»: по первому дню недели (даты Пн→Вс), где
   // категория появилась; ничья (в один день) → порядок WEEKLY. Задаёт порядок слоёв заливки.
@@ -271,6 +272,7 @@ function WeekRow({
         has_training: false,
         has_measurement: weeklyFlags.has_weight || weeklyFlags.has_body,
         has_weight: weeklyFlags.has_weight,
+        has_inbody: weeklyFlags.has_inbody,
         has_body: weeklyFlags.has_body,
         has_photo: weeklyFlags.has_photo,
         has_surpassed_self: false,

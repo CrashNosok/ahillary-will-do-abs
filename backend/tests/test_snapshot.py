@@ -71,9 +71,7 @@ def _seed_full(engine) -> None:
         s.add(
             SmartGoal(
                 user_id=1,
-                target_weight_kg=75.0,
-                target_body_fat_pct=15.0,
-                target_measurements_json={"waist": 80},
+                target_metrics_json={"weight_kg": 75.0, "body_fat_pct": 15.0, "waist_cm": 80},
                 why_notes="к лету",
                 status="active",
             )
@@ -95,6 +93,9 @@ def _seed_full(engine) -> None:
                 protein_g=150,
                 fat_g=60,
                 carb_g=200,
+                fiber_g=30,
+                sugar_g=40,
+                saturated_fat_g=18,
             )
         )
         s.add(
@@ -107,6 +108,9 @@ def _seed_full(engine) -> None:
                 protein_g=130,
                 fat_g=50,
                 carb_g=180,
+                fiber_g=20,
+                sugar_g=30,
+                saturated_fat_g=14,
             )
         )
         # Активность + дефицит.
@@ -194,21 +198,24 @@ def test_empty_db_builds_full_resilient_snapshot(ctx):
         "inbody",
         "training",
         "personal_records",
+        "exercise_targets",
     }
     assert snap["goal"] is None
-    assert snap["nutrition"] == {
-        "logged_days": 0,
+    _empty_food = {
         "avg_kcal_in": None,
         "avg_protein_g": None,
         "avg_fat_g": None,
         "avg_carb_g": None,
-        "recent": {
-            "days": 0,
-            "avg_kcal_in": None,
-            "avg_protein_g": None,
-            "avg_fat_g": None,
-            "avg_carb_g": None,
-        },
+        "avg_fiber_g": None,
+        "avg_sugar_g": None,
+        "avg_saturated_fat_g": None,
+        "avg_complex_carb_g": None,
+        "avg_simple_carb_g": None,
+    }
+    assert snap["nutrition"] == {
+        "logged_days": 0,
+        **_empty_food,
+        "recent": {"days": 0, **_empty_food},
     }
     assert snap["activity"]["logged_days"] == 0
     assert snap["activity"]["deficit"] == {
@@ -231,7 +238,7 @@ def test_full_snapshot_has_all_signals(ctx):
 
     # Цель + прогресс по трём метрикам.
     goal = snap["goal"]
-    assert goal["target_weight_kg"] == 75.0
+    assert goal["targets"]["weight_kg"] == 75.0
     progress = {m["metric"]: m for m in goal["progress"]}
     assert progress["weight_kg"] == {
         "metric": "weight_kg",
@@ -248,6 +255,12 @@ def test_full_snapshot_has_all_signals(ctx):
     # Питание: средние по двум дням.
     assert snap["nutrition"]["logged_days"] == 2
     assert snap["nutrition"]["avg_kcal_in"] == 1900.0
+    # Детальные нутриенты: средние + качество углеводов (сложные = всего − сахар − клетчатка).
+    assert snap["nutrition"]["avg_fiber_g"] == 25.0
+    assert snap["nutrition"]["avg_sugar_g"] == 35.0
+    assert snap["nutrition"]["avg_saturated_fat_g"] == 16.0
+    assert snap["nutrition"]["avg_complex_carb_g"] == 130.0  # 190 − 35 − 25
+    assert snap["nutrition"]["avg_simple_carb_g"] == 35.0
     assert snap["nutrition"]["recent"]["days"] == 2
 
     # Активность + дефицит.
@@ -292,7 +305,7 @@ def test_goal_without_measurements_is_resilient(ctx):
     """Цель есть, замеров нет: прогресс отдаёт None, а не падает."""
     _, engine = ctx
     with Session(engine) as s:
-        s.add(SmartGoal(user_id=1, target_weight_kg=75.0, status="active"))
+        s.add(SmartGoal(user_id=1, target_metrics_json={"weight_kg": 75.0}, status="active"))
         s.commit()
         snap = snapshot_service.build_snapshot(s, user_id=1, end=TODAY)
     metric = snap["goal"]["progress"][0]
@@ -328,7 +341,7 @@ def test_snapshot_route_returns_json(ctx):
     resp = client.get("/snapshot")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["goal"]["target_weight_kg"] == 75.0
+    assert body["goal"]["targets"]["weight_kg"] == 75.0
     assert body["window"]["days"] == 90
     assert {
         "nutrition",

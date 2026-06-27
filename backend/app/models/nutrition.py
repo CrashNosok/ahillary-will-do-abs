@@ -26,6 +26,11 @@ class FoodEntry(SQLModel, table=True):
     protein_g: float | None = None
     fat_g: float | None = None
     carb_g: float | None = None
+    # Детальные нутриенты для доказательного отчёта (качество углеводов/жиров).
+    # FatSecret-CSV их содержит (Клетч/Сахар/Н·жир); старые экспорты/строки → None.
+    fiber_g: float | None = None
+    sugar_g: float | None = None
+    saturated_fat_g: float | None = None
     import_id: str | None = Field(default=None, index=True)
     # Момент внесения — для порядка заливки дня в календаре (категории в порядке появления).
     created_at: dt.datetime = Field(default_factory=utcnow)

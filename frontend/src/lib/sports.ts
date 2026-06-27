@@ -8,6 +8,7 @@ import {
   type Exercise,
   type ExerciseInput,
   type Sport,
+  type SportAdvice,
   type SportCategory,
   type SportInput,
   type SportOverview,
@@ -72,6 +73,26 @@ export function useCreateSport() {
   return useMutation({
     mutationFn: (input: SportInput) => api.createSport(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: SPORTS_KEY }),
+  });
+}
+
+const sportRecoKey = (sportId: number) => ['sport-recommendation', sportId] as const;
+
+/** Последняя ИИ-рекомендация по виду спорта (#1); null — ещё не генерировали. */
+export function useSportRecommendation(sportId: number) {
+  return useQuery<SportAdvice | null>({
+    queryKey: sportRecoKey(sportId),
+    queryFn: () => api.getSportRecommendation(sportId),
+    enabled: Number.isFinite(sportId),
+  });
+}
+
+/** Сгенерировать ИИ-рекомендацию по виду; по успеху обновляем кэш совета. */
+export function useGenerateSportRecommendation(sportId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.generateSportRecommendation(sportId),
+    onSuccess: (advice) => qc.setQueryData(sportRecoKey(sportId), advice),
   });
 }
 

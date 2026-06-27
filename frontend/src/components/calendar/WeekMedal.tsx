@@ -1,7 +1,7 @@
 /** Медаль недели (колонка «Итог»). Концепция — гексагональные награды (как в Apple Fitness),
- *  10 дизайнов-тиров по заполнению недели (`tierOf`). Заработанная медаль завершившейся недели
- *  КРУТИТСЯ в 3D: лицо — бейдж, оборот — «за что» (диапазон + %). Клик по медали и кнопка
- *  «Получить отчёт» под ней открывают отчёт недели. */
+ *  10 дизайнов-тиров по заполнению недели (`tierOf`). Медаль НЕ вращается сама — переворачивается
+ *  на 180° при наведении мышки: лицо — бейдж, оборот — «за что» (диапазон + %). Клик по медали и
+ *  кнопка «Получить отчёт» под ней открывают отчёт недели. */
 
 import { Sparks } from './Sparks';
 
@@ -158,7 +158,9 @@ export function WeekMedal({
   const tier = tierOf(overall);
   const locked = tier < 0;
   const pct = Math.round(overall * 100);
-  const spin = ended && !locked;
+  // Заработана (завершившаяся неделя с данными) — только для праздничных искр на высоком тире;
+  // вращения больше нет, переворот — на ховере (см. .medal-flip:hover в index.css).
+  const earned = ended && !locked;
   const gid = `med-${id}`;
 
   return (
@@ -171,7 +173,7 @@ export function WeekMedal({
         }
         className="medal-flip relative aspect-square w-full max-w-[58px] cursor-pointer rounded-xl focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
       >
-        <span className={`medal-spin ${spin ? 'medal-spin--on' : ''}`}>
+        <span className="medal-spin">
           <span className="medal-face">
             {locked ? <LockedHex /> : <MedalFront d={MEDALS[tier]} gid={gid} />}
           </span>
@@ -179,7 +181,7 @@ export function WeekMedal({
             <MedalBack short={short} pct={pct} perfect={overall >= 1} />
           </span>
         </span>
-        {spin && tier >= 7 && <Sparks count={8} spread={18} baseDur={1000} size={6} />}
+        {earned && tier >= 7 && <Sparks count={8} spread={18} baseDur={1000} size={6} />}
       </button>
 
       {!locked && (

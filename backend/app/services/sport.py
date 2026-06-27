@@ -19,6 +19,7 @@ from app.models.sport import (
     SportMentor,
     SportRecommendation,
 )
+from app.models.user_sport import UserSport
 
 
 class SportOverview(BaseModel):
@@ -30,6 +31,10 @@ class SportOverview(BaseModel):
     mentors: list[SportMentor]
     recommendations: list[SportRecommendation]
     achievement_count: int
+    # Сохранённый уровень владельца по дисциплине (даже если вид ОТВЯЗАН — уровень при
+    # мягкой отвязке не теряется). Лестница на детальной странице подсвечивает эту ступень
+    # так же, как карточка-сводка показывает уровень. None — уровня нет («нулевой»).
+    current_level_id: int | None
 
 
 # Секции каталога дисциплины (M5·B28). Порядок задан здесь один раз и переиспользуется
@@ -86,6 +91,11 @@ def sport_overview(session: Session, sport: Sport, *, user_id: int) -> SportOver
         .select_from(Achievement)
         .where(Achievement.sport_id == sport.id, Achievement.user_id == user_id)
     ).one()
+    # Сохранённый уровень владельца — из его связки (вкл. отвязанные: при мягкой отвязке
+    # строка UserSport остаётся и хранит current_level_id). None, если связки никогда не было.
+    link = session.exec(
+        select(UserSport).where(UserSport.user_id == user_id, UserSport.sport_id == sport.id)
+    ).first()
     return SportOverview(
         sport=sport,
         levels=list_levels(session, sport.id),
@@ -93,4 +103,6 @@ def sport_overview(session: Session, sport: Sport, *, user_id: int) -> SportOver
         mentors=list_mentors(session, sport.id),
         recommendations=list_recommendations(session, sport.id),
         achievement_count=achievement_count,
+        current_level_id=link.current_level_id if link else None,
     )
+

@@ -2,7 +2,7 @@
  *  тоннаж) с подсветкой PR + кардио-графики (дистанция, темп, пульс, эффективность).
  *  Встроено в ProgressPage рядом с прогрессом тела — динамика силовых и кардио на
  *  одном экране (критерий приёмки). Данные — S3.11 (/progress/strength|cardio) +
- *  PR S3.10 (/workouts/prs); при пустой БД рисуем демо (см. lib/trainingProgress). */
+ *  PR S3.10 (/workouts/prs). Только реальные данные из БД: нет тренировок — empty-state. */
 
 import { useState } from 'react';
 import {
@@ -10,12 +10,14 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import { useCardioProgress, usePersonalRecords, useStrengthProgress } from '../lib/progress';
+import { useExerciseTargets } from '../lib/exerciseTargets';
 import { useExercises, useSports } from '../lib/sports';
 import {
   buildCardioView,
@@ -25,7 +27,7 @@ import {
 } from '../lib/trainingProgress';
 import type { SeriesPoint } from '../lib/api';
 
-type Props = { periodDays: number; start: string; end: string };
+type Props = { start: string; end: string };
 type Row = Record<string, string | number>;
 
 const tooltipStyle = {
@@ -123,14 +125,6 @@ function EmptyNote({ text }: { text: string }) {
   return <p className="py-12 text-center text-sm text-muted">{text}</p>;
 }
 
-function SampleBadge() {
-  return (
-    <span className="rounded-full border border-amber/40 px-3 py-1 text-xs font-medium text-amber">
-      Демо-данные
-    </span>
-  );
-}
-
 /** Пилюли-переключатели упражнений (как селектор периода на экране). */
 function ExercisePills({
   items,
@@ -176,6 +170,7 @@ function SingleLineCard({
   name,
   color,
   prDates,
+  target,
 }: {
   title: string;
   unit: string;
@@ -184,6 +179,7 @@ function SingleLineCard({
   name: string;
   color: string;
   prDates?: Set<string>;
+  target?: number | null;
 }) {
   const rows = points.map((p) => ({ date: p.date, value: p.value }));
   return (
@@ -206,6 +202,21 @@ function SingleLineCard({
               domain={['auto', 'auto']}
             />
             <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} />
+            {target != null && (
+              <ReferenceLine
+                y={target}
+                stroke="var(--color-cat-measurement)"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                ifOverflow="extendDomain"
+                label={{
+                  value: `Цель ${target}`,
+                  position: 'insideTopRight',
+                  fill: 'var(--color-cat-measurement)',
+                  fontSize: 12,
+                }}
+              />
+            )}
             <Line
               type="monotone"
               dataKey="value"
@@ -225,7 +236,13 @@ function SingleLineCard({
   );
 }
 
-function StrengthBlock({ exercise }: { exercise: StrengthExerciseView }) {
+function StrengthBlock({
+  exercise,
+  target,
+}: {
+  exercise: StrengthExerciseView;
+  target?: number | null;
+}) {
   const wRows = mergeSeries({ weight: exercise.weight, oneRm: exercise.oneRm });
   return (
     <div className="flex flex-col gap-6">
@@ -253,6 +270,21 @@ function StrengthBlock({ exercise }: { exercise: StrengthExerciseView }) {
               />
               <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
+              {target != null && (
+                <ReferenceLine
+                  y={target}
+                  stroke="var(--color-cat-measurement)"
+                  strokeWidth={2}
+                  strokeDasharray="6 4"
+                  ifOverflow="extendDomain"
+                  label={{
+                    value: `Цель ${target} кг`,
+                    position: 'insideTopRight',
+                    fill: 'var(--color-cat-measurement)',
+                    fontSize: 12,
+                  }}
+                />
+              )}
               <Line
                 type="monotone"
                 dataKey="weight"
@@ -292,7 +324,7 @@ function StrengthBlock({ exercise }: { exercise: StrengthExerciseView }) {
   );
 }
 
-export default function TrainingProgress({ periodDays, start, end }: Props) {
+export default function TrainingProgress({ start, end }: Props) {
   const strengthQuery = useStrengthProgress(start, end);
   const cardioQuery = useCardioProgress(start, end);
   const prsQuery = usePersonalRecords();
@@ -303,8 +335,12 @@ export default function TrainingProgress({ periodDays, start, end }: Props) {
   const exercises = exercisesQuery.data ?? [];
   const sports = sportsQuery.data ?? [];
 
-  const strength = buildStrengthView(strengthQuery.data, exercises, sports, prs, periodDays);
-  const cardio = buildCardioView(cardioQuery.data, exercises, prs, periodDays);
+  const strength = buildStrengthView(strengthQuery.data, exercises, sports, prs);
+  const cardio = buildCardioView(cardioQuery.data, exercises, prs);
+
+  // Личные цели по упражнениям (из «Мой кабинет») → целевые линии на графиках.
+  const { data: exTargets } = useExerciseTargets();
+  const targetByExercise = new Map((exTargets ?? []).map((t) => [t.exercise_id, t.target_value]));
 
   const [strengthIdx, setStrengthIdx] = useState(0);
   const [cardioIdx, setCardioIdx] = useState(0);
@@ -331,7 +367,6 @@ export default function TrainingProgress({ periodDays, start, end }: Props) {
               подсвечены звёздами на графике.
             </p>
           </div>
-          {strength.isSample && <SampleBadge />}
         </div>
 
         {strengthQuery.isLoading ? (
@@ -344,7 +379,10 @@ export default function TrainingProgress({ periodDays, start, end }: Props) {
               onSelect={setStrengthIdx}
               ariaLabel="Упражнение (силовые)"
             />
-            <StrengthBlock exercise={selStrength} />
+            <StrengthBlock
+              exercise={selStrength}
+              target={targetByExercise.get(selStrength.id) ?? null}
+            />
 
             <ChartCard
               title="Тоннаж по видам спорта"
@@ -404,10 +442,10 @@ export default function TrainingProgress({ periodDays, start, end }: Props) {
               Кардио
             </h2>
             <p className="mt-2 text-muted">
-              Дистанция, темп, средний пульс и пульсовая эффективность по дням за выбранный период.
+              Каждая точка — одна тренировка. Главное за чем следить: при росте формы темп и пульс
+              падают, а дистанция и эффективность сердца растут.
             </p>
           </div>
-          {cardio.isSample && <SampleBadge />}
         </div>
 
         {cardioQuery.isLoading ? (
@@ -422,34 +460,36 @@ export default function TrainingProgress({ periodDays, start, end }: Props) {
             />
             <div className="grid gap-6 lg:grid-cols-2">
               <SingleLineCard
-                title="Дистанция"
+                title="Дистанция за тренировку"
                 unit="км"
-                hint="★ — личный рекорд по максимальной дистанции."
+                hint="Объём кардио. Наращивай постепенно. ★ — рекорд дистанции."
                 points={selCardio.distance}
                 name="Дистанция, км"
                 color="var(--color-cat-training)"
                 prDates={selCardio.prDistanceDates}
+                target={selCardio.id != null ? (targetByExercise.get(selCardio.id) ?? null) : null}
               />
               <SingleLineCard
                 title="Темп"
                 unit="сек/км"
-                hint="Меньше — быстрее. ★ — личный рекорд (лучший темп)."
+                hint="Время на километр. Ниже = быстрее: линия вниз — растёт скорость. ★ — лучший темп."
                 points={selCardio.pace}
                 name="Темп, сек/км"
                 color="var(--color-accent)"
                 prDates={selCardio.prPaceDates}
               />
               <SingleLineCard
-                title="Средний пульс"
+                title="Средний пульс за тренировку"
                 unit="уд/мин"
+                hint="Средняя ЧСС за сессию. На том же темпе пульс ниже — сердце тренированнее; резкий рост — усталость или перетрен."
                 points={selCardio.avgHr}
                 name="Средний пульс"
                 color="var(--color-amber)"
               />
               <SingleLineCard
-                title="Пульсовая эффективность"
+                title="Эффективность сердца"
                 unit="м/удар"
-                hint="Метров пробегаемой дистанции на один удар сердца — выше лучше."
+                hint="Сколько метров проходишь на один удар сердца (дистанция ÷ удары). Главный индикатор формы: чем выше, тем экономичнее работает сердце."
                 points={selCardio.efficiency}
                 name="Эффективность"
                 color="var(--color-cat-measurement)"

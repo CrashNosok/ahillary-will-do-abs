@@ -19,7 +19,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
 from app.core.db import get_session
@@ -50,6 +50,12 @@ class InbodyPreview(InbodyFields):
     date: dt.date
     metrics_json: dict[str, Any]
     saved: bool = False
+
+
+class ManualInbodyIn(InbodyFields):
+    """Ручной ввод InBody без скрина: пять ключевых показателей + дата."""
+
+    date: dt.date
 
 
 async def _read_image(file: UploadFile) -> bytes:
@@ -86,6 +92,33 @@ async def preview_inbody(
         date=date or dt.date.today(),
         metrics_json=vision.metrics_json,
         **{name: getattr(vision, name) for name in inbody.KEY_FIELD_NAMES},
+    )
+
+
+@router.get("/inbody/{inbody_date}")
+def get_inbody_day(
+    inbody_date: dt.date, session: SessionDep, user: CurrentUser
+) -> InbodyMeasurement | None:
+    """Замер InBody владельца за день (для предзаполнения формы в попапе недели).
+
+    Нет записи → 200 c `null` (а не 404): открытие формы на пустом дне не должно шуметь
+    4xx. Один скрин на дату на пользователя — берём первую свою строку."""
+    return session.exec(
+        select(InbodyMeasurement).where(
+            InbodyMeasurement.date == inbody_date, InbodyMeasurement.user_id == user.id
+        )
+    ).first()
+
+
+@router.post("/inbody/manual", status_code=status.HTTP_201_CREATED)
+def import_inbody_manual(
+    payload: ManualInbodyIn,
+    session: SessionDep,
+    user: CurrentUser,
+) -> InbodyMeasurement:
+    """Ручной ввод InBody (без скрина): upsert пяти показателей по `date`. Vision не дёргаем."""
+    return inbody.save_inbody_values_manual(
+        payload.date, session, user_id=user.id, fields=payload.model_dump(exclude={"date"})
     )
 
 

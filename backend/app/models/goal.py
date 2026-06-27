@@ -1,8 +1,8 @@
 """SMART-цель пользователя (S1.3): сквозная сущность цели.
 
-Поля заданы карточкой S1.3: target_weight_kg, target_body_fat_pct,
-target_measurements_json, start_date, deadline, baseline_json, why_notes, status.
-Гибкие замеры/база — JSON-колонки (структура нестабильна, без миграций).
+Цели по параметрам хранятся единой картой target_metrics_json {ключ_реестра: значение}
+(services/metrics.py) — состав тела, обхваты и дневные нормы; плюс start_date, deadline,
+baseline_json, why_notes, status. Гибкие карты — JSON-колонки (структура нестабильна).
 Активной считается ровно одна цель (status == "active"); архивная — "archived".
 Имя таблицы и id PK сохранены: на smart_goal.id ссылается recommendation.goal_id.
 """
@@ -28,9 +28,11 @@ class SmartGoal(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     # Владелец цели (M0·B5): изоляция данных по пользователю. NOT NULL + FK на user.id.
     user_id: int = Field(foreign_key="user.id", index=True)
-    target_weight_kg: float | None = None
-    target_body_fat_pct: float | None = None
-    target_measurements_json: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
+    # Единая карта целей {канонический_ключ: значение} по реестру метрик (services/metrics.py):
+    # состав тела + обхваты + дневные нормы. Единственный источник правды для целевых линий и
+    # рекомендаций (легаси-колонки target_weight_kg/…/measurements удалены — миграция перенесла
+    # их сюда).
+    target_metrics_json: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     start_date: dt.date | None = None
     deadline: dt.date | None = None
     baseline_json: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))

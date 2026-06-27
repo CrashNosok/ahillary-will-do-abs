@@ -141,10 +141,39 @@ def test_join_twice_returns_409(client, engine):
     assert client.post(f"/challenges/{cid}/join").status_code == 409  # повторный join
 
 
+def test_my_participations_empty_then_reflects_join(client, engine):
+    """GET /challenges/participations: пусто до join, после — моё участие со статусом."""
+    sid = _make_sport(engine, "Сёрф", "action")
+    cid = client.post(
+        "/challenges", json={"sport_id": sid, "title": "Первая волна", "description": "d"}
+    ).json()["id"]
+    assert client.get("/challenges/participations").json() == []
+    client.post(f"/challenges/{cid}/join")
+    parts = client.get("/challenges/participations").json()
+    assert [(p["challenge_id"], p["status"]) for p in parts] == [(cid, "active")]
+
+
+def test_my_participations_excludes_other_user(client, engine):
+    """Участие чужого юзера (id=2) не попадает в мои участия (скоуп по user_id)."""
+    from app.models.challenge import ChallengeParticipant
+
+    sid = _make_sport(engine, "Вейк", "action")
+    cid = client.post(
+        "/challenges", json={"sport_id": sid, "title": "Бэксайд", "description": "d"}
+    ).json()["id"]
+    with Session(engine) as session:
+        session.add(User(email="other@example.com", password_hash=hash_password("x")))  # id=2
+        session.commit()
+        session.add(ChallengeParticipant(challenge_id=cid, user_id=2))
+        session.commit()
+    assert client.get("/challenges/participations").json() == []  # чужое участие не видно
+
+
 def test_challenges_require_auth():
     app.dependency_overrides.clear()
     unauth = TestClient(app)
     assert unauth.get("/challenges").status_code == 401
+    assert unauth.get("/challenges/participations").status_code == 401
     create = unauth.post("/challenges", json={"sport_id": 1, "title": "x", "description": "y"})
     assert create.status_code == 401
     assert unauth.post("/challenges/1/join").status_code == 401

@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 
 from app.models.achievement import Achievement
 from app.models.challenge import Challenge
-from app.models.sport import SportEvent, SportLevel, SportMentor
+from app.models.sport import Exercise, SportEvent, SportLevel, SportMentor
 from app.models.user_sport import UserSport
 from app.models.workout import WorkoutSession
 
@@ -28,6 +28,7 @@ class SportSummary:
     events: int
     mentors: int
     challenges: int
+    exercises: int
     # персональное (текущий пользователь):
     achievements_total: int
     achievements_unlocked: int
@@ -48,6 +49,7 @@ def summaries(session: Session, user_id: int) -> dict[int, SportSummary]:
     events = _counts(session, SportEvent.sport_id)
     mentors = _counts(session, SportMentor.sport_id)
     challenges = _counts(session, Challenge.sport_id)
+    exercises = _counts(session, Exercise.sport_id)
     ach_total = _counts(session, Achievement.sport_id, Achievement.user_id == user_id)
     ach_unlocked = _counts(
         session,
@@ -79,6 +81,7 @@ def summaries(session: Session, user_id: int) -> dict[int, SportSummary]:
         | set(events)
         | set(mentors)
         | set(challenges)
+        | set(exercises)
         | set(ach_total)
         | set(workouts)
         | all_link_ids
@@ -92,6 +95,7 @@ def summaries(session: Session, user_id: int) -> dict[int, SportSummary]:
             events=events.get(sid, 0),
             mentors=mentors.get(sid, 0),
             challenges=challenges.get(sid, 0),
+            exercises=exercises.get(sid, 0),
             achievements_total=ach_total.get(sid, 0),
             achievements_unlocked=ach_unlocked.get(sid, 0),
             workouts=workouts.get(sid, 0),

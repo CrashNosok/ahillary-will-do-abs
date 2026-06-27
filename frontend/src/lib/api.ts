@@ -142,6 +142,7 @@ export type SportSummary = {
   events: number;
   mentors: number;
   challenges: number;
+  exercises: number;
   achievements_total: number;
   achievements_unlocked: number;
   workouts: number;
@@ -192,6 +193,15 @@ export type SportRecommendation = {
   body: string;
 };
 
+/** ИИ-рекомендация по виду спорта (#1): markdown-совет, последний на пользователя+вид. */
+export type SportAdvice = {
+  id: number;
+  sport_id: number;
+  text: string;
+  model: string;
+  created_at: string;
+};
+
 /** Сводка по дисциплине (M5·B27): сам вид спорта + его каталог + счётчик ачивок владельца. */
 export type SportOverview = {
   sport: Sport;
@@ -200,6 +210,8 @@ export type SportOverview = {
   mentors: SportMentor[];
   recommendations: SportRecommendation[];
   achievement_count: number;
+  // Сохранённый уровень владельца (вкл. отвязанные виды — уровень при отвязке не теряется).
+  current_level_id: number | null;
 };
 
 /** Дисциплина пользователя (M2·B19): связка user_sport + данные каталога вида спорта.
@@ -230,6 +242,14 @@ export type Exercise = {
   kind: string | null;
   unit: string | null;
   notes: string | null;
+};
+
+/** Личная числовая цель по упражнению (напр. Жим лёжа → 100 кг). */
+export type ExerciseTarget = {
+  id: number;
+  exercise_id: number;
+  target_value: number;
+  unit: string | null;
 };
 
 /** Поля формы добавления упражнения (sport_id — из карточки вида спорта). */
@@ -414,12 +434,14 @@ export type SimpleWorkoutInput = {
   files: File[];
 };
 
+/** Правка простого лога (PATCH /workouts/simple/{id}) — скалярные поля без медиа. */
+export type SimpleWorkoutUpdate = Omit<SimpleWorkoutInput, 'date' | 'files'>;
+
 /** SMART-цель: ответ бэкенда (см. backend SmartGoal). Даты — ISO `YYYY-MM-DD`. */
 export type Goal = {
   id: number;
-  target_weight_kg: number | null;
-  target_body_fat_pct: number | null;
-  target_measurements_json: Record<string, number> | null;
+  // Единая карта целей {канонический_ключ: значение} по реестру метрик (lib/metricRegistry).
+  target_metrics_json: Record<string, number> | null;
   start_date: string | null;
   deadline: string | null;
   baseline_json: Record<string, unknown> | null;
@@ -428,11 +450,19 @@ export type Goal = {
   created_at: string;
 };
 
-/** Поля формы цели — только то, что задаёт пользователь на экране настройки. */
+/** Метрика-параметр из реестра бэкенда (GET /metrics/registry) — единый источник правды. */
+export type MetricGroup = 'composition' | 'circumference' | 'daily';
+export type MetricSpec = {
+  key: string;
+  label: string;
+  unit: string;
+  group: MetricGroup;
+  good_dir: 'up' | 'down';
+};
+
+/** Поля формы цели: единая карта целей по реестру метрик + дедлайн и мотивация. */
 export type GoalInput = {
-  target_weight_kg: number | null;
-  target_body_fat_pct: number | null;
-  target_measurements_json: Record<string, number> | null;
+  target_metrics_json: Record<string, number> | null;
   deadline: string | null;
   why_notes: string | null;
 };
@@ -656,6 +686,7 @@ export type DayFlags = {
   has_training: boolean;
   has_measurement: boolean;
   has_weight: boolean;
+  has_inbody: boolean; // загружен скрин анализа InBody (отдельно от ввода веса)
   has_body: boolean;
   has_photo: boolean;
   has_surpassed_self: boolean;
@@ -738,10 +769,41 @@ export type WorkoutPlan = {
 };
 
 /** Структурированный план рекомендации (S4.3): еда + тренировки + их связка. */
+/** Пара «оценка текущего → цель» по одному аспекту качества рациона. */
+export type CarbQualityTarget = { assessment: string; target: string };
+
+/** Детальный разбор качества рациона (углеводы/клетчатка/сахар/насыщ. жиры/белок). */
+export type NutritionAnalysis = {
+  fiber_g_target: number;
+  sugar_g_limit: number;
+  saturated_fat_g_limit: number;
+  complex_vs_simple_carbs: CarbQualityTarget;
+  fiber: CarbQualityTarget;
+  sugar: CarbQualityTarget;
+  saturated_fat: CarbQualityTarget;
+  protein_quality: CarbQualityTarget;
+  summary: string;
+};
+
+/** Ссылка на исследование из корпуса (id совпадает с инлайн-[id] в нарративе). */
+export type Citation = {
+  id: string;
+  title: string;
+  authors: string[];
+  year: number;
+  url_or_doi: string;
+  claim: string;
+};
+
 export type RecommendationPlan = {
   meal_plan: MealPlan;
   workout_plan: WorkoutPlan;
   sync_note: string;
+  // Новое (доказательный отчёт). Опционально: старые сохранённые записи их не несут —
+  // UI рисует эти секции только при наличии (обратная совместимость истории).
+  nutrition_analysis?: NutritionAnalysis;
+  evidence_narrative?: string;
+  citations?: Citation[];
 };
 
 /** Прогресс по одной метрике цели в снапшоте (S4.1): baseline→current→target. */
@@ -758,9 +820,12 @@ export type GoalProgress = {
  *  активна на момент генерации. null — активной цели не было. */
 export type GoalSnapshot = {
   id: number | null;
-  target_weight_kg: number | null;
-  target_body_fat_pct: number | null;
-  target_measurements: Record<string, number>;
+  // Карта целей по реестру метрик (новый снапшот). Старые записи истории могут нести
+  // легаси-поля (target_*) — оставлены опциональными для обратной совместимости отображения.
+  targets?: Record<string, number>;
+  target_weight_kg?: number | null;
+  target_body_fat_pct?: number | null;
+  target_measurements?: Record<string, number>;
   start_date: string | null;
   deadline: string | null;
   why_notes: string | null;
@@ -931,6 +996,12 @@ export const api = {
   // Бэкенд отдаёт 404 для неизвестного id (ApiError.status === 404).
   getSportOverview: (sportId: number) => request<SportOverview>(`/sports/${sportId}/overview`),
 
+  // ИИ-рекомендация по виду спорта (#1): последняя сохранённая (null — ещё не было) + генерация.
+  getSportRecommendation: (sportId: number) =>
+    request<SportAdvice | null>(`/sports/${sportId}/recommendation`),
+  generateSportRecommendation: (sportId: number) =>
+    request<SportAdvice>(`/sports/${sportId}/recommendation`, { method: 'POST' }),
+
   // Ачивки вида спорта (S5.2): набор достижений со статусами (locked/in_progress/unlocked).
   listAchievements: (sportId: number) => request<Achievement[]>(`/sports/${sportId}/achievements`),
 
@@ -947,10 +1018,24 @@ export const api = {
   // Закрытие ачивки (S5.5): сервер требует наличия пруфа, иначе 409 → status=unlocked.
   unlockAchievement: (achievementId: number) =>
     request<Achievement>(`/achievements/${achievementId}/unlock`, { method: 'POST' }),
+  // План навыков: в план (locked→in_progress) / из плана (in_progress→locked), без пруфа.
+  planAchievement: (achievementId: number) =>
+    request<Achievement>(`/achievements/${achievementId}/plan`, { method: 'POST' }),
+  unplanAchievement: (achievementId: number) =>
+    request<Achievement>(`/achievements/${achievementId}/unplan`, { method: 'POST' }),
+  // LLM-генерация набора навыков/ачивок под дисциплину и уровень (по умолчанию beginner).
+  generateAchievements: (sportId: number, level = 'beginner') =>
+    request<Achievement[]>(`/sports/${sportId}/achievements/generate?level=${level}`, {
+      method: 'POST',
+    }),
 
   // Челленджи (M6·B34): каталог всех вызовов (бэкенд сортирует по заголовку) — их находят
   // и присоединяются.
   listChallenges: () => request<Challenge[]>('/challenges'),
+  // Мои участия: challenge_id + статус по всем челленджам, где я участник (скоуп по сессии).
+  // Фронт строит карту challenge_id→статус, чтобы «Вы участвуете» переживало перезагрузку.
+  listMyChallengeParticipations: () =>
+    request<ChallengeParticipant[]>('/challenges/participations'),
   // Присоединиться к челленджу (M6·B34): 404 (нет челленджа) / 409 (уже участвую), иначе участие.
   joinChallenge: (challengeId: number) =>
     request<ChallengeParticipant>(`/challenges/${challengeId}/join`, { method: 'POST' }),
@@ -971,6 +1056,17 @@ export const api = {
     request<Exercise[]>(sportId == null ? '/exercises' : `/exercises?sport_id=${sportId}`),
   createExercise: (input: ExerciseInput) =>
     request<Exercise>('/exercises', { method: 'POST', body: JSON.stringify(input) }),
+
+  // Личные цели по упражнениям: список владельца, upsert по (user, exercise), снятие.
+  listExerciseTargets: () => request<ExerciseTarget[]>('/exercise-targets'),
+  upsertExerciseTarget: (input: {
+    exercise_id: number;
+    target_value: number;
+    unit?: string | null;
+  }) =>
+    request<ExerciseTarget>('/exercise-targets', { method: 'PUT', body: JSON.stringify(input) }),
+  deleteExerciseTarget: (exerciseId: number) =>
+    request<void>(`/exercise-targets/${exerciseId}`, { method: 'DELETE' }),
 
   // Силовая сессия (S3.7): шапка + все подходы одним POST → сессия с подходами.
   createWorkout: (input: WorkoutInput) =>
@@ -1007,6 +1103,29 @@ export const api = {
     return postForm<SimpleWorkout>('/workouts/simple', form);
   },
 
+  // Правка простого лога (предзаполнение «Изменить» в попапе дня): PATCH скалярных полей, JSON.
+  // Медиа не трогаем — добавление остаётся через createSimpleWorkout.
+  updateSimpleWorkout: (id: number, input: SimpleWorkoutUpdate) =>
+    request<SimpleWorkout>(`/workouts/simple/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        kind: input.kind,
+        sport_id: input.sportId,
+        duration_min: input.durationMin,
+        rpe: input.rpe,
+        surpassed_self: input.surpassedSelf,
+        note: input.note,
+        total_kcal: input.metrics.totalKcal,
+        active_kcal: input.metrics.activeKcal,
+        total_met: input.metrics.totalMet,
+        useful_met: input.metrics.usefulMet,
+        hr_avg: input.metrics.hrAvg,
+        hr_max: input.metrics.hrMax,
+        load_pct: input.metrics.loadPct,
+        score: input.metrics.score,
+      }),
+    }),
+
   // Распознать метрики со скрина Welltory «Анализ тренировки» (vision) — без записи; правка и
   // сохранение — через createSimpleWorkout. 422 — нечитаемый скрин, 502 — vision недоступен.
   previewWorkout: (file: File) => {
@@ -1033,6 +1152,13 @@ export const api = {
     request<Goal>('/goals', { method: 'POST', body: JSON.stringify(input) }),
   updateGoal: (id: number, input: GoalInput) =>
     request<Goal>(`/goals/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+
+  // Реестр метрик-параметров (единый источник на бэке) — фронт строит по нему форму целей.
+  listMetricRegistry: () => request<MetricSpec[]>('/metrics/registry'),
+
+  // Текущие показатели {ключ_реестра: значение} — дефолт для целей (тело: последний замер,
+  // дневные: среднее за окно). Метрики без данных в ответе опущены.
+  getCurrentMetrics: () => request<Record<string, number>>('/metrics/current'),
 
   // Прогресс тела (S2.4): ряды веса/обхватов за период [start; end] (ISO) для графиков.
   getBodyProgress: (start: string, end: string) =>
@@ -1150,4 +1276,12 @@ export const api = {
     form.append('metrics_json', JSON.stringify(metricsJson ?? {}));
     return postForm<InbodyMeasurement>('/import/inbody', form);
   },
+  // Ручной ввод InBody (без скрина): дата + 5 показателей, upsert по дню (как у активности).
+  saveInbodyManual: (date: string, fields: InbodyFields) =>
+    request<InbodyMeasurement>('/import/inbody/manual', {
+      method: 'POST',
+      body: JSON.stringify({ date, ...fields }),
+    }),
+  // Замер InBody по дате (для предзаполнения формы в попапе недели): нет записи → null (200).
+  getInbodyDay: (date: string) => request<InbodyMeasurement | null>(`/import/inbody/${date}`),
 };

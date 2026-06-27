@@ -1,12 +1,13 @@
 /** Экран «Прогресс»: графики динамики тела (S2.7) + энергобаланса (S2.8).
  *  Тело — вес/обхваты из /progress/body (S2.4); энергия — калории, дефицит,
- *  макросы и активность из /progress/energy (S2.5). Данные за выбранный период;
- *  если реальных записей ещё нет (БД пустая), рисуем демо-набор — графики обязаны
- *  рисоваться (критерий приёмки), а ResponsiveContainer Recharts даёт
- *  адаптивность на 320/768/1440 без ручных брейкпоинтов. */
+ *  макросы и активность из /progress/energy (S2.5). Только реальные данные из БД:
+ *  нет записей — честный empty-state («не загружено»), демо/выдуманные ряды не рисуем.
+ *  ResponsiveContainer Recharts даёт адаптивность на 320/768/1440 без брейкпоинтов. */
 
 import { useState } from 'react';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -24,8 +25,9 @@ import {
 import { useBodyProgress, useEnergyProgress, useInbodyProgress } from '../lib/progress';
 import TrainingProgress from './TrainingProgress';
 import { useActiveGoal } from '../lib/goals';
+import { effectiveTargets, goalTarget } from '../lib/metricRegistry';
 import { classifyDays, countByQuality, type DayQuality } from '../lib/dayQuality';
-import type { BodyProgress, EnergyProgress, SeriesPoint } from '../lib/api';
+import type { SeriesPoint } from '../lib/api';
 
 /** Варианты периода (дни). 180 — дефолт бэкенда для редких замеров тела. */
 const PERIODS = [
@@ -39,8 +41,8 @@ const PERIODS = [
 const CIRC_LABELS: Record<string, string> = {
   waist_cm: 'Талия',
   belly_cm: 'Живот',
-  calf_l_cm: 'Голень Л',
-  calf_r_cm: 'Голень П',
+  calf_l_cm: 'Бедро Л',
+  calf_r_cm: 'Бедро П',
   chest_cm: 'Грудь',
   shoulders_cm: 'Плечи',
   biceps_l_cm: 'Бицепс Л',
@@ -48,15 +50,18 @@ const CIRC_LABELS: Record<string, string> = {
   glutes_cm: 'Ягодицы',
 };
 
-/** Палитра линий — только из дизайн-токенов, без хардкода цвета. */
-const PALETTE = [
-  'var(--color-accent)',
-  'var(--color-cat-measurement)',
-  'var(--color-cat-training)',
-  'var(--color-amber)',
-  'var(--color-cat-food)',
-  'var(--color-muted)',
+// Обхваты по цели: мышечные — растут (хорошо вверх), жировые (талия/живот) — снижаются
+// (хорошо вниз). Раздельные графики читаются однозначно вместо мешанины в одном.
+const CIRC_GROW = [
+  'chest_cm',
+  'shoulders_cm',
+  'biceps_l_cm',
+  'biceps_r_cm',
+  'glutes_cm',
+  'calf_l_cm',
+  'calf_r_cm',
 ];
+const CIRC_SHRINK = ['waist_cm', 'belly_cm'];
 
 type Row = Record<string, string | number>;
 
@@ -93,67 +98,13 @@ function mergeSeries(series: Record<string, SeriesPoint[]>): Row[] {
   return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
-/** Демо-данные за выбранный период: 7 точек с плавным снижением. Рисуются,
- *  когда реальных замеров нет, чтобы графики всё равно отрисовались. */
-function buildSample(periodDays: number): BodyProgress {
-  const points = 7;
-  const end = new Date();
-  const step = Math.max(1, Math.floor((periodDays - 1) / (points - 1)));
-  const dates: string[] = [];
-  for (let i = points - 1; i >= 0; i--) {
-    const d = new Date(end);
-    d.setDate(d.getDate() - i * step);
-    dates.push(iso(d));
-  }
-
-  const trend = (from: number, to: number): SeriesPoint[] =>
-    dates.map((date, idx) => ({
-      date,
-      value: Math.round((from - ((from - to) * idx) / (points - 1)) * 10) / 10,
-    }));
-
-  return {
-    start: dates[0],
-    end: dates[dates.length - 1],
-    weight_kg: trend(92, 85.4),
-    circumferences: {
-      waist_cm: trend(96, 88.5),
-      belly_cm: trend(102, 93.7),
-      chest_cm: trend(104, 100.2),
-      glutes_cm: trend(103, 98.1),
-    },
-  };
-}
-
-/** Состав тела InBody (S2.12): поле → подпись, единицы, цвет линии (дизайн-токены)
- *  и пара from→to для демо-тренда (жир/висцеральный вниз, мышцы/вода вверх). */
+/** Состав тела InBody (S2.12): поле → подпись, единицы, цвет линии (дизайн-токены). */
 const INBODY_META = [
-  { field: 'body_fat_pct', label: 'Процент жира', unit: '%', color: 'var(--color-amber)', from: 24, to: 18.2 }, // prettier-ignore
-  { field: 'muscle_mass_kg', label: 'Мышечная масса', unit: 'кг', color: 'var(--color-cat-training)', from: 38, to: 41.6 }, // prettier-ignore
-  { field: 'visceral_fat', label: 'Висцеральный жир', unit: 'уровень', color: 'var(--color-cat-food)', from: 11, to: 7.4 }, // prettier-ignore
-  { field: 'water', label: 'Вода', unit: 'л', color: 'var(--color-cat-measurement)', from: 42, to: 45.8 }, // prettier-ignore
+  { field: 'body_fat_pct', label: 'Процент жира', unit: '%', color: 'var(--color-amber)' },
+  { field: 'muscle_mass_kg', label: 'Мышечная масса', unit: 'кг', color: 'var(--color-cat-training)' }, // prettier-ignore
+  { field: 'visceral_fat', label: 'Висцеральный жир', unit: 'уровень', color: 'var(--color-cat-food)' }, // prettier-ignore
+  { field: 'water', label: 'Вода', unit: 'л', color: 'var(--color-cat-measurement)' },
 ] as const;
-
-/** Демо-ряды состава тела за период: 7 точек с плавным трендом на каждый показатель.
- *  Рисуются, когда реальных замеров InBody нет, чтобы графики всё равно отрисовались
- *  (критерий приёмки: динамика по InBody рисуется). */
-function buildInbodySample(periodDays: number): Record<string, SeriesPoint[]> {
-  const points = 7;
-  const end = new Date();
-  const step = Math.max(1, Math.floor((periodDays - 1) / (points - 1)));
-  const dates: string[] = [];
-  for (let i = points - 1; i >= 0; i--) {
-    const d = new Date(end);
-    d.setDate(d.getDate() - i * step);
-    dates.push(iso(d));
-  }
-  const trend = (from: number, to: number): SeriesPoint[] =>
-    dates.map((date, idx) => ({
-      date,
-      value: Math.round((from - ((from - to) * idx) / (points - 1)) * 10) / 10,
-    }));
-  return Object.fromEntries(INBODY_META.map((m) => [m.field, trend(m.from, m.to)]));
-}
 
 /** Макро-поле → подпись и цвет стека (только дизайн-токены, 3 разных оттенка). */
 const MACRO_META = [
@@ -176,55 +127,6 @@ const QUALITY_META: Record<DayQuality, { label: string; color: string }> = {
   incomplete: { label: 'Неполный', color: 'var(--color-line)' },
 };
 const QUALITY_ORDER: DayQuality[] = ['good', 'bad', 'incomplete'];
-
-/** Демо-данные энергобаланса: 14 подряд идущих дней до сегодня. Дефицит
- *  намеренно пересекает ноль (есть и дефицитные, и профицитные дни) — чтобы знак
- *  читался однозначно. ponytail: детерминированная синусоида, стабильный демо. */
-function buildEnergySample(): EnergyProgress {
-  const days = 14;
-  const end = new Date();
-  const kcalIn: SeriesPoint[] = [];
-  const kcalOut: SeriesPoint[] = [];
-  const deficit: SeriesPoint[] = [];
-  const protein: SeriesPoint[] = [];
-  const fat: SeriesPoint[] = [];
-  const carb: SeriesPoint[] = [];
-  const steps: SeriesPoint[] = [];
-  const activeMin: SeriesPoint[] = [];
-
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(end);
-    d.setDate(d.getDate() - i);
-    const date = iso(d);
-    const wave = Math.sin(i * 0.9);
-    // Базы прихода/расхода равны (2200), а амплитуды расходятся — поэтому дефицит
-    // (cout − cin) заметно гуляет вокруг нуля: есть и дефицитные, и профицитные дни.
-    const cin = Math.round(2200 + wave * 300);
-    kcalIn.push({ date, value: cin });
-    protein.push({ date, value: Math.round(130 + wave * 20) });
-    fat.push({ date, value: Math.round(70 + wave * 12) });
-    carb.push({ date, value: Math.round(210 + wave * 35) });
-    // ponytail: 2 дня без активности → «неполный лог» (нет расхода и дефицита),
-    // чтобы подсветка качества дней (S2.9) показывала все три категории на демо.
-    if (i === 4 || i === 10) continue;
-    const cout = Math.round(2200 + Math.cos(i * 0.6) * 450);
-    kcalOut.push({ date, value: cout });
-    deficit.push({ date, value: cout - cin });
-    steps.push({ date, value: Math.round(8500 + wave * 2800) });
-    activeMin.push({ date, value: Math.round(55 + wave * 22) });
-  }
-
-  return {
-    start: kcalIn[0].date,
-    end: kcalIn[kcalIn.length - 1].date,
-    kcal_in: kcalIn,
-    kcal_out: kcalOut,
-    deficit,
-    macros: { protein_g: protein, fat_g: fat, carb_g: carb },
-    steps,
-    active_min: activeMin,
-  };
-}
 
 const tooltipStyle = {
   background: 'var(--color-panel)',
@@ -257,6 +159,257 @@ function EmptyNote({ text }: { text: string }) {
   return <p className="py-12 text-center text-sm text-muted">{text}</p>;
 }
 
+/** Мини-спарклайн: нормализованная ломаная по значениям ряда (без осей). Растягивается
+ *  по ширине плитки; толщина штриха фиксирована (non-scaling-stroke), чтобы не плыла.
+ *  target — пунктирная целевая линия (включаем её в масштаб, чтобы была в кадре). */
+function Sparkline({
+  values,
+  color,
+  target,
+}: {
+  values: number[];
+  color: string;
+  target?: number | null;
+}) {
+  if (values.length < 2) return <div className="h-9" />;
+  const scale = target != null ? [...values, target] : values;
+  const min = Math.min(...scale);
+  const max = Math.max(...scale);
+  const span = max - min || 1;
+  const y = (v: number) => 2 + (1 - (v - min) / span) * 32; // паддинг 2, высота поля 36
+  const pts = values
+    .map((v, i) => `${((i / (values.length - 1)) * 100).toFixed(1)},${y(v).toFixed(1)}`)
+    .join(' ');
+  return (
+    <svg viewBox="0 0 100 36" preserveAspectRatio="none" className="h-9 w-full" aria-hidden>
+      {target != null && (
+        <line
+          x1="0"
+          x2="100"
+          y1={y(target).toFixed(1)}
+          y2={y(target).toFixed(1)}
+          stroke="var(--color-cat-measurement)"
+          strokeWidth={1}
+          strokeDasharray="3 2"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+      <polyline
+        points={pts}
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
+/** Плитка одного показателя: подпись · текущее значение · дельта за период (стрелка+цвет
+ *  по «правильности» направления) · спарклайн (+ пунктирная цель) · подпись «цель X».
+ *  Очевидно и компактно вместо мешанины линий. */
+function MetricTile({
+  label,
+  unit,
+  points,
+  goodDir,
+  target,
+}: {
+  label: string;
+  unit: string;
+  points: SeriesPoint[];
+  goodDir: 'up' | 'down';
+  target?: number | null;
+}) {
+  const has = points.length > 0;
+  const current = has ? points[points.length - 1].value : null;
+  const delta = points.length > 1 ? current! - points[0].value : null;
+  const good = delta == null || delta === 0 ? null : goodDir === 'up' ? delta > 0 : delta < 0;
+  const deltaColor = good == null ? 'text-muted' : good ? 'text-accent' : 'text-amber';
+  const lineColor = good === false ? 'var(--color-amber)' : 'var(--color-accent)';
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-xs font-medium uppercase tracking-wide text-muted">
+          {label}
+        </span>
+        {delta != null && delta !== 0 && (
+          <span className={`shrink-0 text-xs font-semibold tabular-nums ${deltaColor}`}>
+            {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}
+          </span>
+        )}
+      </div>
+      <div className="flex items-end gap-1">
+        <span className="font-display text-2xl font-bold leading-none tabular-nums">
+          {has ? current!.toFixed(1) : '—'}
+        </span>
+        {has && <span className="text-xs text-muted">{unit}</span>}
+      </div>
+      <Sparkline values={points.map((p) => p.value)} color={lineColor} target={target} />
+      {target != null && (
+        <span className="text-[0.65rem] text-[var(--color-cat-measurement)]">
+          цель {target} {unit}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Группа обхватов (рост ИЛИ снижение) — бенто из плиток показателей с данными. */
+function CircGroup({
+  title,
+  hint,
+  fields,
+  series,
+  goodDir,
+  targets,
+}: {
+  title: string;
+  hint: string;
+  fields: readonly string[];
+  series: Record<string, SeriesPoint[]>;
+  goodDir: 'up' | 'down';
+  targets: Record<string, number>;
+}) {
+  const present = fields.filter((f) => (series[f]?.length ?? 0) > 0);
+  return (
+    <div className="rounded-[var(--radius-card)] border border-line bg-surface p-5 sm:p-6">
+      <h2 className="font-display text-lg font-semibold">{title}</h2>
+      <p className="mt-1 text-xs text-muted">{hint}</p>
+      {present.length > 0 ? (
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {present.map((f) => (
+            <MetricTile
+              key={f}
+              label={CIRC_LABELS[f] ?? f}
+              unit="см"
+              points={series[f]}
+              goodDir={goodDir}
+              target={targets[f] ?? null}
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyNote text="Нет данных за период." />
+      )}
+    </div>
+  );
+}
+
+/** Вес — герой-блок: крупное текущее значение + дельта за период + «до цели», под ним
+ *  area-график с заливкой-градиентом и целевой линией. Нет данных → честный empty-state. */
+function WeightHero({
+  points,
+  targetWeight,
+}: {
+  points: SeriesPoint[];
+  targetWeight: number | null;
+}) {
+  const has = points.length > 0;
+  const current = has ? points[points.length - 1].value : null;
+  const delta = points.length > 1 ? current! - points[0].value : null;
+  const toGoal = current != null && targetWeight != null ? current - targetWeight : null;
+  const values = points.map((p) => p.value);
+  const domain: [number | string, number | string] =
+    targetWeight !== null && values.length > 0
+      ? [
+          Math.floor(Math.min(...values, targetWeight) - 1),
+          Math.ceil(Math.max(...values, targetWeight) + 1),
+        ]
+      : ['auto', 'auto'];
+  const rows = points.map((p) => ({ date: p.date, weight: p.value }));
+
+  return (
+    <div className="rounded-[var(--radius-card)] border border-line bg-surface p-5 sm:p-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="font-display text-lg font-semibold">
+            Вес <span className="text-sm font-normal text-muted">(кг)</span>
+          </h2>
+          {has ? (
+            <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-1">
+              <span className="font-display text-4xl font-bold leading-none tabular-nums">
+                {current!.toFixed(1)}
+              </span>
+              {delta != null && delta !== 0 && (
+                <span
+                  className={`mb-0.5 text-sm font-semibold ${delta < 0 ? 'text-accent' : 'text-amber'}`}
+                >
+                  {delta < 0 ? '▼' : '▲'} {Math.abs(delta).toFixed(1)} кг за период
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-muted">Нет данных веса за период.</p>
+          )}
+        </div>
+        {toGoal != null && (
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wide text-muted">До цели</div>
+            <div className="font-display text-2xl font-bold tabular-nums text-[var(--color-cat-measurement)]">
+              {Math.abs(toGoal).toFixed(1)}{' '}
+              <span className="text-sm font-normal text-muted">кг</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {has && (
+        <div className="mt-4">
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+              <defs>
+                <linearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
+              <XAxis
+                dataKey="date"
+                tickFormatter={fmtTick}
+                tick={axisTick}
+                stroke="var(--color-line)"
+                minTickGap={24}
+              />
+              <YAxis tick={axisTick} stroke="var(--color-line)" width={44} domain={domain} />
+              <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--color-muted)' }} />
+              {targetWeight !== null && (
+                <ReferenceLine
+                  y={targetWeight}
+                  stroke="var(--color-cat-measurement)"
+                  strokeWidth={2}
+                  strokeDasharray="6 4"
+                  ifOverflow="extendDomain"
+                  label={{
+                    value: `Цель ${targetWeight} кг`,
+                    position: 'insideTopRight',
+                    fill: 'var(--color-cat-measurement)',
+                    fontSize: 12,
+                  }}
+                />
+              )}
+              <Area
+                type="monotone"
+                dataKey="weight"
+                name="Вес, кг"
+                stroke="var(--color-accent)"
+                strokeWidth={2.5}
+                fill="url(#weightFill)"
+                dot={{ r: 3 }}
+                activeDot={{ r: 5 }}
+                connectNulls
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProgressPage() {
   const [periodDays, setPeriodDays] = useState<number>(180);
   const start = isoDaysAgo(periodDays - 1);
@@ -266,70 +419,45 @@ export default function ProgressPage() {
 
   // Цель (S2.9): целевой вес активной SMART-цели → линия поверх графика веса.
   const { data: goal } = useActiveGoal();
-  const targetWeight = goal?.target_weight_kg ?? null;
+  // Целевые значения по реестру метрик (из «Мой кабинет») → целевые линии на графиках.
+  const targets = effectiveTargets(goal);
+  const targetWeight = goalTarget(goal, 'weight_kg');
 
-  const hasReal =
-    !!data &&
-    (data.weight_kg.length > 0 || Object.values(data.circumferences).some((s) => s.length > 0));
-  const isSample = !hasReal;
-  const source = hasReal ? data! : buildSample(periodDays);
+  // Только реальные замеры тела: нет записей → честный empty-state, демо не рисуем.
+  // Вес/обхваты рисуют WeightHero и CircGroup (герой-блок + бенто-плитки) из этих рядов.
+  const weightPts = data?.weight_kg ?? [];
+  const circumferences = data?.circumferences ?? {};
 
-  const weightRows = source.weight_kg.map((p) => ({ date: p.date, weight: p.value }));
-  // Домен оси веса расширяем так, чтобы целевая линия гарантированно попала в кадр
-  // (цель ниже текущего веса легко уехала бы за нижнюю границу 'auto').
-  const weightValues = weightRows.map((r) => r.weight);
-  const weightDomain: [number | string, number | string] =
-    targetWeight !== null && weightValues.length > 0
-      ? [
-          Math.floor(Math.min(...weightValues, targetWeight) - 1),
-          Math.ceil(Math.max(...weightValues, targetWeight) + 1),
-        ]
-      : ['auto', 'auto'];
-  const circFields = Object.entries(source.circumferences)
-    .filter(([, points]) => points.length > 0)
-    .map(([field]) => field);
-  const circRows = mergeSeries(
-    Object.fromEntries(circFields.map((f) => [f, source.circumferences[f]])),
-  );
-
-  // Состав тела InBody (S2.12): тот же период. Реальные ряды показываем, как только
-  // у любого из 4 показателей есть точка; иначе рисуем демо целиком — графики
-  // обязаны отрисоваться (критерий приёмки).
+  // Состав тела InBody (S2.12): только реальные замеры. Ни одного → «InBody не загружен».
   const inbodyQuery = useInbodyProgress(start, end);
-  const inbody = inbodyQuery.data;
-  const hasInbody = !!inbody && Object.values(inbody.composition).some((s) => s.length > 0);
-  const inbodySample = !hasInbody;
-  const inbodySource = hasInbody ? inbody!.composition : buildInbodySample(periodDays);
+  const composition = inbodyQuery.data?.composition ?? {};
+  const hasInbody = Object.values(composition).some((s) => s.length > 0);
 
-  // Энергобаланс (S2.8): тот же период. Показываем реальные ряды только когда они
-  // наполняют ВСЕ 4 графика (ккал, дефицит, макросы, активность) — иначе один-два
-  // случайных дня оставили бы графики (в т.ч. ключевой «Дефицит») пустыми. Пока
-  // полного дня нет — рисуем демо целиком, чтобы 4 графика и знак дефицита читались.
+  // Энергобаланс (S2.8): только реальные ряды; нет данных → честный empty-state.
   const energyQuery = useEnergyProgress(start, end);
-  const energy = energyQuery.data;
-  const energyComplete =
+  const energy = energyQuery.data ?? null;
+  const hasEnergy =
     !!energy &&
-    (energy.kcal_in.length > 0 || energy.kcal_out.length > 0) &&
-    energy.deficit.length > 0 &&
-    Object.values(energy.macros).some((s) => s.length > 0) &&
-    (energy.steps.length > 0 || energy.active_min.length > 0);
-  const energySample = !energyComplete;
-  const energySource = energyComplete ? energy! : buildEnergySample();
+    (energy.kcal_in.length > 0 ||
+      energy.kcal_out.length > 0 ||
+      energy.deficit.length > 0 ||
+      Object.values(energy.macros).some((s) => s.length > 0) ||
+      energy.steps.length > 0 ||
+      energy.active_min.length > 0);
 
-  const caloriesRows = mergeSeries({ in: energySource.kcal_in, out: energySource.kcal_out });
-  const deficitRows = energySource.deficit.map((p) => ({ date: p.date, deficit: p.value }));
-  const macroFields = MACRO_META.filter((m) => (energySource.macros[m.field]?.length ?? 0) > 0);
-  const macroRows = mergeSeries(
-    Object.fromEntries(macroFields.map((m) => [m.field, energySource.macros[m.field]])),
-  );
-  const activityRows = mergeSeries({
-    steps: energySource.steps,
-    active_min: energySource.active_min,
-  });
-  const hasActivity = energySource.steps.length > 0 || energySource.active_min.length > 0;
+  const caloriesRows = energy ? mergeSeries({ in: energy.kcal_in, out: energy.kcal_out }) : [];
+  const deficitRows = energy ? energy.deficit.map((p) => ({ date: p.date, deficit: p.value })) : [];
+  const macroFields = MACRO_META.filter((m) => (energy?.macros[m.field]?.length ?? 0) > 0);
+  const macroRows = energy
+    ? mergeSeries(Object.fromEntries(macroFields.map((m) => [m.field, energy.macros[m.field]])))
+    : [];
+  const activityRows = energy
+    ? mergeSeries({ steps: energy.steps, active_min: energy.active_min })
+    : [];
+  const hasActivity = !!energy && (energy.steps.length > 0 || energy.active_min.length > 0);
 
   // Качество дней (S2.9): классифицируем каждый залогированный день периода.
-  const dayClasses = classifyDays(energySource);
+  const dayClasses = energy ? classifyDays(energy) : [];
   const qualityCounts = countByQuality(dayClasses);
 
   return (
@@ -372,11 +500,6 @@ export default function ProgressPage() {
             </button>
           ))}
         </div>
-        {isSample && (
-          <span className="rounded-full border border-amber/40 px-3 py-1 text-xs font-medium text-amber">
-            Демо-данные
-          </span>
-        )}
       </div>
 
       {isLoading ? (
@@ -385,109 +508,28 @@ export default function ProgressPage() {
         <div className="flex flex-col gap-6">
           {isError && (
             <p role="alert" className="text-sm font-medium text-amber">
-              Не удалось получить данные с сервера — показаны демо-данные.
+              Не удалось получить данные с сервера.
             </p>
           )}
 
-          <ChartCard title="Вес" unit="кг">
-            {weightRows.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={weightRows} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
-                  <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={fmtTick}
-                    tick={axisTick}
-                    stroke="var(--color-line)"
-                    minTickGap={24}
-                  />
-                  <YAxis
-                    tick={axisTick}
-                    stroke="var(--color-line)"
-                    width={44}
-                    domain={weightDomain}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    labelStyle={{ color: 'var(--color-muted)' }}
-                  />
-                  {targetWeight !== null && (
-                    <ReferenceLine
-                      y={targetWeight}
-                      stroke="var(--color-cat-measurement)"
-                      strokeWidth={2}
-                      strokeDasharray="6 4"
-                      ifOverflow="extendDomain"
-                      label={{
-                        value: `Цель ${targetWeight} кг`,
-                        position: 'insideTopRight',
-                        fill: 'var(--color-cat-measurement)',
-                        fontSize: 12,
-                      }}
-                    />
-                  )}
-                  <Line
-                    type="monotone"
-                    dataKey="weight"
-                    name="Вес, кг"
-                    stroke="var(--color-accent)"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                    connectNulls
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyNote text="Нет данных веса за период." />
-            )}
-          </ChartCard>
+          <WeightHero points={weightPts} targetWeight={targetWeight} />
 
-          <ChartCard title="Обхваты" unit="см">
-            {circFields.length > 0 ? (
-              <ResponsiveContainer width="100%" height={340}>
-                <LineChart data={circRows} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
-                  <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={fmtTick}
-                    tick={axisTick}
-                    stroke="var(--color-line)"
-                    minTickGap={24}
-                  />
-                  <YAxis
-                    tick={axisTick}
-                    stroke="var(--color-line)"
-                    width={44}
-                    domain={['auto', 'auto']}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    labelStyle={{ color: 'var(--color-muted)' }}
-                  />
-                  <Legend
-                    formatter={(value) => CIRC_LABELS[value] ?? value}
-                    wrapperStyle={{ fontSize: 12 }}
-                  />
-                  {circFields.map((field, i) => (
-                    <Line
-                      key={field}
-                      type="monotone"
-                      dataKey={field}
-                      name={field}
-                      stroke={PALETTE[i % PALETTE.length]}
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                      activeDot={{ r: 4 }}
-                      connectNulls
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyNote text="Нет данных обхватов за период." />
-            )}
-          </ChartCard>
+          <CircGroup
+            title="Обхваты: цель — рост ↑"
+            hint="Мышечные объёмы — грудь, плечи, бицепсы, бёдра, ягодицы. Зелёная стрелка ▲ = растёт (прогресс)."
+            fields={CIRC_GROW}
+            series={circumferences}
+            goodDir="up"
+            targets={targets}
+          />
+          <CircGroup
+            title="Обхваты: цель — снижение ↓"
+            hint="Талия и живот — жировые отложения. Зелёная стрелка ▼ = снижается (прогресс)."
+            fields={CIRC_SHRINK}
+            series={circumferences}
+            goodDir="down"
+            targets={targets}
+          />
         </div>
       )}
 
@@ -502,29 +544,25 @@ export default function ProgressPage() {
               период.
             </p>
           </div>
-          {inbodySample && (
-            <span className="rounded-full border border-amber/40 px-3 py-1 text-xs font-medium text-amber">
-              Демо-данные
-            </span>
-          )}
         </div>
 
         {inbodyQuery.isLoading ? (
           <p className="text-muted">Загрузка…</p>
+        ) : inbodyQuery.isError ? (
+          <p role="alert" className="text-sm font-medium text-amber">
+            Не удалось получить данные с сервера.
+          </p>
+        ) : !hasInbody ? (
+          <EmptyNote text="InBody ещё не загружен. Загрузите анализ в недельной ячейке календаря — здесь появится динамика состава тела." />
         ) : (
           <div className="flex flex-col gap-6">
-            {inbodyQuery.isError && (
-              <p role="alert" className="text-sm font-medium text-amber">
-                Не удалось получить данные с сервера — показаны демо-данные.
-              </p>
-            )}
-
             <div className="grid gap-6 lg:grid-cols-2">
               {INBODY_META.map((m) => {
-                const rows = (inbodySource[m.field] ?? []).map((p) => ({
+                const rows = (composition[m.field] ?? []).map((p) => ({
                   date: p.date,
                   value: p.value,
                 }));
+                const target = targets[m.field] ?? null;
                 return (
                   <ChartCard key={m.field} title={m.label} unit={m.unit}>
                     {rows.length > 0 ? (
@@ -548,6 +586,21 @@ export default function ProgressPage() {
                             contentStyle={tooltipStyle}
                             labelStyle={{ color: 'var(--color-muted)' }}
                           />
+                          {target != null && (
+                            <ReferenceLine
+                              y={target}
+                              stroke="var(--color-cat-measurement)"
+                              strokeWidth={2}
+                              strokeDasharray="6 4"
+                              ifOverflow="extendDomain"
+                              label={{
+                                value: `Цель ${target}`,
+                                position: 'insideTopRight',
+                                fill: 'var(--color-cat-measurement)',
+                                fontSize: 12,
+                              }}
+                            />
+                          )}
                           <Line
                             type="monotone"
                             dataKey="value"
@@ -581,23 +634,18 @@ export default function ProgressPage() {
               Калории, дефицит, макросы и активность по дням за выбранный период.
             </p>
           </div>
-          {energySample && (
-            <span className="rounded-full border border-amber/40 px-3 py-1 text-xs font-medium text-amber">
-              Демо-данные
-            </span>
-          )}
         </div>
 
         {energyQuery.isLoading ? (
           <p className="text-muted">Загрузка…</p>
+        ) : energyQuery.isError ? (
+          <p role="alert" className="text-sm font-medium text-amber">
+            Не удалось получить данные с сервера.
+          </p>
+        ) : !hasEnergy ? (
+          <EmptyNote text="Нет данных питания и активности за период. Импортируйте еду и активность в календаре — здесь появятся калории, дефицит, макросы и шаги." />
         ) : (
           <div className="flex flex-col gap-6">
-            {energyQuery.isError && (
-              <p role="alert" className="text-sm font-medium text-amber">
-                Не удалось получить данные с сервера — показаны демо-данные.
-              </p>
-            )}
-
             <ChartCard title="Калории: приход и расход" unit="ккал/день">
               {caloriesRows.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
@@ -619,6 +667,21 @@ export default function ProgressPage() {
                       labelStyle={{ color: 'var(--color-muted)' }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
+                    {targets.kcal_in != null && (
+                      <ReferenceLine
+                        y={targets.kcal_in}
+                        stroke="var(--color-cat-measurement)"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        ifOverflow="extendDomain"
+                        label={{
+                          value: `Цель съедено ${targets.kcal_in}`,
+                          position: 'insideTopRight',
+                          fill: 'var(--color-cat-measurement)',
+                          fontSize: 12,
+                        }}
+                      />
+                    )}
                     <Line
                       type="monotone"
                       dataKey="in"
@@ -669,6 +732,21 @@ export default function ProgressPage() {
                       labelStyle={{ color: 'var(--color-muted)' }}
                     />
                     <ReferenceLine y={0} stroke="var(--color-fg)" strokeWidth={1.5} />
+                    {targets.deficit_kcal != null && (
+                      <ReferenceLine
+                        y={targets.deficit_kcal}
+                        stroke="var(--color-cat-measurement)"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        ifOverflow="extendDomain"
+                        label={{
+                          value: `Цель ${targets.deficit_kcal}`,
+                          position: 'insideTopRight',
+                          fill: 'var(--color-cat-measurement)',
+                          fontSize: 12,
+                        }}
+                      />
+                    )}
                     <Bar dataKey="deficit" name="Дефицит, ккал" radius={[3, 3, 0, 0]}>
                       {deficitRows.map((r) => (
                         <Cell
@@ -789,6 +867,22 @@ export default function ProgressPage() {
                       labelStyle={{ color: 'var(--color-muted)' }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
+                    {targets.steps != null && (
+                      <ReferenceLine
+                        yAxisId="steps"
+                        y={targets.steps}
+                        stroke="var(--color-cat-measurement)"
+                        strokeWidth={2}
+                        strokeDasharray="6 4"
+                        ifOverflow="extendDomain"
+                        label={{
+                          value: `Цель ${targets.steps}`,
+                          position: 'insideTopRight',
+                          fill: 'var(--color-cat-measurement)',
+                          fontSize: 12,
+                        }}
+                      />
+                    )}
                     <Bar
                       yAxisId="steps"
                       dataKey="steps"
@@ -818,7 +912,7 @@ export default function ProgressPage() {
       </div>
 
       {/* Тренировочный прогресс (S3.12): силовые + кардио рядом с прогрессом тела. */}
-      <TrainingProgress periodDays={periodDays} start={start} end={end} />
+      <TrainingProgress start={start} end={end} />
     </section>
   );
 }

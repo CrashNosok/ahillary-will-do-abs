@@ -40,11 +40,19 @@ def test_plan_example_is_valid():
     assert plan.meal_plan.training_day.day_type.value == "training"
 
 
-def test_json_schema_exposes_both_plans():
-    """JSON-схема существует и содержит оба увязанных плана как обязательные поля."""
+def test_json_schema_exposes_all_required():
+    """JSON-схема содержит планы + доказательную часть как обязательные поля."""
     schema = plan_json_schema()
-    assert {"meal_plan", "workout_plan", "sync_note"} <= set(schema["properties"])
-    assert set(schema["required"]) == {"meal_plan", "workout_plan", "sync_note"}
+    required = {
+        "meal_plan",
+        "workout_plan",
+        "sync_note",
+        "nutrition_analysis",
+        "evidence_narrative",
+        "citations",
+    }
+    assert required <= set(schema["properties"])
+    assert set(schema["required"]) == required
 
 
 def test_bodyweight_exercise_allows_null_weight():
@@ -131,6 +139,56 @@ def test_broken_json_rejected():
     """Битый JSON отбраковывается как InvalidPlanError, а не падает наружу."""
     with pytest.raises(InvalidPlanError):
         parse_plan("{не json, это текст модели```")
+
+
+# --- Доказательная часть: нутриент-разбор + нарратив + цитаты ------------------------
+
+
+def test_nutrition_analysis_required():
+    """Детальный нутриент-разбор обязателен."""
+    with pytest.raises(InvalidPlanError):
+        parse_plan(_example_json(lambda d: d.pop("nutrition_analysis")))
+
+
+def test_evidence_narrative_min_length():
+    """Слишком короткий нарратив отбраковывается (отчёт должен быть содержательным)."""
+    with pytest.raises(InvalidPlanError):
+        parse_plan(_example_json(lambda d: d.update(evidence_narrative="коротко")))
+
+
+def test_citations_min_count():
+    """Минимум 3 цитаты — иначе отчёт не обоснован."""
+    with pytest.raises(InvalidPlanError):
+        parse_plan(_example_json(lambda d: d.update(citations=d["citations"][:2])))
+
+
+def test_citation_extra_field_rejected():
+    """Лишний ключ внутри цитаты — отбраковка (строгая схема)."""
+
+    def mutate(d):
+        d["citations"][0]["foo"] = "bar"
+
+    with pytest.raises(InvalidPlanError):
+        parse_plan(_example_json(mutate))
+
+
+def test_citation_unknown_id_rejected_with_context():
+    """С valid_ids цитата на отсутствующую в корпусе работу отбраковывается."""
+    with pytest.raises(InvalidPlanError):
+        parse_plan(_example_json(), valid_ids=frozenset({"a", "b", "c"}))
+
+
+def test_citation_ids_accepted_when_in_corpus():
+    """Если id цитат входят в valid_ids — план валиден."""
+    ids = frozenset(c["id"] for c in PLAN_EXAMPLE["citations"])
+    plan = parse_plan(_example_json(), valid_ids=ids)
+    assert isinstance(plan, RecommendationPlan)
+
+
+def test_citation_check_skipped_without_context():
+    """Без valid_ids проверка существования id не запускается (старые записи/юнит-тест)."""
+    plan = parse_plan(_example_json())
+    assert len(plan.citations) >= 3
 
 
 # --- Критерий 2: невалидный ответ отбраковывается/ретраится -------------------------

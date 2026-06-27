@@ -22,11 +22,13 @@ export const DAILY = [
   { key: 'has_training', label: 'Тренировки', color: keyColor('has_training') },
 ] as const satisfies ReadonlyArray<{ key: keyof DayFlags; label: string; color: string }>;
 
-/** Недельные категории «общей чаши»: достаточно одной записи за неделю. */
+/** Недельные категории «общей чаши»: достаточно одной записи за неделю. Четыре категории —
+ *  каждая наполняет недельный квадрат на 1/4 (25%); знаменатель заливки = WEEKLY.length. */
 export const WEEKLY = [
   { key: 'has_weight', label: 'Вес', color: keyColor('has_weight') },
   { key: 'has_body', label: 'Замеры', color: keyColor('has_body') },
   { key: 'has_photo', label: 'Фото', color: keyColor('has_photo') },
+  { key: 'has_inbody', label: 'InBody', color: keyColor('has_inbody') },
 ] as const satisfies ReadonlyArray<{ key: keyof DayFlags; label: string; color: string }>;
 
 /** Доля заполнения одного дня: число внесённых ежедневных категорий / 3 (0..1). */

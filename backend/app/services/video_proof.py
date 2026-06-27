@@ -15,6 +15,11 @@ from uuid import uuid4
 
 from app.core import db
 
+# Безопасные расширения видео (имя файла приходит от клиента — не доверяем суффиксу).
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
+# Потолок размера загружаемого видео — защита от OOM/DoS при чтении в память.
+MAX_VIDEO_BYTES = 500 * 1024 * 1024  # 500 МБ
+
 
 class ThumbnailError(RuntimeError):
     """ffmpeg не смог сгенерировать превью (нет ffmpeg в PATH либо битое/не-видео)."""
@@ -65,7 +70,11 @@ def save_video_with_thumbnail(
     Запись в БД — на стороне вызывающего, уже после успешного возврата.
     """
     stem = uuid4().hex
-    ext = Path(filename or "").suffix or ".mp4"
+    # Расширение — из allowlist видеоформатов; всё прочее (включая .php/.svg/.html и т.п.)
+    # сводим к .mp4, чтобы не писать на диск исполняемые/опасные суффиксы из имени клиента.
+    ext = Path(filename or "").suffix.lower()
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+        ext = ".mp4"
     video_dest = target_dir / f"{stem}{ext}"
     thumb_dest = target_dir / f"{stem}.jpg"
 

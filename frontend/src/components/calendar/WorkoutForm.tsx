@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   api,
   ApiError,
+  type SimpleWorkout,
   type SportCategory,
   type WorkoutKind,
   type WorkoutMetrics,
@@ -66,6 +67,8 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   const [dragOver, setDragOver] = useState(false); // дроп-зона фото/видео
   const [metrics, setMetrics] = useState<Record<string, string>>({}); // метрики Welltory (9671)
   const [screenDrag, setScreenDrag] = useState(false); // дроп-зона скрина «Распознать»
+  // id редактируемого лога: null → создаём новый, иначе PATCH этого лога («Изменить» из сводки).
+  const [editingId, setEditingId] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Превью медиа (objectURL + fallback HEIC/HEVC) — общий хук из mediaKit (M2·F10).
@@ -105,9 +108,10 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   });
 
   const save = useMutation({
-    mutationFn: () =>
-      api.createSimpleWorkout({
-        date,
+    mutationFn: () => {
+      // Общие скалярные поля формы. При редактировании уходят PATCH-ем (без медиа), при создании
+      // — multipart-ом вместе с файлами.
+      const common = {
         kind,
         sportId,
         durationMin: duration.trim() ? Number(duration) : null,
@@ -115,14 +119,23 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
         note: note.trim() || null,
         surpassedSelf,
         metrics: buildMetrics(),
-        files,
-      }),
+      };
+      return editingId != null
+        ? api.updateSimpleWorkout(editingId, common)
+        : api.createSimpleWorkout({ date, ...common, files });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       // Сохранение могло добавить медиа → освежаем полосу медиа дня (M3·F12).
       qc.invalidateQueries({ queryKey: ['workout-media'] });
-      // …и сводку ранее внесённых тренировок дня (новый лог появляется сразу).
+      // …и сводку ранее внесённых тренировок дня (новый/изменённый лог появляется сразу).
       qc.invalidateQueries({ queryKey: ['day-simple-workouts', date] });
+      // После правки выходим из режима редактирования и чистим форму; при создании оставляем
+      // поля как было (append-only — можно сразу добавить ещё лог).
+      if (editingId != null) {
+        setEditingId(null);
+        clearForm();
+      }
       onSaved?.();
     },
   });
@@ -130,6 +143,46 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
   function reset() {
     setErr(null);
     save.reset();
+  }
+
+  // Очистить поля ввода (без вида спорта — он остаётся выбранным).
+  function clearForm() {
+    setDuration('');
+    setRpe(null);
+    setSurpassedSelf(false);
+    setNote('');
+    setMetrics({});
+    setFiles([]);
+  }
+
+  // Загрузить прежние значения лога в форму («Изменить» из сводки) → дальше сохранение идёт PATCH-ем.
+  // Медиа не подставляем (file-input не предзаполнить); существующее медиа лога не трогается.
+  function startEdit(w: SimpleWorkout) {
+    setEditingId(w.id);
+    setSportId(w.sport_id);
+    setDuration(w.duration_min != null ? String(w.duration_min) : '');
+    setRpe(w.rpe);
+    setSurpassedSelf(w.surpassed_self);
+    setNote(w.notes ?? '');
+    setFiles([]);
+    setMetrics({
+      total_kcal: w.total_kcal != null ? String(w.total_kcal) : '',
+      active_kcal: w.active_kcal != null ? String(w.active_kcal) : '',
+      total_met: w.total_met != null ? String(w.total_met) : '',
+      useful_met: w.useful_met != null ? String(w.useful_met) : '',
+      hr_avg: w.hr_avg != null ? String(w.hr_avg) : '',
+      hr_max: w.hr_max != null ? String(w.hr_max) : '',
+      load_pct: w.load_pct != null ? String(w.load_pct) : '',
+      score: w.score != null ? String(w.score) : '',
+    });
+    reset();
+  }
+
+  // Выйти из режима правки без сохранения — вернуться к добавлению нового лога.
+  function exitEdit() {
+    setEditingId(null);
+    clearForm();
+    reset();
   }
 
   // Распознать метрики со скрина Welltory «Анализ тренировки» (vision) → заполнить поля + длит.
@@ -179,7 +232,9 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
             {logged.map((w) => (
               <li
                 key={w.id}
-                className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-line bg-ink/30 px-2.5 py-1.5 text-xs text-fg"
+                className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border bg-ink/30 px-2.5 py-1.5 text-xs text-fg ${
+                  editingId === w.id ? 'border-accent' : 'border-line'
+                }`}
               >
                 <span className="font-medium">{kindLabel(w.kind)}</span>
                 {w.duration_min != null && (
@@ -189,9 +244,31 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
                 {w.notes && <span className="text-muted">· {w.notes}</span>}
                 {w.surpassed_self && <span title="Личный рекорд">· 🏆</span>}
                 {w.media.length > 0 && <span className="text-muted">· 📎 {w.media.length}</span>}
+                {/* «Изменить» — подставляет значения лога в форму ниже (дальше PATCH этого лога). */}
+                <button
+                  type="button"
+                  onClick={() => startEdit(w)}
+                  className="ml-auto shrink-0 rounded-full border border-line px-2.5 py-0.5 text-[0.7rem] font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-accent/60"
+                >
+                  {editingId === w.id ? 'Редактируется' : 'Изменить'}
+                </button>
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Баннер режима правки: видно, что сохранение обновит существующий лог, а не создаст новый. */}
+      {editingId != null && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1.5 text-xs">
+          <span className="font-medium text-accent">Изменение записи — сохранение обновит её</span>
+          <button
+            type="button"
+            onClick={exitEdit}
+            className="shrink-0 font-medium text-muted underline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-accent hover:underline"
+          >
+            Отменить
+          </button>
         </div>
       )}
 
@@ -391,86 +468,89 @@ export function WorkoutForm({ date, onSaved }: { date: string; onSaved?: () => v
         />
       </label>
 
-      {/* Фото/видео. Инпут — sr-only (не display:none), клик через ref: надёжно во всех браузерах,
-          включая Safari, где label+display:none иногда не открывает выбор файла. */}
-      <div className="flex flex-col gap-2">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,video/*"
-          multiple
-          className="sr-only"
-          onChange={(e) => {
-            const list = e.target.files;
-            if (list && list.length) {
-              setFiles((prev) => [...prev, ...Array.from(list)]);
-              reset();
-            }
-            e.target.value = '';
-          }}
-        />
-        {/* Добавить медиа · Просмотреть. «Просмотреть» (M3·F13) — явный вход в лайтбокс добавленных
+      {/* Фото/видео — только при создании нового лога. В режиме правки скрыто: PATCH медиа не
+          пишет, поэтому не даём добавить файлы, которые молча потерялись бы (медиа лога видно в
+          сводке выше как 📎N). Инпут — sr-only, клик через ref (Safari). */}
+      {editingId == null && (
+        <div className="flex flex-col gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              const list = e.target.files;
+              if (list && list.length) {
+                setFiles((prev) => [...prev, ...Array.from(list)]);
+                reset();
+              }
+              e.target.value = '';
+            }}
+          />
+          {/* Добавить медиа · Просмотреть. «Просмотреть» (M3·F13) — явный вход в лайтбокс добавленных
             media[], доступен и после сохранения (превью не сбрасываются). Открывает первый кадр;
             листание ‹/› внутри лайтбокса. Дублирует клик по миниатюре (F11), но даёт подписанный
             контрол, как требует карточка. */}
-        {/* Drag-and-drop фото/видео (как в еде): перетащить ИЛИ нажать (клик через ref — Safari). */}
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => fileRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
+          {/* Drag-and-drop фото/видео (как в еде): перетащить ИЛИ нажать (клик через ref — Safari). */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => fileRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileRef.current?.click();
+              }
+            }}
+            onDragOver={(e) => {
               e.preventDefault();
-              fileRef.current?.click();
-            }
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOver(false);
-            const list = e.dataTransfer.files;
-            if (list && list.length) {
-              setFiles((prev) => [...prev, ...Array.from(list)]);
-              reset();
-            }
-          }}
-          className={`flex cursor-pointer items-center justify-center rounded-xl border border-dashed px-3 py-3 text-center text-sm transition-colors duration-[var(--duration-fast)] focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
-            dragOver ? 'border-accent bg-accent/5' : 'border-line hover:border-accent/50'
-          }`}
-        >
-          <span className="truncate text-muted">Перетащите фото / видео или нажмите</span>
-        </div>
-        {previews.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setLightboxAt(0)}
-            className="self-start rounded-full border border-line px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-accent/60"
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const list = e.dataTransfer.files;
+              if (list && list.length) {
+                setFiles((prev) => [...prev, ...Array.from(list)]);
+                reset();
+              }
+            }}
+            className={`flex cursor-pointer items-center justify-center rounded-xl border border-dashed px-3 py-3 text-center text-sm transition-colors duration-[var(--duration-fast)] focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
+              dragOver ? 'border-accent bg-accent/5' : 'border-line hover:border-accent/50'
+            }`}
           >
-            Просмотреть ({previews.length})
-          </button>
-        )}
-        {previews.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {previews.map((p, i) => (
-              <MediaThumb
-                key={`${p.file.name}-${i}`}
-                file={p.file}
-                url={p.url}
-                isVideo={p.isVideo}
-                onOpen={() => setLightboxAt(i)}
-                onRemove={() => {
-                  setFiles((prev) => prev.filter((_, j) => j !== i));
-                  reset();
-                }}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
+            <span className="truncate text-muted">Перетащите фото / видео или нажмите</span>
+          </div>
+          {previews.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setLightboxAt(0)}
+              className="self-start rounded-full border border-line px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-accent/60"
+            >
+              Просмотреть ({previews.length})
+            </button>
+          )}
+          {previews.length > 0 && (
+            <ul className="flex flex-wrap gap-2">
+              {previews.map((p, i) => (
+                <MediaThumb
+                  key={`${p.file.name}-${i}`}
+                  file={p.file}
+                  url={p.url}
+                  isVideo={p.isVideo}
+                  onOpen={() => setLightboxAt(i)}
+                  onRemove={() => {
+                    setFiles((prev) => prev.filter((_, j) => j !== i));
+                    reset();
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {err && <p className="text-xs font-medium text-amber">{err}</p>}
       {save.isError && <p className="text-xs font-medium text-amber">{errText(save.error)}</p>}

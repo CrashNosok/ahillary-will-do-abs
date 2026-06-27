@@ -35,6 +35,7 @@ from app.models.challenge import (
 from app.models.sponsor import Sponsor
 from app.models.sport import Sport
 from app.services import challenge_proof as proof_service
+from app.services.video_proof import MAX_VIDEO_BYTES
 
 router = APIRouter(prefix="/challenges", tags=["challenges"])
 
@@ -68,7 +69,8 @@ class ChallengeSponsorCreate(BaseModel):
     # граница 422, чтобы не упасть на DB-уровне. currency обязательна и без дефолта —
     # валюту не угадываем молча (см. модель ChallengeSponsor).
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
-    currency: str = Field(min_length=1)
+    # Код валюты ISO 4217 — ровно 3 заглавные латинские буквы (а не любая строка любой длины).
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
 
 
 def _my_participation_or_404(
@@ -113,6 +115,18 @@ def list_challenges(session: SessionDep, _: CurrentUser) -> list[Challenge]:
     return session.exec(select(Challenge).order_by(Challenge.title)).all()
 
 
+@router.get("/participations")
+def list_my_participations(session: SessionDep, user: CurrentUser) -> list[ChallengeParticipant]:
+    """Мои участия (challenge_id + статус) по всем челленджам — строго свои (по user_id).
+
+    Фронт строит карту challenge_id→статус, чтобы показывать «Вы участвуете»/статус сразу
+    при загрузке (раньше состояние участия терялось при перезагрузке — фейкалось на клиенте).
+    """
+    return session.exec(
+        select(ChallengeParticipant).where(ChallengeParticipant.user_id == user.id)
+    ).all()
+
+
 @router.post("/{challenge_id}/join", status_code=status.HTTP_201_CREATED)
 def join_challenge(
     challenge_id: int, session: SessionDep, user: CurrentUser
@@ -148,10 +162,15 @@ async def upload_challenge_proof(
     ffmpeg запись в БД не появляется (файл откатывается), а наружу уходит 422.
     """
     participant = _my_participation_or_404(session, challenge_id, user.id)
-    video_bytes = await file.read()
+    video_bytes = await file.read(MAX_VIDEO_BYTES + 1)  # читаем с потолком — защита от OOM/DoS
     if not video_bytes:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Пустой файл видео"
+        )
+    if len(video_bytes) > MAX_VIDEO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Файл видео слишком большой",
         )
     try:
         return proof_service.save_proof(
@@ -203,15 +222,22 @@ def add_challenge_sponsor(
     challenge_id: int,
     payload: ChallengeSponsorCreate,
     session: SessionDep,
-    _: CurrentUser,
+    user: CurrentUser,
 ) -> ChallengeSponsor:
     """Привязать спонсора к челленджу с суммой поддержки.
 
-    404 — нет челленджа или спонсора; 409 — спонсор уже привязан к этому челленджу
+    403 — не создатель челленджа (спонсоров на чужой вызов вешать нельзя); 404 — нет
+    челленджа или спонсора; 409 — спонсор уже привязан к этому челленджу
     (unique challenge_id+sponsor_id). FK проверяем явно (PRAGMA FK может быть выкл).
     """
-    if session.get(Challenge, challenge_id) is None:
+    challenge = session.get(Challenge, challenge_id)
+    if challenge is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Челлендж не найден")
+    if challenge.creator_user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Спонсоров может привязывать только создатель челленджа",
+        )
     if session.get(Sponsor, payload.sponsor_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Спонсор не найден")
     link = ChallengeSponsor(

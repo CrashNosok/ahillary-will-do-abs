@@ -15,6 +15,8 @@ import {
   useSports,
   useUnlinkSport,
 } from '../lib/sports';
+import ParameterTargetsForm from './ParameterTargetsForm';
+import SportPlanSection from './SportPlanSection';
 
 const inputCls =
   'rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent';
@@ -43,9 +45,11 @@ export default function ProfilePage() {
         </h1>
         <p className="mt-4 text-lg leading-relaxed text-muted">
           {user ? `Привет, ${user.display_name || user.email}! ` : ''}
-          Ваши дисциплины, рейтинг и текущий уровень — в одном месте.
+          Цели по параметрам, дисциплины и план развития — в одном месте.
         </p>
       </div>
+
+      <ParameterTargetsForm />
 
       <div className="flex flex-col gap-5">
         <h2 className="text-display">Мои дисциплины</h2>
@@ -65,6 +69,8 @@ export default function ProfilePage() {
           </ul>
         )}
       </div>
+
+      <SportPlanSection sports={mySports ?? []} />
 
       <LinkSportForm linkedIds={linkedIds} />
     </section>

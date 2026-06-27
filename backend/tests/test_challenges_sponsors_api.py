@@ -18,6 +18,7 @@ import app.models  # noqa: F401 — регистрирует все таблиц
 from app.core.db import get_session
 from app.core.security import hash_password
 from app.main import app
+from app.models.challenge import Challenge
 from app.models.sponsor import Sponsor
 from app.models.sport import Sport
 from app.models.user import User
@@ -146,6 +147,30 @@ def test_add_sponsor_rejects_non_positive_amount(client, engine):
         json={"sponsor_id": spid, "amount": "0", "currency": "USD"},
     )
     assert resp.status_code == 422
+
+
+def _make_foreign_challenge(engine, title: str = "Чужой вызов") -> int:
+    """Челлендж, созданный ДРУГИМ пользователем (для проверки 403 не-создателю)."""
+    sid = _make_sport(engine, f"Спорт-{title}")
+    with Session(engine) as session:
+        other = User(email="other-creator@example.com", password_hash="x")
+        session.add(other)
+        session.flush()
+        ch = Challenge(sport_id=sid, creator_user_id=other.id, title=title, description="d")
+        session.add(ch)
+        session.commit()
+        session.refresh(ch)
+        return ch.id
+
+
+def test_add_sponsor_non_creator_returns_403(client, engine):
+    cid = _make_foreign_challenge(engine)
+    spid = _make_sponsor(engine, "Wayne Ent.")
+    resp = client.post(
+        f"/challenges/{cid}/sponsors",
+        json={"sponsor_id": spid, "amount": "10", "currency": "USD"},
+    )
+    assert resp.status_code == 403  # спонсоров вешает только создатель челленджа
 
 
 def test_add_sponsor_requires_auth():

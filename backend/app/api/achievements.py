@@ -20,6 +20,7 @@ from app.core.db import get_session
 from app.models._time import utcnow
 from app.models.achievement import Achievement, AchievementProof
 from app.services import achievement_proof as proof_service
+from app.services.video_proof import MAX_VIDEO_BYTES
 
 router = APIRouter(prefix="/achievements", tags=["achievements"])
 
@@ -43,10 +44,15 @@ async def upload_proof(
     notes: Annotated[str | None, Form()] = None,
 ) -> AchievementProof:
     _get_owned_or_404(session, achievement_id, user.id)
-    video_bytes = await file.read()
+    video_bytes = await file.read(MAX_VIDEO_BYTES + 1)  # читаем с потолком — защита от OOM/DoS
     if not video_bytes:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Пустой файл видео"
+        )
+    if len(video_bytes) > MAX_VIDEO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Файл видео слишком большой",
         )
     try:
         return proof_service.save_proof(
@@ -110,4 +116,31 @@ def unlock_achievement(
     session.add(achievement)
     session.commit()
     session.refresh(achievement)
+    return achievement
+
+
+@router.post("/{achievement_id}/plan")
+def plan_achievement(achievement_id: int, session: SessionDep, user: CurrentUser) -> Achievement:
+    """В план «Учу»: locked → in_progress (без пруфа). Идемпотентно; unlocked не трогаем.
+
+    Это «что хочу научиться» из «Мой кабинет»: пометка навыка к освоению. Закрытие (unlocked)
+    остаётся пруф-гейтом (см. /unlock). Неизвестная/чужая ачивка → 404 (M0·B11)."""
+    achievement = _get_owned_or_404(session, achievement_id, user.id)
+    if achievement.status == "locked":
+        achievement.status = "in_progress"
+        session.add(achievement)
+        session.commit()
+        session.refresh(achievement)
+    return achievement
+
+
+@router.post("/{achievement_id}/unplan")
+def unplan_achievement(achievement_id: int, session: SessionDep, user: CurrentUser) -> Achievement:
+    """Из плана: in_progress → locked. Идемпотентно; unlocked (терминал) не трогаем."""
+    achievement = _get_owned_or_404(session, achievement_id, user.id)
+    if achievement.status == "in_progress":
+        achievement.status = "locked"
+        session.add(achievement)
+        session.commit()
+        session.refresh(achievement)
     return achievement

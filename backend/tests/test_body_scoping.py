@@ -119,12 +119,26 @@ def test_goal_progress_excludes_other_user_weight(client, engine, other):
     # Активная цель есть (заводим напрямую), но вес чужого InBody не должен в неё попасть:
     # у залогиненного юзера своих замеров нет → current/baseline = None.
     with Session(engine) as session:
-        session.add(SmartGoal(user_id=1, status=GoalStatus.active, target_weight_kg=80.0))
+        session.add(
+            SmartGoal(user_id=1, status=GoalStatus.active, target_metrics_json={"weight_kg": 80.0})
+        )
         session.commit()
     metrics = client.get("/progress/goal").json()["metrics"]
     weight = next(m for m in metrics if m["metric"] == "weight_kg")
     assert weight["current"] is None
     assert weight["baseline"] is None
+
+
+def test_goal_progress_ignores_other_users_active_goal(client, engine, other):
+    # Активная цель ТОЛЬКО у чужого юзера (id=2). Залогинен id=1 без своей цели → 404,
+    # а не чужая цель (раньше /progress/goal брал первую активную цель без скоупа по user_id —
+    # межаккаунтная утечка: цель одного против замеров другого).
+    with Session(engine) as session:
+        session.add(
+            SmartGoal(user_id=2, status=GoalStatus.active, target_metrics_json={"weight_kg": 70.0})
+        )
+        session.commit()
+    assert client.get("/progress/goal").status_code == 404
 
 
 # --- body_photos -------------------------------------------------------------

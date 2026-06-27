@@ -26,8 +26,9 @@ from app.models.nutrition import FoodEntry
 from app.services import deficit
 
 # Колонки нутриентов по индексу (docs/sample-formats.md). Матчим по позиции, а не
-# по русскому заголовку с нестабильными пробелами.
-_KCAL, _FAT, _CARB, _PROTEIN = 1, 2, 4, 7
+# по русскому заголовку с нестабильными пробелами. Клетч/Сахар/Н·жир в сэмпле часто
+# пусты — детальные нутриенты появятся, только если экспорт их заполняет.
+_KCAL, _SATFAT, _FAT, _CARB, _FIBER, _SUGAR, _PROTEIN = 1, 3, 2, 4, 5, 6, 7
 
 # RU-месяцы в родительном падеже («июня», не «июнь») → номер месяца.
 _RU_MONTHS = {
@@ -139,13 +140,22 @@ class DiaryImport:
     declared_meals: dict[str, Totals] = field(default_factory=dict)
 
 
+def _cell(row: list[str], idx: int) -> float | None:
+    """Десятичное значение колонки по индексу; нет колонки/пусто → None.
+
+    Бьёт по короткой строке без IndexError: старые экспорты обрываются раньше колонок
+    Клетч/Сахар/Н·жир, тогда эти нутриенты отсутствуют (None), а не падают."""
+    return parse_decimal(row[idx]) if idx < len(row) else None
+
+
 def _row_totals(row: list[str]) -> Totals:
     """Нутриенты строки по индексам колонок; пустая ячейка/нет колонки → 0.0."""
-
-    def cell(idx: int) -> float:
-        return (parse_decimal(row[idx]) if idx < len(row) else None) or 0.0
-
-    return Totals(cell(_KCAL), cell(_FAT), cell(_CARB), cell(_PROTEIN))
+    return Totals(
+        _cell(row, _KCAL) or 0.0,
+        _cell(row, _FAT) or 0.0,
+        _cell(row, _CARB) or 0.0,
+        _cell(row, _PROTEIN) or 0.0,
+    )
 
 
 def sum_totals(entries: list[FoodEntry]) -> Totals:
@@ -212,10 +222,13 @@ def parse_diary(raw: bytes, filename: str | None = None) -> DiaryImport:
                 date=dt.date.min,  # проставится после цикла, когда дата известна
                 meal=current_meal or "",
                 product_name=label,
-                kcal=parse_decimal(row[_KCAL]),
-                fat_g=parse_decimal(row[_FAT]),
-                carb_g=parse_decimal(row[_CARB]),
-                protein_g=parse_decimal(row[_PROTEIN]),
+                kcal=_cell(row, _KCAL),
+                fat_g=_cell(row, _FAT),
+                carb_g=_cell(row, _CARB),
+                protein_g=_cell(row, _PROTEIN),
+                fiber_g=_cell(row, _FIBER),
+                sugar_g=_cell(row, _SUGAR),
+                saturated_fat_g=_cell(row, _SATFAT),
             )
             entries.append(last_product)
         elif level == 3 and last_product is not None:

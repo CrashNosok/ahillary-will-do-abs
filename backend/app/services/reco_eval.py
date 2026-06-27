@@ -37,9 +37,7 @@ SAMPLE_AGGRESSIVE_SNAPSHOT: dict[str, Any] = {
     "window": {"start": "2026-03-23", "end": "2026-06-21", "days": 90},
     "goal": {
         "id": 1,
-        "target_weight_kg": 72.0,
-        "target_body_fat_pct": 15.0,
-        "target_measurements": {"waist": 80.0},
+        "targets": {"weight_kg": 72.0, "body_fat_pct": 15.0, "waist_cm": 80.0},
         "start_date": "2026-03-23",
         "deadline": "2026-08-01",
         "why_notes": "Похудеть к отпуску, сохранив силу.",

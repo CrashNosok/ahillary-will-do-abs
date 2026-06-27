@@ -2,15 +2,19 @@
  *  Кнопка зовёт POST /recommendations/generate (снапшот → Opus → план); готовая запись
  *  попадает в историю слева и раскрывается планом справа. Деталь читается по id с бэкенда. */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ApiError,
+  type Citation,
   type DayNutrition,
   type GoalSnapshot,
   type MealPlan,
+  type NutritionAnalysis,
   type Recommendation,
   type WorkoutPlan,
 } from '../lib/api';
+import Markdown from './Markdown';
+import { useMetricRegistry } from '../lib/metricRegistry';
 import {
   useGenerateRecommendation,
   useRecommendation,
@@ -72,13 +76,25 @@ const MEASUREMENT_LABELS_RU: Record<string, string> = {
   biceps_l: 'Бицепс (л)',
   biceps_r: 'Бицепс (п)',
   glutes: 'Ягодицы',
-  calf_l: 'Икра (л)',
-  calf_r: 'Икра (п)',
+  calf_l: 'Бедро (л)',
+  calf_r: 'Бедро (п)',
 };
 
-/** Числовые цели в виде читаемых строк: вес, % жира, целевые обхваты. Пусто — целей нет. */
-function goalTargets(goal: GoalSnapshot): { label: string; value: string }[] {
+/** Числовые цели снапшота в читаемые строки. Новый снапшот несёт карту `targets` (ключи
+ *  реестра — подписываем через переданный реестр); старые записи истории — легаси-поля. */
+function goalTargets(
+  goal: GoalSnapshot,
+  labels: Record<string, { label: string; unit: string }>,
+): { label: string; value: string }[] {
   const out: { label: string; value: string }[] = [];
+  if (goal.targets && Object.keys(goal.targets).length > 0) {
+    for (const [key, val] of Object.entries(goal.targets)) {
+      const m = labels[key];
+      out.push({ label: m?.label ?? key, value: m ? `${val} ${m.unit}` : String(val) });
+    }
+    return out;
+  }
+  // Легаси-история (снапшоты до перехода на target_metrics_json).
   if (goal.target_weight_kg != null) {
     out.push({ label: 'Целевой вес', value: `${goal.target_weight_kg} кг` });
   }
@@ -301,13 +317,124 @@ function RecommendationPlanView({
       <RationaleCard note={plan.sync_note} />
 
       <WorkoutPlanView plan={plan.workout_plan} mealPlan={plan.meal_plan} />
+
+      {/* Доказательная часть (новые поля). У старых записей истории их нет → рисуем под &&. */}
+      {plan.nutrition_analysis && <NutritionAnalysisCard analysis={plan.nutrition_analysis} />}
+      {plan.evidence_narrative && (
+        <EvidenceReport narrative={plan.evidence_narrative} citations={plan.citations ?? []} />
+      )}
+      {plan.citations && plan.citations.length > 0 && <CitationList citations={plan.citations} />}
     </>
+  );
+}
+
+// Внешняя ссылка цитаты: http(s) как есть, иначе трактуем как DOI.
+function citationHref(value: string): string {
+  return /^https?:\/\//i.test(value) ? value : `https://doi.org/${value}`;
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-line bg-panel p-3">
+      <div className="text-xs text-muted">{label}</div>
+      <div className="font-display text-lg font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+// Детальный разбор качества рациона: целевые числа + пары «оценка → цель».
+function NutritionAnalysisCard({ analysis }: { analysis: NutritionAnalysis }) {
+  const rows = [
+    { label: 'Сложные vs простые углеводы', pair: analysis.complex_vs_simple_carbs },
+    { label: 'Клетчатка', pair: analysis.fiber },
+    { label: 'Сахар', pair: analysis.sugar },
+    { label: 'Насыщенные жиры', pair: analysis.saturated_fat },
+    { label: 'Качество белка', pair: analysis.protein_quality },
+  ];
+  return (
+    <section
+      aria-label="Качество питания"
+      className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-5"
+    >
+      <h3 className="font-display text-lg font-semibold tracking-tight">Качество питания</h3>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Клетчатка — цель" value={`${analysis.fiber_g_target} г/день`} />
+        <Stat label="Сахар — лимит" value={`${analysis.sugar_g_limit} г/день`} />
+        <Stat label="Насыщ. жиры — лимит" value={`${analysis.saturated_fat_g_limit} г/день`} />
+      </div>
+      <dl className="flex flex-col divide-y divide-line">
+        {rows.map((r) => (
+          <div key={r.label} className="grid gap-1 py-3 sm:grid-cols-[200px_1fr]">
+            <dt className="text-sm font-medium text-fg">{r.label}</dt>
+            <dd className="flex flex-col gap-1 text-sm text-muted">
+              <span>{r.pair.assessment}</span>
+              <span className="text-accent">→ {r.pair.target}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-sm leading-relaxed text-muted">{analysis.summary}</p>
+    </section>
+  );
+}
+
+// Большой доказательный отчёт (markdown с инлайн-цитатами [id] → якоря к источникам).
+function EvidenceReport({ narrative, citations }: { narrative: string; citations: Citation[] }) {
+  const ids = useMemo(() => new Set(citations.map((c) => c.id)), [citations]);
+  return (
+    <section
+      aria-label="Доказательный отчёт"
+      className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5"
+    >
+      <h3 className="font-display text-lg font-semibold tracking-tight">Доказательный отчёт</h3>
+      <Markdown text={narrative} citationIds={ids} />
+    </section>
+  );
+}
+
+// Список источников: пронумерованные ссылки на исследования (id = якорь для инлайн-цитат).
+function CitationList({ citations }: { citations: Citation[] }) {
+  return (
+    <section
+      aria-label="Источники"
+      className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5"
+    >
+      <h3 className="font-display text-lg font-semibold tracking-tight">
+        Источники ({citations.length})
+      </h3>
+      <ol className="flex flex-col gap-3">
+        {citations.map((c, i) => (
+          <li key={c.id} id={`cit-${c.id}`} className="scroll-mt-24 text-sm leading-relaxed">
+            <span className="text-muted">{i + 1}. </span>
+            <a
+              href={citationHref(c.url_or_doi)}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="font-medium text-fg transition-colors hover:text-accent"
+            >
+              {c.title}
+            </a>
+            <span className="text-muted">
+              {' — '}
+              {c.authors.join(', ')} ({c.year})
+            </span>
+            <p className="mt-0.5 text-muted italic">{c.claim}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
 // Цель, под которую сгенерирован план: целевые метрики, дедлайн и мотивация («зачем»).
 function GoalCard({ goal }: { goal: GoalSnapshot }) {
-  const targets = goalTargets(goal);
+  const { data: registry } = useMetricRegistry();
+  const labels = useMemo(
+    () =>
+      Object.fromEntries((registry ?? []).map((m) => [m.key, { label: m.label, unit: m.unit }])),
+    [registry],
+  );
+  const targets = goalTargets(goal, labels);
   return (
     <section
       aria-label="Цель"

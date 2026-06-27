@@ -10,7 +10,7 @@ import { api, type DayFlags } from '../../lib/api';
 import { useScrollLock } from '../../lib/useScrollLock';
 import { FoodQuickImport } from './FoodQuickImport';
 import { ActivityForm } from './ActivityForm';
-import { WeekWeightForm, WeekMeasurementsForm, WeekPhotoForm } from './WeeklyForms';
+import { WeekWeightForm, WeekMeasurementsForm, WeekPhotoForm, WeekInbodyForm } from './WeeklyForms';
 import { WorkoutForm } from './WorkoutForm';
 import { DayWorkoutMediaStrip } from './DayWorkoutMediaStrip';
 
@@ -23,7 +23,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export type EditorRows = 'all' | 'daily' | 'weekly';
 
-type Row = { key: keyof DayFlags; label: string; tab: string; hint?: string };
+type Row = { key: keyof DayFlags; label: string; tab: string; hint?: string; noClear?: boolean };
 
 const DAILY_ROWS: Row[] = [
   { key: 'has_food', label: 'Еда', tab: 'food', hint: 'CSV FatSecret' },
@@ -34,7 +34,21 @@ const WEEKLY_ROWS: Row[] = [
   { key: 'has_weight', label: 'Вес', tab: 'weight' },
   { key: 'has_body', label: 'Замеры', tab: 'measurements' },
   { key: 'has_photo', label: 'Фото', tab: 'photos' },
+  // InBody — 4-й пункт: загрузка скрина анализа. Данные в той же записи, что и «Вес»
+  // (inbody_measurement), поэтому отдельной очистки нет (noClear) — чистится через «Вес».
+  { key: 'has_inbody', label: 'InBody', tab: 'inbody', hint: 'скрин анализа', noClear: true },
 ];
+
+// Per-tab ключ запроса формы за день — чтобы при очистке/возврате обновить именно её данные
+// (иначе форма осталась бы со старыми значениями и «обнуления» не было видно).
+const DAY_QUERY_KEY: Record<string, string> = {
+  food: 'day-food',
+  activity: 'day-activity',
+  training: 'day-simple-workouts',
+  weight: 'day-weight',
+  measurements: 'day-measurements',
+  photos: 'day-photos',
+};
 
 // Инлайн-форма категории. Дневные (еда/активность/тренировки) — существующие страницы;
 // недельные (вес/замеры/фото) — минимальные формы без даты (пишут на дату недели).
@@ -52,6 +66,8 @@ function renderForm(tab: string, iso: string, onSaved: () => void) {
       return <WeekMeasurementsForm date={iso} onSaved={onSaved} />;
     case 'photos':
       return <WeekPhotoForm date={iso} onSaved={onSaved} />;
+    case 'inbody':
+      return <WeekInbodyForm date={iso} onSaved={onSaved} />;
     default:
       return null;
   }
@@ -126,12 +142,14 @@ export function DayEditorPanel({
         return n;
       });
       setConfirming(null);
-      // Строку не сворачиваем: показываем «Очищено · Отменить» в раскрытой области.
+      // Форму НЕ прячем: поля просто обнуляются (см. рендер), «Отменить» — отдельным футером.
       setUndo({ tab, ids: res.archived_ids });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['workout-media'] });
       qc.invalidateQueries({ queryKey: ['body-photos'] });
       qc.invalidateQueries({ queryKey: ['progress'] });
+      // …и данные самой формы за этот день — чтобы поля стали пустыми сразу.
+      if (DAY_QUERY_KEY[tab]) qc.invalidateQueries({ queryKey: [DAY_QUERY_KEY[tab], iso] });
     } catch {
       setClearError(tab);
     } finally {
@@ -145,9 +163,10 @@ export function DayEditorPanel({
     setRestoring(true);
     try {
       await api.restoreDayData(undo.ids);
+      const tab = undo.tab;
       setCleared((s) => {
         const n = new Set(s);
-        n.delete(undo.tab);
+        n.delete(tab);
         return n;
       });
       setUndo(null);
@@ -155,6 +174,8 @@ export function DayEditorPanel({
       qc.invalidateQueries({ queryKey: ['workout-media'] });
       qc.invalidateQueries({ queryKey: ['body-photos'] });
       qc.invalidateQueries({ queryKey: ['progress'] });
+      // …и данные формы за день — чтобы вернувшиеся значения снова показались в полях.
+      if (DAY_QUERY_KEY[tab]) qc.invalidateQueries({ queryKey: [DAY_QUERY_KEY[tab], iso] });
     } catch {
       setClearError(undo.tab);
     } finally {
@@ -212,9 +233,23 @@ export function DayEditorPanel({
         {r.tab === 'training' && <DayWorkoutMediaStrip date={iso} />}
         {isOpen && (
           <div className="entry-embed mb-3 rounded-xl border border-line bg-ink/40 p-3">
+            {/* Форма категории — всегда видна. После очистки её поля просто становятся пустыми
+                (данные удалены + инвалидация day-* запроса), форма НЕ исчезает. «Отменить» и
+                «Очистить» показываем отдельным футером ниже, не подменяя форму. */}
+            {renderForm(r.tab, iso, () => {
+              setSaved((s) => new Set(s).add(r.tab));
+              // Повторный ввод после очистки: снимаем «очищено» и прячем «Отменить».
+              setCleared((s) => {
+                const n = new Set(s);
+                n.delete(r.tab);
+                return n;
+              });
+              setUndo((u) => (u?.tab === r.tab ? null : u));
+            })}
+
             {undo?.tab === r.tab ? (
-              // Сразу после очистки: «Отменить» (вернуть из архива). Пропадёт через несколько секунд.
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              // Несколько секунд после очистки: вернуть из архива. Поля формы выше уже пусты.
+              <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-line/60 pt-3">
                 <span className="mr-auto text-xs text-muted">Очищено.</span>
                 <button
                   type="button"
@@ -225,56 +260,51 @@ export function DayEditorPanel({
                   {restoring ? 'Возврат…' : 'Отменить'}
                 </button>
               </div>
-            ) : (
-              <>
-                {renderForm(r.tab, iso, () => setSaved((s) => new Set(s).add(r.tab)))}
-                {/* «Очистить» — только когда есть что чистить. Инлайн-подтверждение (без браузерного
-                    confirm): кнопка → строка «Очистить? · Да/Отмена». Удаляет с архивацией. */}
-                {done && (
-                  <div className="mt-3 border-t border-line/60 pt-3">
-                    {clearError === r.tab && (
-                      <p className="mb-2 text-xs text-red-400">
-                        Не удалось очистить. Попробуйте ещё раз.
-                      </p>
-                    )}
-                    {confirming === r.tab ? (
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <span className="mr-auto text-xs text-muted">Очистить эти данные?</span>
-                        <button
-                          type="button"
-                          onClick={() => doClear(r.tab)}
-                          disabled={clearing === r.tab}
-                          className="rounded-full border border-red-500/50 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors duration-[var(--duration-fast)] hover:bg-red-500/20 disabled:opacity-50"
-                        >
-                          {clearing === r.tab ? 'Очистка…' : 'Да, очистить'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirming(null)}
-                          disabled={clearing === r.tab}
-                          className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors duration-[var(--duration-fast)] hover:text-fg disabled:opacity-50"
-                        >
-                          Отмена
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setConfirming(r.tab);
-                            setClearError(null);
-                          }}
-                          className="rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors duration-[var(--duration-fast)] hover:bg-red-500/10"
-                        >
-                          Очистить данные
-                        </button>
-                      </div>
-                    )}
+            ) : done && !r.noClear ? (
+              // «Очистить» — когда есть что чистить (кроме строк noClear, напр. InBody — чистится
+              // через «Вес», одна запись). Инлайн-подтверждение без браузерного confirm.
+              <div className="mt-3 border-t border-line/60 pt-3">
+                {clearError === r.tab && (
+                  <p className="mb-2 text-xs text-red-400">
+                    Не удалось очистить. Попробуйте ещё раз.
+                  </p>
+                )}
+                {confirming === r.tab ? (
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span className="mr-auto text-xs text-muted">Очистить эти данные?</span>
+                    <button
+                      type="button"
+                      onClick={() => doClear(r.tab)}
+                      disabled={clearing === r.tab}
+                      className="rounded-full border border-red-500/50 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors duration-[var(--duration-fast)] hover:bg-red-500/20 disabled:opacity-50"
+                    >
+                      {clearing === r.tab ? 'Очистка…' : 'Да, очистить'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirming(null)}
+                      disabled={clearing === r.tab}
+                      className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors duration-[var(--duration-fast)] hover:text-fg disabled:opacity-50"
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirming(r.tab);
+                        setClearError(null);
+                      }}
+                      className="rounded-full border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors duration-[var(--duration-fast)] hover:bg-red-500/10"
+                    >
+                      Очистить данные
+                    </button>
                   </div>
                 )}
-              </>
-            )}
+              </div>
+            ) : null}
           </div>
         )}
       </li>

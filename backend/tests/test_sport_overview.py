@@ -113,6 +113,24 @@ def test_overview_empty_sport_returns_empty_lists_and_zero(client):
     assert body["achievement_count"] == 0
 
 
+def test_overview_returns_saved_level_even_when_unlinked(client):
+    """current_level_id отдаётся даже у ОТВЯЗАННОГО вида (мягкая отвязка не теряет уровень)."""
+    from sqlmodel import select
+
+    from app.models.sport import SportLevel
+    from app.models.user_sport import UserSport
+
+    sport_id = _seed_sport(client)
+    _seed_catalog(client._engine, sport_id)
+    with Session(client._engine) as s:
+        level_id = s.exec(select(SportLevel.id).where(SportLevel.sport_id == sport_id)).first()
+        # Связка отвязана (linked=False), но сохранённый уровень остаётся на строке.
+        s.add(UserSport(user_id=1, sport_id=sport_id, current_level_id=level_id, linked=False))
+        s.commit()
+    body = client.get(f"/sports/{sport_id}/overview").json()
+    assert body["current_level_id"] == level_id
+
+
 def test_overview_unknown_sport_returns_404(client):
     resp = client.get("/sports/9999/overview")
     assert resp.status_code == 404

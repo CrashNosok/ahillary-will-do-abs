@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # --- Локальные данные (SQLite, видео/скрины) ---
     data_dir: Path = Path("data")
 
+    # --- Корпус исследований для доказательного отчёта (research/studies.json в корне репо) ---
+    research_dir: Path = _BACKEND_DIR.parent / "research"
+
 
 def build_settings(**overrides) -> Settings:
     """Создаёт Settings, превращая ошибку валидации в понятное сообщение.

@@ -46,3 +46,22 @@ export function useUnlockAchievement(sportId: number) {
     onSuccess: () => qc.invalidateQueries({ queryKey: sportAchievementsKey(sportId) }),
   });
 }
+
+/** План навыков: добавить (в план) / убрать (из плана) навык — locked↔in_progress без пруфа. */
+export function usePlanAchievement(sportId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ achievementId, planned }: { achievementId: number; planned: boolean }) =>
+      planned ? api.planAchievement(achievementId) : api.unplanAchievement(achievementId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: sportAchievementsKey(sportId) }),
+  });
+}
+
+/** Сгенерировать набор навыков/ачивок для вида (когда каталог пуст). */
+export function useGenerateAchievements(sportId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.generateAchievements(sportId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: sportAchievementsKey(sportId) }),
+  });
+}

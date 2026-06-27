@@ -48,6 +48,7 @@ from app.models.goal import GoalStatus, SmartGoal
 from app.models.nutrition import FoodEntry
 from app.models.sport import Exercise
 from app.models.workout import CardioLog, StrengthSet, WorkoutSession
+from app.services.metrics import effective_targets, resolve_metric
 from app.services.workout_metrics import epley_1rm
 
 router = APIRouter(prefix="/progress", tags=["progress"])
@@ -303,14 +304,6 @@ class GoalProgressOut(BaseModel):
     metrics: list[GoalMetricProgress]
 
 
-def _resolve_body_col(key: str) -> str | None:
-    """Ключ цели (waist) → колонка body_measurement (waist_cm); None если нет такой."""
-    for candidate in (key, f"{key}_cm"):
-        if hasattr(BodyMeasurement, candidate):
-            return candidate
-    return None
-
-
 def _baseline_lookup(baseline_json: dict[str, Any] | None, *keys: str) -> float | None:
     """Значение базы из baseline_json по первому совпавшему ключу (число), иначе None."""
     if not baseline_json:
@@ -428,63 +421,37 @@ def _metric_progress(
 
 @router.get("/goal")
 def get_goal_progress(session: SessionDep, user: CurrentUser) -> GoalProgressOut:
-    # ponytail: SmartGoal-строку здесь НЕ скоупим — это кластер целей (своя карточка);
-    # B9 изолирует только чтения body/inbody-замеров внутри расчёта (через user_id ниже).
-    goal = session.exec(select(SmartGoal).where(SmartGoal.status == GoalStatus.active)).first()
+    # Активная цель СТРОГО владельца (M0·B5): SmartGoal владельческая, иначе прогресс
+    # считался бы по чужой цели против своих замеров (межаккаунтная утечка).
+    # order_by(id) — детерминизм, если активных целей вдруг больше одной.
+    goal = session.exec(
+        select(SmartGoal)
+        .where(SmartGoal.status == GoalStatus.active, SmartGoal.user_id == user.id)
+        .order_by(SmartGoal.id)
+    ).first()
     if goal is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Активной цели нет")
 
     today = dt.date.today()
     metrics: list[GoalMetricProgress] = []
 
-    if goal.target_weight_kg is not None:
-        metrics.append(
-            _metric_progress(
-                session,
-                goal,
-                today,
-                metric="weight_kg",
-                target=goal.target_weight_kg,
-                model=InbodyMeasurement,
-                col="weight_kg",
-                baseline_keys=("weight_kg",),
-                user_id=user.id,
-            )
-        )
-    if goal.target_body_fat_pct is not None:
-        metrics.append(
-            _metric_progress(
-                session,
-                goal,
-                today,
-                metric="body_fat_pct",
-                target=goal.target_body_fat_pct,
-                model=InbodyMeasurement,
-                col="body_fat_pct",
-                baseline_keys=("body_fat_pct",),
-                user_id=user.id,
-            )
-        )
-    for key, raw_target in (goal.target_measurements_json or {}).items():
-        if raw_target is None:
-            continue
-        col = _resolve_body_col(key)
-        if col is None:  # цель задана на неизмеримую колонку — пропускаем (нет данных)
-            continue
-        try:
-            target = float(raw_target)
-        except (TypeError, ValueError):
+    # Единая карта целей по реестру метрик (с фолбэком на легаси-поля). eta/on_track имеют
+    # смысл только для метрик тела (есть траектория замеров) — дневные нормы (model=None)
+    # пропускаем: их цели отдаются через объект цели и снапшот, а не через этот эндпоинт.
+    for key, target in effective_targets(goal).items():
+        spec = resolve_metric(key)
+        if spec is None or spec.model is None:
             continue
         metrics.append(
             _metric_progress(
                 session,
                 goal,
                 today,
-                metric=col,
+                metric=spec.key,
                 target=target,
-                model=BodyMeasurement,
-                col=col,
-                baseline_keys=(key, col),
+                model=spec.model,
+                col=spec.column,
+                baseline_keys=(spec.key,),
                 user_id=user.id,
             )
         )

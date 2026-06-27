@@ -128,6 +128,33 @@ def test_decimal_nutrient_on_product():
     assert sharlotka.fat_g == 6.6
 
 
+def test_extended_nutrients_empty_on_sample():
+    # В сэмпле Клетч/Сахар/Н·жир пусты (',,') → None (детали появятся, когда экспорт их несёт)
+    kvas = next(e for e in _entries() if "Квас" in e.product_name)
+    assert kvas.fiber_g is None
+    assert kvas.sugar_g is None
+    assert kvas.saturated_fat_g is None
+
+
+def test_extended_nutrients_parsed_when_present():
+    # Полная строка: satfat=col3, fiber=col5, sugar=col6 — читаются по индексам
+    raw = b"Header,X\r\n  Product,200,10,3,40,5,8,15,,,\r\n   100 g\r\n"
+    e = parse_food_diary(raw, filename="FoodDiary_260620_foods.csv")[0]
+    assert (e.kcal, e.fat_g, e.carb_g, e.protein_g) == (200.0, 10.0, 40.0, 15.0)
+    assert e.saturated_fat_g == 3.0
+    assert e.fiber_g == 5.0
+    assert e.sugar_g == 8.0
+
+
+def test_short_row_legacy_csv_no_index_error():
+    # Старый короткий экспорт (обрывается до новых колонок) → новые поля None, без IndexError
+    raw = b"Header,X\r\n  Product,200,10\r\n   100 g\r\n"
+    e = parse_food_diary(raw, filename="FoodDiary_260620_foods.csv")[0]
+    assert e.kcal == 200.0 and e.fat_g == 10.0
+    assert e.carb_g is None and e.protein_g is None
+    assert e.fiber_g is None and e.sugar_g is None and e.saturated_fat_g is None
+
+
 def test_empty_meal_has_no_products():
     # ' Перекус/Другое,,,,,,,,,,' — приём без продуктов, в выдаче его нет
     assert not any(e.meal == "Перекус/Другое" for e in _entries())

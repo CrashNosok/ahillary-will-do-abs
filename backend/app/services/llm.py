@@ -19,15 +19,30 @@ LLM_TIMEOUT_SECONDS = 60.0
 # (структурный план) длиннее: при 1024 модель обрывала JSON на полуслове → невалидный ответ.
 # Это лишь ВЕРХНЯЯ граница: модель отдаёт, сколько нужно, поэтому vision не дорожает от запаса.
 _MAX_TOKENS = 4096
+# Большой доказательный отчёт (длинный markdown-нарратив + цитаты) не влезает в 4096 →
+# модель обрывает JSON. Для reco-пути поднимаем потолок и таймаут (Opus генерит дольше).
+REPORT_MAX_TOKENS = 16000
+REPORT_TIMEOUT_SECONDS = 120.0
 
 
 class LLMError(RuntimeError):
     """Не удалось получить ответ от LLM (сеть, авторизация, ошибка API)."""
 
 
-def text(prompt: str, model: str | None = None) -> str:
-    """Текстовый запрос. По умолчанию модель MODEL_RECO."""
-    return _create(model or settings.model_reco, [{"type": "text", "text": prompt}])
+def text(
+    prompt: str,
+    model: str | None = None,
+    max_tokens: int | None = None,
+    timeout: float | None = None,
+) -> str:
+    """Текстовый запрос. По умолчанию модель MODEL_RECO; max_tokens/timeout переопределяемы
+    (большой отчёт зовёт с REPORT_MAX_TOKENS/REPORT_TIMEOUT_SECONDS)."""
+    return _create(
+        model or settings.model_reco,
+        [{"type": "text", "text": prompt}],
+        max_tokens=max_tokens or _MAX_TOKENS,
+        timeout=timeout or LLM_TIMEOUT_SECONDS,
+    )
 
 
 def vision(image_bytes: bytes, prompt: str, model: str | None = None) -> str:
@@ -41,7 +56,12 @@ def vision(image_bytes: bytes, prompt: str, model: str | None = None) -> str:
     return _create(model or settings.model_vision, content)
 
 
-def _create(model: str, content: list[dict]) -> str:
+def _create(
+    model: str,
+    content: list[dict],
+    max_tokens: int = _MAX_TOKENS,
+    timeout: float = LLM_TIMEOUT_SECONDS,
+) -> str:
     """Шлёт один user-message в OpenRouter /chat/completions и возвращает текст ответа."""
     try:
         resp = httpx.post(
@@ -49,10 +69,10 @@ def _create(model: str, content: list[dict]) -> str:
             headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
             json={
                 "model": model,
-                "max_tokens": _MAX_TOKENS,
+                "max_tokens": max_tokens,
                 "messages": [{"role": "user", "content": content}],
             },
-            timeout=LLM_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
         resp.raise_for_status()
         data = resp.json()

@@ -59,8 +59,10 @@ export function makeSparks(opts: SparkOptions = {}): SparkBurst {
       y: Math.round(50 + sin * radius),
       dx: Math.round(cos * drift),
       dy: Math.round(sin * drift),
-      dur: Math.round(baseDur + noise(i + 11) * 600),
-      delay: Math.round(noise(i + 17) * 900),
+      // Ровный темп: узкий разброс длительности (≈единая скорость) + плавный стаггер старта
+      // по индексу (ровная «волна» искр), а не случайные сгустки из чистого шума.
+      dur: Math.round(baseDur + noise(i + 11) * 250),
+      delay: Math.round((i / count) * 500 + noise(i + 17) * 120),
     };
   });
 

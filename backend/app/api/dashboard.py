@@ -40,6 +40,7 @@ class DayFlags(BaseModel):
     has_training: bool
     has_measurement: bool
     has_weight: bool
+    has_inbody: bool  # загружен скрин анализа InBody (отдельно от ввода веса)
     has_body: bool
     has_photo: bool
     has_surpassed_self: bool

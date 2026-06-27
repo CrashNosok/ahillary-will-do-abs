@@ -11,12 +11,23 @@ import datetime as dt
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser
 from app.core.db import get_session
 from app.models.goal import GoalStatus, SmartGoal
+from app.services.metrics import BY_KEY
+
+
+def _validate_metric_keys(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Цели можно ставить только по известным реестру метрикам (services/metrics.py)."""
+    if value:
+        unknown = sorted(set(value) - set(BY_KEY))
+        if unknown:
+            raise ValueError(f"Неизвестные метрики цели: {', '.join(unknown)}")
+    return value
+
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 
@@ -24,25 +35,27 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 
 class GoalCreate(BaseModel):
-    target_weight_kg: float | None = None
-    target_body_fat_pct: float | None = None
-    target_measurements_json: dict[str, Any] | None = None
+    # status не принимаем из тела — новая цель всегда active (архивируют отдельным роутом).
+    target_metrics_json: dict[str, float] | None = None
     start_date: dt.date | None = None
     deadline: dt.date | None = None
     baseline_json: dict[str, Any] | None = None
     why_notes: str | None = None
-    status: GoalStatus = GoalStatus.active
+
+    _check_metrics = field_validator("target_metrics_json")(_validate_metric_keys)
+    _check_baseline = field_validator("baseline_json")(_validate_metric_keys)
 
 
 class GoalUpdate(BaseModel):
-    target_weight_kg: float | None = None
-    target_body_fat_pct: float | None = None
-    target_measurements_json: dict[str, Any] | None = None
+    target_metrics_json: dict[str, float] | None = None
     start_date: dt.date | None = None
     deadline: dt.date | None = None
     baseline_json: dict[str, Any] | None = None
     why_notes: str | None = None
     status: GoalStatus | None = None
+
+    _check_metrics = field_validator("target_metrics_json")(_validate_metric_keys)
+    _check_baseline = field_validator("baseline_json")(_validate_metric_keys)
 
 
 def _archive_other_active(session: Session, keep_id: int | None, user_id: int) -> None:
@@ -66,11 +79,10 @@ def _get_or_404(session: Session, goal_id: int, user_id: int) -> SmartGoal:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_goal(payload: GoalCreate, session: SessionDep, user: CurrentUser) -> SmartGoal:
-    goal = SmartGoal(**payload.model_dump(), user_id=user.id)
+    goal = SmartGoal(**payload.model_dump(), user_id=user.id)  # всегда active (status не из тела)
     session.add(goal)
     session.flush()  # присвоить goal.id до архивации прочих активных
-    if goal.status == GoalStatus.active:
-        _archive_other_active(session, keep_id=goal.id, user_id=user.id)
+    _archive_other_active(session, keep_id=goal.id, user_id=user.id)
     session.commit()
     session.refresh(goal)
     return goal

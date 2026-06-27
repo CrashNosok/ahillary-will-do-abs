@@ -8,7 +8,6 @@ import ChallengesPage from './components/ChallengesPage';
 import CoachPhrasesPage from './components/CoachPhrasesPage';
 import Dashboard from './components/Dashboard';
 import DataEntryPage from './components/DataEntryPage';
-import GoalPage from './components/GoalPage';
 import ImportPage from './components/ImportPage';
 import InbodyImportPage from './components/InbodyImportPage';
 import PlaceholderPage from './components/PlaceholderPage';
@@ -49,7 +48,8 @@ export default function App() {
             <Route path="coach-phrases" element={<CoachPhrasesPage />} />
             <Route path="workouts" element={<WorkoutLoggerPage />} />
             <Route path="recommendations" element={<RecommendationsPage />} />
-            <Route path="goal" element={<GoalPage />} />
+            {/* Цели переехали в «Мой кабинет»: старую ссылку /goal редиректим туда. */}
+            <Route path="goal" element={<Navigate to="/profile" replace />} />
             <Route path="body" element={<BodyMeasurementsPage />} />
             <Route path="import" element={<ImportPage />} />
             <Route path="import-activity" element={<ActivityImportPage />} />

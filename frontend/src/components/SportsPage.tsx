@@ -3,7 +3,7 @@
  *  категории · мини-описание · кнопка-тоггл Привязать/Привязан→Отвязать). «Предложить вид спорта»
  *  — внизу. Упражнения — на странице вида (/sports/:id). */
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ApiError,
@@ -24,20 +24,12 @@ import {
   useUnlinkSport,
 } from '../lib/sports';
 
-// Русские множественные формы для счётчиков (1 ступень / 2 ступени / 5 ступеней).
-function plural(n: number, one: string, few: string, many: string): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
-}
-
 const ZERO_SUMMARY: Omit<SportSummary, 'sport_id'> = {
   levels: 0,
   events: 0,
   mentors: 0,
   challenges: 0,
+  exercises: 0,
   achievements_total: 0,
   achievements_unlocked: 0,
   workouts: 0,
@@ -48,7 +40,24 @@ const ZERO_SUMMARY: Omit<SportSummary, 'sport_id'> = {
 const inputCls =
   'rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent';
 
-const cardGridCls = 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3';
+// 2 карточки в ряд (а не 3) — карточки шире, влезает полезная сводка.
+const cardGridCls = 'grid gap-5 md:grid-cols-2';
+
+// Визуальный «характер» категории: эмодзи + тон (oklch hue) для значка/акцента/свечения карточки.
+// Один источник правды — чтобы каждая дисциплина выглядела по-своему и «хотелось тыкнуть».
+const CATEGORY_META: Record<SportCategory, { icon: string; hue: number }> = {
+  strength: { icon: '🏋️', hue: 35 },
+  endurance: { icon: '🏃', hue: 150 },
+  combat: { icon: '🥊', hue: 20 },
+  team: { icon: '⚽', hue: 255 },
+  racket: { icon: '🎾', hue: 115 },
+  action: { icon: '🪂', hue: 320 },
+  precision: { icon: '🎯', hue: 200 },
+  artistic: { icon: '🤸', hue: 350 },
+  other: { icon: '⭐', hue: 90 },
+};
+const categoryMeta = (c: SportCategory) => CATEGORY_META[c] ?? CATEGORY_META.other;
+const hueColor = (hue: number, l = 80, c = 0.14) => `oklch(${l}% ${c} ${hue})`;
 
 function errorMessage(err: unknown): string | null {
   if (err instanceof ApiError) return err.message;
@@ -121,7 +130,6 @@ export default function SportsPage() {
                   sport={sport}
                   linked={linkedIds.has(sport.id)}
                   summary={summaryOf(sport.id)}
-                  mine
                 />
               </li>
             ))}
@@ -166,12 +174,7 @@ export default function SportsPage() {
           <ul className={cardGridCls}>
             {catalog.map((sport) => (
               <li key={sport.id}>
-                <SportCard
-                  sport={sport}
-                  linked={false}
-                  summary={summaryOf(sport.id)}
-                  mine={false}
-                />
+                <SportCard sport={sport} linked={false} summary={summaryOf(sport.id)} />
               </li>
             ))}
           </ul>
@@ -183,44 +186,70 @@ export default function SportsPage() {
   );
 }
 
-/** Карточка вида спорта (единый дизайн): имя (→ /sports/:id) · нейтральный чип категории ·
- *  мини-описание · кнопка-тоггл. Цвет кнопки логичен по состоянию:
- *   - НЕ привязан → сплошной акцент «Привязать» (призыв к действию);
- *   - привязан → мягкий акцент «✓ Привязан», на ховере краснеет в «Отвязать» (удаление).
- *  Привязанная карточка слегка подсвечена акцентной рамкой. */
+/** Карточка вида спорта — единый шаблон (одинаковое тело в «Мои» и каталоге, отличаются лишь
+ *  данными): описание · текущий уровень (нулевой по умолчанию) · полоса достижений (0 по
+ *  умолчанию) · сетка из 4 метрик с цветовым кодом. Категория задаёт тон (значок-медальон +
+ *  угловое свечение + акценты через CSS-var --cat), карточка приподнимается на ховере и целиком
+ *  кликабельна. Кнопка-тоггл: не привязан → «Привязать»; привязан → «✓ Привязан», на ховере
+ *  краснеет в «Отвязать». */
 function SportCard({
   sport,
   linked,
   summary,
-  mine,
 }: {
   sport: Sport;
   linked: boolean;
   summary: SportSummary;
-  mine: boolean;
 }) {
   const link = useLinkSport();
   const unlink = useUnlinkSport();
   const pending = link.isPending || unlink.isPending;
   const toggle = () => (linked ? unlink.mutate(sport.id) : link.mutate({ sport_id: sport.id }));
   const error = errorMessage(link.error ?? unlink.error);
+  const meta = categoryMeta(sport.category);
+  const style = { '--cat': hueColor(meta.hue) } as CSSProperties;
 
   return (
-    <div
-      className={`flex h-full flex-col gap-3 rounded-[var(--radius-card)] border bg-gradient-to-br from-panel to-surface p-5 transition-colors duration-[var(--duration-fast)] ${
-        linked ? 'border-accent/40' : 'border-line'
-      }`}
+    <article
+      style={style}
+      className="group/card relative isolate flex h-full cursor-pointer flex-col gap-4 overflow-hidden rounded-[var(--radius-card)] border border-line bg-gradient-to-br from-panel to-surface p-5 transition-all duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-1 hover:border-[var(--cat)] hover:shadow-[0_22px_50px_-24px_var(--cat)]"
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-col gap-1.5">
+      {/* Атмосфера категории: мягкое свечение в углу + тонкая верхняя полоса. -z-10 + isolate
+          держат их за контентом, не перехватывая клики (вся карточка кликабельна — см. ниже). */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-16 -top-16 -z-10 size-44 rounded-full opacity-25 blur-3xl transition-opacity duration-[var(--duration-normal)] group-hover/card:opacity-50"
+        style={{ background: 'var(--cat)' }}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-1"
+        style={{ background: 'linear-gradient(90deg, transparent, var(--cat), transparent)' }}
+      />
+
+      {/* Шапка: медальон-значок · имя + категория (микроподпись) · кнопка-тоггл. Шапка НЕ
+          positioned — чтобы растянутая ссылка имени (after:inset-0) покрыла всю карточку. */}
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className="grid size-12 shrink-0 place-items-center rounded-2xl border border-[var(--cat)]/40 text-2xl"
+          style={{
+            background:
+              'radial-gradient(120% 120% at 30% 20%, color-mix(in oklch, var(--cat) 38%, transparent), transparent 70%)',
+          }}
+        >
+          {meta.icon}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          {/* Растянутая ссылка: ::after покрывает всю карточку → клик в любом месте ведёт на
+              страницу вида, курсор — pointer. Интерактив выше (кнопка) поднят z-10. */}
           <Link
             to={`/sports/${sport.id}`}
-            className="font-display text-lg font-semibold tracking-tight transition-colors duration-[var(--duration-fast)] hover:text-accent"
+            className="font-display text-xl font-bold leading-tight tracking-tight transition-colors duration-[var(--duration-fast)] after:absolute after:inset-0 after:content-[''] hover:text-[var(--cat)]"
           >
             {sport.name}
           </Link>
-          {/* Категория — нейтральный чип (НЕ акцентный, чтобы не сливаться с зелёной кнопкой). */}
-          <span className="w-fit rounded-full border border-line bg-ink/30 px-2.5 py-0.5 text-xs font-medium text-muted">
+          <span className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted">
             {sportCategoryLabel(sport.category)}
           </span>
         </div>
@@ -231,7 +260,7 @@ function SportCard({
             disabled={pending}
             aria-pressed
             title="Нажмите, чтобы отвязать"
-            className="group/link inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="group/link relative z-10 inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors duration-[var(--duration-fast)] hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {pending ? (
               '…'
@@ -248,66 +277,161 @@ function SportCard({
             onClick={toggle}
             disabled={pending}
             aria-pressed={false}
-            className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink transition-opacity duration-[var(--duration-fast)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="relative z-10 shrink-0 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink transition-opacity duration-[var(--duration-fast)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {pending ? '…' : 'Привязать'}
           </button>
         )}
       </div>
 
-      {sport.description && (
-        <p className="text-sm leading-relaxed text-muted">{sport.description}</p>
-      )}
-      {/* Сводка: в «Мои» — персональная статистика, в каталоге — глобальные счётчики вида. */}
-      {mine ? <PersonalStats summary={summary} /> : <CatalogStats summary={summary} />}
+      {/* Описание — фиксированный блок ровно в 3 строки (min-h 3lh + обрезка), чтобы карточки
+          с описанием на 1 и на 3 строки были одной высоты. */}
+      <p className="line-clamp-3 min-h-[3lh] text-sm leading-relaxed text-muted">
+        {sport.description}
+      </p>
+
+      {/* Тело — единое: уровень (нулевой по умолчанию) + достижения + метрики с цветовым кодом. */}
+      <CardBody s={summary} />
+
       {error && (
-        <p role="alert" className="text-sm font-medium text-amber">
+        <p role="alert" className="relative z-10 text-sm font-medium text-amber">
           {error}
         </p>
       )}
+
+      {/* Призыв открыть — декоративный (вся карточка уже ссылка); стрелка уезжает на ховере. */}
+      <span className="mt-auto inline-flex w-fit items-center gap-1 pt-1 text-sm font-semibold text-[var(--cat)]">
+        Открыть
+        <span className="transition-transform duration-[var(--duration-fast)] group-hover/card:translate-x-1">
+          →
+        </span>
+      </span>
+    </article>
+  );
+}
+
+/** Метрики дисциплины: ключ суммы · значок · подпись · тон (oklch hue) для цветового кода.
+ *  Свой цвет/иконка у каждой → глаз цепляется и считывает мгновенно, а не читает колонку чисел.
+ *  ВАЖНО (скоуп данных): «Мои тренировки» — личный счётчик (по user_id), а упражнения/события/
+ *  челленджи — это ОБЩИЙ каталог дисциплины (не «мои»). Поэтому они разделены: личное наверху,
+ *  каталожное — под подписью «В каталоге», чтобы число челленджей не читалось как «мои». */
+type MetricMeta = { key: keyof SportSummary; icon: string; label: string; hue: number };
+const PERSONAL_METRICS = [
+  { key: 'workouts', icon: '🏋️', label: 'Мои тренировки', hue: 255 },
+] as const satisfies readonly MetricMeta[];
+const CATALOG_METRICS = [
+  { key: 'exercises', icon: '🤸', label: 'Упражнения', hue: 145 },
+  { key: 'events', icon: '📅', label: 'События', hue: 70 },
+  { key: 'challenges', icon: '🔥', label: 'Челленджи', hue: 330 },
+] as const satisfies readonly MetricMeta[];
+
+/** Одна метрика: цветной значок + крупное число + подпись. Цвет и иконка — мгновенное узнавание. */
+function MetricCell({
+  icon,
+  label,
+  value,
+  hue,
+}: {
+  icon: string;
+  label: string;
+  value: number;
+  hue: number;
+}) {
+  const style = { '--m': hueColor(hue) } as CSSProperties;
+  return (
+    <div
+      style={style}
+      className="flex items-center gap-2.5 rounded-xl border border-[var(--m)]/25 bg-[var(--m)]/8 px-3 py-2.5"
+    >
+      <span
+        aria-hidden
+        className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--m)]/15 text-base"
+      >
+        {icon}
+      </span>
+      <div className="flex min-w-0 flex-col leading-none">
+        <span className="font-display text-xl font-bold tabular-nums text-fg">{value}</span>
+        <span className="truncate text-[0.65rem] font-medium uppercase tracking-wide text-muted">
+          {label}
+        </span>
+      </div>
     </div>
   );
 }
 
-/** Глобальные счётчики вида (одинаковы для всех): ступени · события · челленджи · ачивки.
- *  Показываем только ненулевое; ничего нет → ничего не рисуем. */
-function CatalogStats({ summary: s }: { summary: SportSummary }) {
-  const parts = [
-    s.levels && `${s.levels} ${plural(s.levels, 'ступень', 'ступени', 'ступеней')}`,
-    s.events && `${s.events} ${plural(s.events, 'событие', 'события', 'событий')}`,
-    s.challenges &&
-      `${s.challenges} ${plural(s.challenges, 'челлендж', 'челленджа', 'челленджей')}`,
-    s.achievements_total &&
-      `${s.achievements_total} ${plural(s.achievements_total, 'ачивка', 'ачивки', 'ачивок')}`,
-  ].filter(Boolean) as string[];
-  if (parts.length === 0) return null;
-  return <p className="mt-auto pt-1 text-xs text-muted">{parts.join(' · ')}</p>;
-}
+/** Тело карточки (единое для «Мои» и каталога; отличаются лишь данными):
+ *   - текущий уровень — есть всегда, «Нулевой» нейтральным тоном, реальный — в тоне категории;
+ *   - достижения — полоса выполнено/всего (0 по умолчанию), без кубков (число и шкала и так всё
+ *     показывают);
+ *   - сетка из 4 метрик с цветовым кодом (тренировки/упражнения/события/челленджи). */
+function CardBody({ s }: { s: SportSummary }) {
+  const hasLevel = !!s.current_level;
+  const hasAch = s.achievements_total > 0;
+  const pct = hasAch ? Math.round((s.achievements_unlocked / s.achievements_total) * 100) : 0;
+  const allDone = hasAch && s.achievements_unlocked === s.achievements_total;
 
-/** Персональная статистика (в «Мои виды спорта»): ачивки выполнено/всего · уровень · тренировки.
- *  Акцентные пилюли. Прогресса нет → подсказка начать. Прогресс сохраняется и после отвязки. */
-function PersonalStats({ summary: s }: { summary: SportSummary }) {
-  const pills = [
-    s.achievements_total > 0 && `${s.achievements_unlocked}/${s.achievements_total} ачивок`,
-    s.current_level && `Уровень: ${s.current_level}`,
-    s.workouts > 0 &&
-      `${s.workouts} ${plural(s.workouts, 'тренировка', 'тренировки', 'тренировок')}`,
-  ].filter(Boolean) as string[];
-  if (pills.length === 0) {
-    return (
-      <p className="mt-auto pt-1 text-xs text-muted">Прогресса пока нет — начните тренироваться.</p>
-    );
-  }
   return (
-    <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
-      {pills.map((p) => (
-        <span
-          key={p}
-          className="rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent"
-        >
-          {p}
+    <div className="flex flex-col gap-3">
+      {/* Уровень — на каждой карточке; «Нулевой» нейтрально, реальный — в тоне категории. */}
+      <span
+        className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${
+          hasLevel ? 'border-[var(--cat)]/45 bg-[var(--cat)]/12' : 'border-line bg-ink/40'
+        }`}
+      >
+        <span aria-hidden>🎖</span>
+        <span className="text-muted">Уровень:</span>
+        <span className={`font-bold ${hasLevel ? 'text-[var(--cat)]' : 'text-fg'}`}>
+          {s.current_level ?? 'Нулевой'}
         </span>
-      ))}
+      </span>
+
+      {/* Достижения — подпись + число (0 по умолчанию) + полоса прогресса. */}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-semibold uppercase tracking-wide text-muted">Достижения</span>
+          <span className="font-display text-sm font-bold tabular-nums text-fg">
+            {allDone ? (
+              <span className="text-accent">Всё открыто ✨</span>
+            ) : hasAch ? (
+              <>
+                {s.achievements_unlocked}
+                <span className="text-muted">/{s.achievements_total}</span>
+              </>
+            ) : (
+              '0'
+            )}
+          </span>
+        </div>
+        <div
+          role="progressbar"
+          aria-label="Достижения"
+          aria-valuemin={0}
+          aria-valuemax={s.achievements_total}
+          aria-valuenow={s.achievements_unlocked}
+          className="h-2 overflow-hidden rounded-full bg-ink shadow-inner"
+        >
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-[var(--cat)] to-accent transition-[width] duration-[var(--duration-normal)] ease-[var(--ease-out-expo)]"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Метрики — цветовой код вместо колонки чисел. Личное (мои тренировки) отделено от
+          каталожного (упражнения/события/челленджи), чтобы скоуп чисел читался однозначно. */}
+      <div className="mt-1 flex flex-col gap-2 border-t border-line/50 pt-3">
+        {PERSONAL_METRICS.map((m) => (
+          <MetricCell key={m.key} icon={m.icon} label={m.label} value={s[m.key]} hue={m.hue} />
+        ))}
+        <span className="mt-1 text-[0.6rem] font-semibold uppercase tracking-wide text-muted">
+          В каталоге дисциплины
+        </span>
+        <div className="grid grid-cols-3 gap-2">
+          {CATALOG_METRICS.map((m) => (
+            <MetricCell key={m.key} icon={m.icon} label={m.label} value={s[m.key]} hue={m.hue} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

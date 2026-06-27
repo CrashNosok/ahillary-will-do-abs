@@ -48,7 +48,8 @@ def recompute(date: dt.date, session: Session, user_id: int) -> DeficitDay:
     burn = _burn_kcal(date, session, user_id)
     deficit = eaten - burn if eaten is not None and burn is not None else None
 
-    row = session.get(DeficitDay, date) or DeficitDay(date=date, user_id=user_id)
+    # Составной PK (user_id, date), M0·B7 — берём строго СВОЙ день, а не чужой за ту же дату.
+    row = session.get(DeficitDay, (user_id, date)) or DeficitDay(date=date, user_id=user_id)
     row.user_id = user_id
     row.eaten_kcal = eaten
     row.burn_kcal = burn

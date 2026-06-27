@@ -3,8 +3,13 @@
  *  Название дисциплины в карточке берём из каталога /sports (map sport_id→name). */
 
 import { useMemo, useState } from 'react';
-import { ApiError, type Challenge } from '../lib/api';
-import { useChallenges, useJoinChallenge, useUploadChallengeProof } from '../lib/challenges';
+import { ApiError, type Challenge, type ChallengeParticipantStatus } from '../lib/api';
+import {
+  useChallenges,
+  useJoinChallenge,
+  useMyChallengeParticipations,
+  useUploadChallengeProof,
+} from '../lib/challenges';
 import { useSports } from '../lib/sports';
 import VideoProofUploader from './VideoProofUploader';
 
@@ -17,9 +22,15 @@ function errorMessage(err: unknown): string | null {
 export default function ChallengesPage() {
   const { data: challenges, isPending } = useChallenges();
   const { data: sports } = useSports();
+  const { data: participations } = useMyChallengeParticipations();
   const sportNames = useMemo(
     () => new Map((sports ?? []).map((s) => [s.id, s.name] as const)),
     [sports],
+  );
+  // Карта challenge_id→статус моего участия — кнопка/статус читаются сразу при загрузке.
+  const myStatus = useMemo(
+    () => new Map((participations ?? []).map((p) => [p.challenge_id, p.status] as const)),
+    [participations],
   );
 
   return (
@@ -48,7 +59,11 @@ export default function ChallengesPage() {
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {challenges.map((challenge) => (
             <li key={challenge.id}>
-              <ChallengeCard challenge={challenge} sportName={sportNames.get(challenge.sport_id)} />
+              <ChallengeCard
+                challenge={challenge}
+                sportName={sportNames.get(challenge.sport_id)}
+                status={myStatus.get(challenge.id)}
+              />
             </li>
           ))}
         </ul>
@@ -57,20 +72,35 @@ export default function ChallengesPage() {
   );
 }
 
-function ChallengeCard({ challenge, sportName }: { challenge: Challenge; sportName?: string }) {
+const STATUS_LABEL: Record<ChallengeParticipantStatus, string> = {
+  active: 'Вы участвуете',
+  completed: 'Челлендж завершён ✓',
+  abandoned: 'Вы покинули челлендж',
+};
+
+function ChallengeCard({
+  challenge,
+  sportName,
+  status,
+}: {
+  challenge: Challenge;
+  sportName?: string;
+  status?: ChallengeParticipantStatus;
+}) {
   const join = useJoinChallenge();
-  // Эндпоинта «мои участия» пока нет (M6·F25): стартуем как не-участник и отмечаем участие
-  // из ответа join. Повторный join существующего участия даёт 409 — это тоже «участвую».
-  const [joined, setJoined] = useState(false);
-  // Видео-пруф доступен только участнику (бэкенд: 404, если не участвуешь) — отсюда после join.
+  // Участие из реального состояния (карта «мои участия»); локальный флаг — оптимистичный
+  // дубль на случай гонки до инвалидации (повторный join даёт 409 — это тоже «участвую»).
+  const [localJoined, setLocalJoined] = useState(false);
+  const joined = status !== undefined || localJoined;
+  // Видео-пруф доступен только участнику (бэкенд: 404, если не участвуешь).
   const proof = useUploadChallengeProof();
   const hasProof = proof.isSuccess;
 
   const onJoin = () =>
     join.mutate(challenge.id, {
-      onSuccess: () => setJoined(true),
+      onSuccess: () => setLocalJoined(true),
       onError: (err) => {
-        if (err instanceof ApiError && err.status === 409) setJoined(true);
+        if (err instanceof ApiError && err.status === 409) setLocalJoined(true);
       },
     });
 
@@ -115,7 +145,7 @@ function ChallengeCard({ challenge, sportName }: { challenge: Challenge; sportNa
             disabled
             className="w-full rounded-xl border border-accent bg-accent/15 px-5 py-3 font-display font-semibold text-accent"
           >
-            Вы участвуете
+            {status ? STATUS_LABEL[status] : 'Вы участвуете'}
           </button>
         ) : (
           <button

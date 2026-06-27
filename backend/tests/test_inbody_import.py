@@ -216,3 +216,42 @@ def test_import_requires_auth(engine, uploads):
         files={"file": ("inbody.png", PNG, "image/png")},
     )
     assert resp.status_code == 401
+
+
+# --- Ручной ввод без скрина (как у активности) + предзаполнение -------------------
+
+
+def test_manual_import_creates_row_without_image(client, engine, uploads):
+    """POST /import/inbody/manual пишет 5 полей без скрина: файла на диске нет."""
+    resp = client.post(
+        "/import/inbody/manual",
+        json={"date": "2026-06-21", "weight_kg": 80.5, "body_fat_pct": 15.0},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["weight_kg"] == 80.5
+    assert body["body_fat_pct"] == 15.0
+    assert body["source_image_path"] is None
+    assert list(uploads.iterdir()) == []  # ручной ввод файлов не создаёт
+
+
+def test_manual_import_preserves_screen_and_metrics(client, engine, uploads):
+    """Ручная правка веса не должна стирать ранее распознанный состав/исходник."""
+    assert _upload(client, date="2026-06-22").status_code == 201  # сначала скрин
+    resp = client.post(
+        "/import/inbody/manual",
+        json={"date": "2026-06-22", "weight_kg": 70.0},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["weight_kg"] == 70.0  # вес обновлён
+    assert body["source_image_path"].endswith("2026-06-22.png")  # исходник цел
+    assert body["metrics_json"] == METRICS_JSON  # прочие показатели целы
+    assert len(_rows(engine)) == 1  # апсёрт, не дубль
+
+
+def test_get_inbody_day(client, engine, uploads):
+    """GET /import/inbody/{date}: запись за день или null (без 404) на пустом дне."""
+    assert client.get("/import/inbody/2026-06-23").json() is None
+    client.post("/import/inbody/manual", json={"date": "2026-06-23", "weight_kg": 77.7})
+    assert client.get("/import/inbody/2026-06-23").json()["weight_kg"] == 77.7

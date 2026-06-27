@@ -14,12 +14,14 @@ from app.api import (
     challenges,
     clear,
     dashboard,
+    exercise_targets,
     exercises,
     food,
     goals,
     health,
     inbody,
     me_sports,
+    metrics,
     progress,
     recommendations,
     snapshot,
@@ -32,7 +34,10 @@ from app.core.config import CORS_ORIGINS
 from app.core.db import init_db
 from app.core.seed import (
     seed_initial_base_challenge,
+    seed_initial_extra_exercises,
+    seed_initial_sport_content,
     seed_initial_sport_levels,
+    seed_initial_sport_skills,
     seed_initial_sports,
     seed_initial_user,
 )
@@ -41,13 +46,17 @@ from app.core.seed import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # На старте: каталоги data/ и таблицы БД (data/app.db), затем сид юзера, каталога спортов,
-    # лестниц уровней дисциплин (уровни идут после спортов — им нужны их id) и базового
-    # челленджа WIPEOUTS (ему нужны и юзер-автор, и action-дисциплина).
+    # лестниц уровней дисциплин (уровни идут после спортов — им нужны их id), базового
+    # челленджа WIPEOUTS (ему нужны и юзер-автор, и action-дисциплина) и богатого контента
+    # дисциплин (описания/упражнения/события/наставники/рекомендации/челленджи — после спортов).
     init_db()
     seed_initial_user()
     seed_initial_sports()
     seed_initial_sport_levels()
     seed_initial_base_challenge()
+    seed_initial_sport_content()
+    seed_initial_extra_exercises()
+    seed_initial_sport_skills()
     yield
 
 
@@ -77,7 +86,9 @@ app.include_router(sponsors.router)
 app.include_router(challenges.router)
 app.include_router(clear.router)
 app.include_router(me_sports.router)
+app.include_router(metrics.router)
 app.include_router(exercises.router)
+app.include_router(exercise_targets.router)
 app.include_router(workouts.router)
 app.include_router(snapshot.router)
 app.include_router(recommendations.router)

@@ -73,7 +73,9 @@ def other(engine):
             BodyMeasurement(user_id=2, date=TODAY, waist_cm=99.0),
             InbodyMeasurement(user_id=2, date=TODAY, weight_kg=99.0, body_fat_pct=33.0),
         ]
-        goal = SmartGoal(user_id=2, status=GoalStatus.active, target_weight_kg=70.0)
+        goal = SmartGoal(
+            user_id=2, status=GoalStatus.active, target_metrics_json={"weight_kg": 70.0}
+        )
         rec = Recommendation(user_id=2, model="test-model", raw_text="чужая рекомендация")
         for row in (*rows, goal, rec):
             session.add(row)
@@ -142,7 +144,7 @@ def test_archive_other_goal_returns_404(client, other):
 def test_create_active_goal_does_not_archive_other_user(client, engine, other):
     # У чужого юзера есть активная цель. Создание активной цели владельцем НЕ должно
     # её архивировать — инвариант «одна активная» скоупится по пользователю.
-    resp = client.post("/goals", json={"target_weight_kg": 80})
+    resp = client.post("/goals", json={"target_metrics_json": {"weight_kg": 80}})
     assert resp.status_code == 201
     with Session(engine) as session:
         foreign = session.get(SmartGoal, other["goal"])
@@ -169,7 +171,7 @@ def test_owner_sees_own_dashboard_and_goal(client, engine, other):
         session.add(FoodEntry(user_id=1, date=TODAY, meal="Обед", product_name="y", kcal=400.0))
         session.add(ActivityDay(user_id=1, date=TODAY, total_kcal=1000))
         session.commit()
-    own_goal = client.post("/goals", json={"target_weight_kg": 75}).json()
+    own_goal = client.post("/goals", json={"target_metrics_json": {"weight_kg": 75}}).json()
 
     body = client.get("/dashboard", params={"start": str(TODAY), "end": str(TODAY)}).json()
     [day] = body["days"]

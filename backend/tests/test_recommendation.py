@@ -63,7 +63,7 @@ def client(engine):
 
 def _seed_goal(engine) -> int:
     with Session(engine) as s:
-        goal = SmartGoal(user_id=1, target_weight_kg=75.0, status="active")
+        goal = SmartGoal(user_id=1, target_metrics_json={"weight_kg": 75.0}, status="active")
         s.add(goal)
         s.commit()
         s.refresh(goal)
@@ -74,10 +74,35 @@ def _reply(*texts: str):
     """Очередь ответов llm.text: на каждый вызов выдаёт следующий текст из списка."""
     queue = list(texts)
 
-    def fake_text(prompt: str, model: str | None = None) -> str:
+    def fake_text(prompt: str, model: str | None = None, **kwargs) -> str:
         return queue.pop(0)
 
     return fake_text
+
+
+@pytest.fixture(autouse=True)
+def _stub_corpus(monkeypatch):
+    """Корпус для проверки цитат — стаб с id из PLAN_EXAMPLE, чтобы тесты не зависели от
+    реального research/studies.json (иначе пример валидировался бы против живого корпуса)."""
+    from app.services import research
+
+    corpus = tuple(
+        research.Study(
+            id=c["id"],
+            title=c["title"],
+            authors=tuple(c["authors"]),
+            year=c["year"],
+            journal="J",
+            doi=None,
+            url=c["url_or_doi"],
+            topics=("x",),
+            study_type="study",
+            summary="резюме исследования для evidence-пака",
+            pdf_path=None,
+        )
+        for c in PLAN_EXAMPLE["citations"]
+    )
+    monkeypatch.setattr(research, "load_corpus", lambda *a, **k: corpus)
 
 
 # --- сервис ------------------------------------------------------------------
@@ -132,7 +157,7 @@ def test_generate_all_invalid_raises_and_persists_nothing(engine, monkeypatch):
 def test_generate_llm_error_propagates_and_persists_nothing(engine, monkeypatch):
     """Сбой сети/LLM пробрасывается, в БД ничего не записано."""
 
-    def boom(prompt: str, model: str | None = None) -> str:
+    def boom(prompt: str, model: str | None = None, **kwargs) -> str:
         raise llm.LLMError("сеть упала")
 
     monkeypatch.setattr(llm, "text", boom)
@@ -143,14 +168,17 @@ def test_generate_llm_error_propagates_and_persists_nothing(engine, monkeypatch)
         assert session.exec(select(Recommendation)).all() == []
 
 
-def test_build_prompt_carries_snapshot_and_output_schema():
-    """Промпт согласован со схемой S4.3: несёт снапшот, схему выхода и пример."""
+def test_build_prompt_carries_snapshot_evidence_and_schema():
+    """Промпт несёт снапшот, evidence-pack с инструкцией «только эти id», схему и пример."""
     snapshot = {"goal": None, "nutrition": {"avg_kcal_in": 1900}, "window": {"days": 90}}
-    prompt = reco_service.build_prompt(snapshot)
+    pack = "[stud-1] Автор 2020. Журнал (study). краткий вывод исследования"
+    prompt = reco_service.build_prompt(snapshot, pack)
 
     assert '"avg_kcal_in": 1900' in prompt  # данные снапшота попали в промпт
-    assert "meal_plan" in prompt and "workout_plan" in prompt  # форма выхода = схема S4.3
+    assert "meal_plan" in prompt and "workout_plan" in prompt  # форма выхода = схема
     assert "Завтрак" in prompt  # пример валидного ответа вшит
+    assert "[stud-1]" in prompt  # evidence-pack вшит
+    assert "цитируй ТОЛЬКО эти" in prompt  # ограничение на источники
 
 
 # --- роут --------------------------------------------------------------------
@@ -185,6 +213,33 @@ def test_post_generates_and_get_lists(client, engine, monkeypatch):
     items = listed.json()
     assert len(items) == 1
     assert items[0]["id"] == body["id"]
+
+
+def test_post_hallucinated_citation_returns_502(client, monkeypatch):
+    """Цитата на id вне корпуса отбраковывается на всех попытках → 502, в БД пусто."""
+    bad = json.dumps(
+        {
+            **PLAN_EXAMPLE,
+            "citations": [
+                {**PLAN_EXAMPLE["citations"][0], "id": "made-up-id"},
+                *PLAN_EXAMPLE["citations"][1:],
+            ],
+        },
+        ensure_ascii=False,
+    )
+    monkeypatch.setattr(llm, "text", _reply(bad, bad, bad))
+    resp = client.post("/recommendations/generate")
+    assert resp.status_code == 502
+    assert "модели" in resp.json()["detail"]
+
+
+def test_second_generate_within_cooldown_returns_429(client, monkeypatch):
+    """Повтор сразу после генерации упирается в кулдаун (429), модель второй раз не зовётся."""
+    monkeypatch.setattr(llm, "text", _reply(VALID_RAW))
+    assert client.post("/recommendations/generate").status_code == 201
+    resp = client.post("/recommendations/generate")
+    assert resp.status_code == 429
+    assert resp.headers.get("Retry-After")  # подсказка, через сколько можно повторить
 
 
 def test_get_detail_returns_full_record(client, monkeypatch):
@@ -226,7 +281,7 @@ def test_get_detail_requires_auth(engine):
 def test_post_llm_error_returns_502(client, monkeypatch):
     """Сбой модели → 502, тело с понятным сообщением."""
 
-    def boom(prompt: str, model: str | None = None) -> str:
+    def boom(prompt: str, model: str | None = None, **kwargs) -> str:
         raise llm.LLMError("апстрим недоступен")
 
     monkeypatch.setattr(llm, "text", boom)

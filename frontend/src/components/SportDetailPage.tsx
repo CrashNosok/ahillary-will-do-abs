@@ -5,15 +5,15 @@
  *  Ачивки — рабочий список дисциплины (все статусы): здесь открываем новые через загрузку
  *  видео-пруфа → «Разблокировать» (AchievementCard). Витрина заработанного — на /achievements. */
 
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, type Exercise, type Sponsor, sportCategoryLabel } from '../lib/api';
 import {
-  useCreateExercise,
   useExercises,
-  useMySports,
+  useGenerateSportRecommendation,
   useSport,
   useSportOverview,
+  useSportRecommendation,
 } from '../lib/sports';
 import { useAchievementsForSport } from '../lib/achievements';
 import { useSponsors } from '../lib/sponsors';
@@ -52,10 +52,9 @@ export default function SportDetailPage() {
   // Шапка/состояния страницы — на useSport (M5·F21); тело (секции/ачивки) — на overview (M5·B27).
   const { data: sport, isPending, error } = useSport(id);
   const { data: overview, isPending: overviewPending, error: overviewError } = useSportOverview(id);
-  // Текущий уровень владельца — из его привязок /me/sports (M2·B19); null, если дисциплина
-  // не привязана к пользователю (тогда лестница показывается без подсветки).
-  const { data: mySports } = useMySports();
-  const currentLevelId = mySports?.find((s) => s.sport_id === id)?.current_level_id ?? null;
+  // Сохранённый уровень владельца — из overview (вкл. ОТВЯЗАННЫЕ виды: при мягкой отвязке
+  // уровень не теряется). Лестница подсвечивает эту ступень так же, как карточка-сводка.
+  const currentLevelId = overview?.current_level_id ?? null;
   // Полоса спонсоров (M6·F29) — глобальный каталог партнёров, общий для всех дисциплин.
   const { data: sponsors, isPending: sponsorsPending, error: sponsorsError } = useSponsors();
   // Ачивки дисциплины: здесь же открываем новые (загрузка видео-пруфа → разблокировка). Витрина
@@ -117,6 +116,9 @@ export default function SportDetailPage() {
           к дисциплине). Read-only — карточки-пилюли с именем и внешней ссылкой при http(s) url. */}
       <SponsorStrip sponsors={sponsors} isLoading={sponsorsPending} isError={!!sponsorsError} />
 
+      {/* ИИ-рекомендация по виду (#1): совет с учётом целей по упражнениям и плана навыков. */}
+      <AiAdviceSection sportId={id} />
+
       {/* Достижения: рабочий список дисциплины — здесь открываем новые (загрузка видео-пруфа →
           «Разблокировать»). Подтверждённые подсвечены; витрина заработанного — на /achievements. */}
       <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-6">
@@ -143,17 +145,17 @@ export default function SportDetailPage() {
         )}
       </div>
 
-      {/* Упражнения дисциплины (общие) — переехали из каталога. Список + добавление общего
-          упражнения. Кастомные (по пользователю) — в кабинете (отдельная фича). */}
-      <ExercisesSection sportId={id} exercises={exercises} />
+      {/* Упражнения дисциплины — базовый набор из каталога (read-only). По ним отслеживается
+          прогресс; пользователь свои упражнения не добавляет (работаем только с базой). */}
+      <ExercisesSection exercises={exercises} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Section
-          title="Ступени"
+          title="Уровни"
           isLoading={overviewPending}
           isError={!!overviewError}
           isEmpty={levels.length === 0}
-          emptyText="Ступеней пока нет."
+          emptyText="Уровней пока нет."
         >
           <LevelLadder levels={levels} currentLevelId={currentLevelId} />
         </Section>
@@ -336,42 +338,114 @@ function renderSponsorPill(s: Sponsor) {
   );
 }
 
-const exInputCls =
-  'rounded-xl border border-line bg-surface px-4 py-2.5 text-fg outline-none transition-colors duration-[var(--duration-fast)] focus:border-accent';
-
-/** Упражнения дисциплины (общие): список + добавление общего упражнения. Переехало из каталога
- *  (S3.2). Кастомные (по пользователю) — отдельная фича в кабинете. */
-function ExercisesSection({ sportId, exercises }: { sportId: number; exercises: Exercise[] }) {
-  const create = useCreateExercise();
-  const [name, setName] = useState('');
-  const [unit, setUnit] = useState('');
-
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    create.mutate(
-      { sport_id: sportId, name: trimmed, unit: unit.trim() || null, notes: null },
-      {
-        onSuccess: () => {
-          setName('');
-          setUnit('');
-        },
-      },
-    );
+/** Лёгкий рендер markdown-совета: ## → подзаголовок, - / * → пункт списка, иначе абзац.
+ *  Без внешних зависимостей — достаточно для структуры, что отдаёт модель (#1). */
+function AdviceMarkdown({ text }: { text: string }) {
+  const lines = text.split('\n');
+  const blocks: ReactNode[] = [];
+  let list: string[] = [];
+  const flush = () => {
+    if (list.length) {
+      blocks.push(
+        <ul key={`ul-${blocks.length}`} className="ml-4 list-disc space-y-1 text-muted">
+          {list.map((it, i) => (
+            <li key={i}>{it}</li>
+          ))}
+        </ul>,
+      );
+      list = [];
+    }
+  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) {
+      flush();
+      continue;
+    }
+    if (line.startsWith('##')) {
+      flush();
+      blocks.push(
+        <h3 key={`h-${blocks.length}`} className="font-display text-lg font-semibold">
+          {line.replace(/^#+\s*/, '')}
+        </h3>,
+      );
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      list.push(line.slice(2));
+    } else {
+      flush();
+      blocks.push(
+        <p key={`p-${blocks.length}`} className="leading-relaxed text-muted">
+          {line}
+        </p>,
+      );
+    }
   }
+  flush();
+  return <div className="flex flex-col gap-3">{blocks}</div>;
+}
+
+/** ИИ-рекомендация по виду спорта (#1): кнопка генерации + последний сохранённый совет.
+ *  Учитывает числовые цели по упражнениям и план навыков вида (бэкенд собирает срез). */
+function AiAdviceSection({ sportId }: { sportId: number }) {
+  const { data: advice, isPending } = useSportRecommendation(sportId);
+  const generate = useGenerateSportRecommendation(sportId);
   const error =
-    create.error instanceof ApiError
-      ? create.error.message
-      : create.error
-        ? 'Не удалось добавить.'
+    generate.error instanceof ApiError
+      ? generate.error.status === 502
+        ? 'Модель недоступна (502). Повторите позже.'
+        : generate.error.message
+      : generate.error
+        ? 'Не удалось получить рекомендацию.'
         : null;
 
   return (
     <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-xl font-semibold tracking-tight">Рекомендация ИИ</h2>
+        <button
+          type="button"
+          onClick={() => generate.mutate()}
+          disabled={generate.isPending}
+          className="rounded-xl bg-accent px-4 py-2 text-sm font-display font-semibold text-accent-ink transition-all duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {generate.isPending
+            ? 'Генерирую…'
+            : advice
+              ? 'Обновить рекомендацию'
+              : 'Получить рекомендацию'}
+        </button>
+      </div>
+      <p className="text-sm text-muted">
+        Совет по развитию в этом виде с учётом ваших целей по упражнениям и плана навыков.
+      </p>
+      {error && (
+        <p role="alert" className="text-sm font-medium text-amber">
+          {error}
+        </p>
+      )}
+      {isPending ? (
+        <p className="text-muted">Загрузка…</p>
+      ) : advice ? (
+        <AdviceMarkdown text={advice.text} />
+      ) : (
+        !generate.isPending && (
+          <p className="text-muted">
+            Пока нет рекомендации — нажмите «Получить рекомендацию», чтобы сгенерировать.
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
+/** Упражнения дисциплины — базовый набор из каталога (read-only). По этим упражнениям
+ *  отслеживается прогресс; пользователь свои не добавляет (работаем только с базой). */
+function ExercisesSection({ exercises }: { exercises: Exercise[] }) {
+  return (
+    <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-6">
       <h2 className="font-display text-xl font-semibold tracking-tight">Упражнения</h2>
       {exercises.length === 0 ? (
-        <p className="text-muted">Общих упражнений пока нет — добавьте первое.</p>
+        <p className="text-muted">Базовых упражнений по дисциплине пока нет.</p>
       ) : (
         <ul className="flex flex-col gap-1.5">
           {exercises.map((ex) => (
@@ -383,42 +457,6 @@ function ExercisesSection({ sportId, exercises }: { sportId: number; exercises: 
           ))}
         </ul>
       )}
-      <form
-        onSubmit={onSubmit}
-        noValidate
-        aria-label="Добавить упражнение"
-        className="flex flex-col gap-3 border-t border-line pt-4"
-      >
-        <div className="grid gap-3 sm:grid-cols-[1.4fr_0.8fr]">
-          <input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Название упражнения"
-            aria-label="Название упражнения"
-            className={exInputCls}
-          />
-          <input
-            value={unit}
-            onChange={(e) => setUnit(e.target.value)}
-            placeholder="Единица (кг, повторы…)"
-            aria-label="Единица"
-            className={exInputCls}
-          />
-        </div>
-        {error && (
-          <p role="alert" className="text-sm font-medium text-amber">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={create.isPending}
-          className="w-fit rounded-xl border border-line px-4 py-2 text-sm font-medium text-fg transition-colors duration-[var(--duration-fast)] hover:border-accent/50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {create.isPending ? 'Добавляем…' : 'Добавить общее упражнение'}
-        </button>
-      </form>
     </div>
   );
 }

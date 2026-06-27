@@ -41,6 +41,7 @@ class DayFlag:
     has_training: bool
     has_measurement: bool
     has_weight: bool
+    has_inbody: bool  # загружен скрин анализа InBody (source_image_path), отдельно от веса
     has_body: bool
     has_photo: bool
     has_surpassed_self: bool
@@ -106,6 +107,15 @@ def day_flags(start: dt.date, end: dt.date, session: Session, *, user_id: int) -
     weight = _dates(  # вес/InBody
         session, InbodyMeasurement.date, InbodyMeasurement.user_id, user_id, start, end
     )
+    inbody = _dates(  # именно загруженный скрин анализа InBody (есть source_image_path)
+        session,
+        InbodyMeasurement.date,
+        InbodyMeasurement.user_id,
+        user_id,
+        start,
+        end,
+        InbodyMeasurement.source_image_path.is_not(None),
+    )
     body = _dates(  # обхваты-«замеры»
         session, BodyMeasurement.date, BodyMeasurement.user_id, user_id, start, end
     )
@@ -164,6 +174,7 @@ def day_flags(start: dt.date, end: dt.date, session: Session, *, user_id: int) -
                 has_training=day in training,
                 has_measurement=day in measurement,
                 has_weight=day in weight,
+                has_inbody=day in inbody,
                 has_body=day in body,
                 has_photo=day in photo,
                 has_surpassed_self=day in surpassed,

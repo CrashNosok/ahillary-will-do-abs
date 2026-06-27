@@ -106,7 +106,7 @@ def test_food_import_triggers_recompute(session):
     import_food_diary(
         _SAMPLE.read_bytes(), session, user_id=1, filename=_SAMPLE.name, replace_day=True
     )
-    row = session.get(DeficitDay, DAY)
+    row = session.get(DeficitDay, (1, DAY))  # составной PK (user_id, date)
     assert row is not None
     assert row.eaten_kcal == 3250
     assert row.status == STATUS_INCOMPLETE  # активности ещё нет → неполный день
@@ -122,7 +122,7 @@ def test_activity_save_triggers_recompute(session, tmp_path, monkeypatch):
     welltory.save_activity_day_values(
         b"\x89PNG fake", DAY, session, user_id=1, fields={"total_kcal": BURN}, raw={}
     )
-    row = session.get(DeficitDay, DAY)
+    row = session.get(DeficitDay, (1, DAY))  # составной PK (user_id, date)
     assert row is not None
     assert row.burn_kcal == BURN
     assert row.deficit_kcal == 3250 - BURN

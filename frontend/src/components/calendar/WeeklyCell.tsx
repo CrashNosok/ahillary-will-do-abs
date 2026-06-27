@@ -1,11 +1,11 @@
-/** Недельная ячейка (8-я колонка перед медалью): «раз в неделю» — Вес/Замеры/Фото.
- *  Наполняется премиум-жидкостью по 3 недельным категориям (как день, но за неделю); пунктирная
- *  рамка отличает её от дней. В углу — статус В·З·Ф (внесено/осталось). Клик открывает редактор
+/** Недельная ячейка (8-я колонка перед медалью): «раз в неделю» — Вес/Замеры/Фото/InBody.
+ *  Наполняется премиум-жидкостью по 4 недельным категориям (каждая — 25%); пунктирная
+ *  рамка отличает её от дней. В углу — статус по категориям (внесено/осталось). Клик открывает редактор
  *  недельных данных. `draining` сливает её в общую чашу при «Получить отчёт».
  *
  *  Бонус за полные замеры (Вес И Замеры за неделю — Фото опционально): усиленный залп искр +
  *  доп. фуксиево-аметистовая подсветка (measureGlow), которая складывается с зелёным glow полной
- *  недели. Так замеры поощряются отдельно от Фото; полная неделя 3/3 всегда содержит полные
+ *  недели. Так замеры поощряются отдельно от Фото; полная неделя 4/4 всегда содержит полные
  *  замеры, поэтому получает и зелёный glow, и бонус-подсветку. */
 
 import type { DayFlags } from '../../lib/api';
@@ -14,7 +14,7 @@ import { glowColor, keyColor, measureGlow } from '../../lib/liquid';
 import { LiquidFill } from './LiquidFill';
 import { Sparks } from './Sparks';
 
-type WeeklyFlags = Pick<DayFlags, 'has_weight' | 'has_body' | 'has_photo'>;
+type WeeklyFlags = Pick<DayFlags, 'has_weight' | 'has_body' | 'has_photo' | 'has_inbody'>;
 
 export function WeeklyCell({
   weeklyFlags,
@@ -39,7 +39,7 @@ export function WeeklyCell({
   const hasMeasurements = weeklyFlags.has_weight && weeklyFlags.has_body;
   const level = draining ? 0 : count / WEEKLY.length;
 
-  // Складываем тени: зелёный glow полной недели (3/3) + бонус-подсветка за полные замеры. Обе опц.
+  // Складываем тени: зелёный glow полной недели (4/4) + бонус-подсветка за полные замеры. Обе опц.
   const boxShadow = [
     isFull ? `0 0 12px -2px ${glowColor(false)}` : '',
     hasMeasurements ? measureGlow() : '',
@@ -54,7 +54,7 @@ export function WeeklyCell({
     <div
       role="gridcell"
       aria-label={`Неделя: ${summary}. Нажмите, чтобы внести или изменить`}
-      title={`Вес · Замеры · Фото — ${summary}`}
+      title={`${WEEKLY.map((c) => c.label).join(' · ')} — ${summary}`}
       tabIndex={onSelect ? 0 : undefined}
       onClick={onSelect}
       onKeyDown={
@@ -76,7 +76,7 @@ export function WeeklyCell({
         <LiquidFill
           level={level}
           activeKeys={activeKeys}
-          // Полная неделя (3/3): плавный градиент по ОДНОМУ тону на категорию (как день 21), в
+          // Полная неделя (4/4): плавный градиент по ОДНОМУ тону на категорию (как день 21), в
           // порядке заполнения — а не 3-тоновые спектры (9 стопов «пестрят»). Частичная — как было.
           fillColor={
             isFull ? `linear-gradient(0deg, ${activeKeys.map(keyColor).join(', ')})` : undefined
@@ -106,7 +106,7 @@ export function WeeklyCell({
         })}
       </span>
 
-      {/* Искры — только на полной неделе (3/3). Частичная (1/3, 2/3) без искр.
+      {/* Искры — только на полной неделе (4/4). Частичная (1/4…3/4) без искр.
           Reduced-motion гасит все .sparkle глобально (см. index.css). */}
       {isFull && <Sparks count={10} spread={16} baseDur={900} size={6} />}
     </div>

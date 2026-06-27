@@ -374,7 +374,11 @@ def test_goal_weight_percent_and_linear_eta(ctx):
     d1 = d0 + dt.timedelta(days=100)
     client.post(
         "/goals",
-        json={"target_weight_kg": 80, "start_date": d0.isoformat(), "deadline": "2026-12-31"},
+        json={
+            "target_metrics_json": {"weight_kg": 80},
+            "start_date": d0.isoformat(),
+            "deadline": "2026-12-31",
+        },
     )
     _add_inbody(engine, d0.isoformat(), 100.0)
     _add_inbody(engine, d1.isoformat(), 90.0)
@@ -398,7 +402,7 @@ def test_goal_on_track_false_when_eta_after_deadline(ctx):
     client.post(
         "/goals",
         json={
-            "target_weight_kg": 80,
+            "target_metrics_json": {"weight_kg": 80},
             "start_date": d0.isoformat(),
             "deadline": (d1 + dt.timedelta(days=10)).isoformat(),
         },
@@ -413,7 +417,9 @@ def test_goal_moving_away_clamps_percent_zero_and_no_eta(ctx):
     client, engine = ctx
     d0 = dt.date(2026, 1, 1)
     d1 = d0 + dt.timedelta(days=100)
-    client.post("/goals", json={"target_weight_kg": 80, "start_date": d0.isoformat()})
+    client.post(
+        "/goals", json={"target_metrics_json": {"weight_kg": 80}, "start_date": d0.isoformat()}
+    )
     _add_inbody(engine, d0.isoformat(), 100.0)
     _add_inbody(engine, d1.isoformat(), 105.0)  # вес растёт — движемся от цели
     m = _metric(client.get("/progress/goal").json(), "weight_kg")
@@ -427,7 +433,9 @@ def test_goal_overshoot_clamps_percent_100(ctx):
     client, engine = ctx
     d0 = dt.date(2026, 1, 1)
     d1 = d0 + dt.timedelta(days=100)
-    client.post("/goals", json={"target_weight_kg": 80, "start_date": d0.isoformat()})
+    client.post(
+        "/goals", json={"target_metrics_json": {"weight_kg": 80}, "start_date": d0.isoformat()}
+    )
     _add_inbody(engine, d0.isoformat(), 100.0)
     _add_inbody(engine, d1.isoformat(), 75.0)  # уже ниже цели
     m = _metric(client.get("/progress/goal").json(), "weight_kg")
@@ -436,7 +444,7 @@ def test_goal_overshoot_clamps_percent_100(ctx):
 
 def test_goal_metric_without_measurements_is_null(ctx):
     client, _ = ctx
-    client.post("/goals", json={"target_weight_kg": 80})
+    client.post("/goals", json={"target_metrics_json": {"weight_kg": 80}})
     m = _metric(client.get("/progress/goal").json(), "weight_kg")
     assert m["current"] is None
     assert m["baseline"] is None
@@ -453,7 +461,7 @@ def test_goal_baseline_json_used_as_start_anchor(ctx):
     client.post(
         "/goals",
         json={
-            "target_weight_kg": 80,
+            "target_metrics_json": {"weight_kg": 80},
             "start_date": d0.isoformat(),
             "baseline_json": {"weight_kg": 100},
         },
@@ -468,7 +476,9 @@ def test_goal_body_fat_metric(ctx):
     client, engine = ctx
     d0 = dt.date(2026, 1, 1)
     d1 = d0 + dt.timedelta(days=100)
-    client.post("/goals", json={"target_body_fat_pct": 15, "start_date": d0.isoformat()})
+    client.post(
+        "/goals", json={"target_metrics_json": {"body_fat_pct": 15}, "start_date": d0.isoformat()}
+    )
     _add_inbody_fat(engine, d0.isoformat(), 25.0)
     _add_inbody_fat(engine, d1.isoformat(), 20.0)
     m = _metric(client.get("/progress/goal").json(), "body_fat_pct")
@@ -476,13 +486,13 @@ def test_goal_body_fat_metric(ctx):
     assert m["remaining"] == 5.0
 
 
-def test_goal_circumference_key_resolves_to_cm_column(ctx):
-    """Ключ цели waist → колонка waist_cm; метрика отдаётся под именем колонки."""
+def test_goal_circumference_metric_progress(ctx):
+    """Цель по обхвату (waist_cm) считает прогресс от замеров body_measurement."""
     client, _ = ctx
     d0 = dt.date(2026, 1, 1)
     d1 = d0 + dt.timedelta(days=100)
     client.post(
-        "/goals", json={"target_measurements_json": {"waist": 80}, "start_date": d0.isoformat()}
+        "/goals", json={"target_metrics_json": {"waist_cm": 80}, "start_date": d0.isoformat()}
     )
     client.post("/body-measurements", json={"date": d0.isoformat(), "waist_cm": 90})
     client.post("/body-measurements", json={"date": d1.isoformat(), "waist_cm": 85})
@@ -492,9 +502,8 @@ def test_goal_circumference_key_resolves_to_cm_column(ctx):
     assert m["percent"] == 50.0  # (85−90)/(80−90) = 50%
 
 
-def test_goal_unmeasurable_target_key_skipped(ctx):
+def test_goal_unknown_metric_key_rejected(ctx):
+    """Цель можно ставить только по ключам реестра — неизвестный (hips) отклоняется (422)."""
     client, _ = ctx
-    client.post("/goals", json={"target_measurements_json": {"hips": 90}})
-    metrics = client.get("/progress/goal").json()["metrics"]
-    assert all(m["metric"] != "hips" for m in metrics)  # нет колонки hips → пропущено
-    assert all(m["metric"] != "hips_cm" for m in metrics)
+    resp = client.post("/goals", json={"target_metrics_json": {"hips": 90}})
+    assert resp.status_code == 422

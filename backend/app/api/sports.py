@@ -26,16 +26,22 @@ from app.models.sport import (
     SportRecommendation,
     SportSuggestion,
 )
+from app.models.sport_advice import SportAdvice
 from app.services import achievement as achievement_service
 from app.services import sport as sport_service
+from app.services import sport_advice as sport_advice_service
 from app.services import sport_summary
 from app.services.achievement_schema import AthleteLevel, InvalidAchievementSetError
 from app.services.llm import LLMError
+from app.services.rate_limit import enforce_cooldown
 from app.services.sport_summary import SportSummary
 
 router = APIRouter(prefix="/sports", tags=["sports"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+# Платный LLM-совет по виду — не чаще раза в это окно на user+sport (иначе 429).
+_ADVICE_COOLDOWN = dt.timedelta(minutes=5)
 
 
 class SportCreate(BaseModel):
@@ -98,6 +104,18 @@ def _get_or_404(session: Session, sport_id: int) -> Sport:
     if sport is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Вид спорта не найден")
     return sport
+
+
+def _reject_if_global(sport: Sport) -> None:
+    """Глобальный каталог (is_global) только для чтения: правка/удаление запрещены (403).
+
+    Сид общий для всех — любой залогиненный иначе мог бы переименовать/снести его всем.
+    """
+    if sport.is_global:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Глобальный вид спорта нельзя изменять или удалять",
+        )
 
 
 def _commit_unique(session: Session, sport: Sport) -> Sport:
@@ -198,6 +216,7 @@ def get_sport(sport_id: int, session: SessionDep, _: CurrentUser) -> Sport:
 @router.patch("/{sport_id}")
 def update_sport(sport_id: int, payload: SportUpdate, session: SessionDep, _: CurrentUser) -> Sport:
     sport = _get_or_404(session, sport_id)
+    _reject_if_global(sport)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(sport, key, value)
     session.add(sport)
@@ -207,6 +226,7 @@ def update_sport(sport_id: int, payload: SportUpdate, session: SessionDep, _: Cu
 @router.delete("/{sport_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_sport(sport_id: int, session: SessionDep, _: CurrentUser) -> None:
     sport = _get_or_404(session, sport_id)
+    _reject_if_global(sport)
     session.delete(sport)
     session.commit()
 
@@ -304,4 +324,33 @@ def generate_sport_achievements(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Не удалось получить валидный набор ачивок от модели: {exc}",
+        ) from exc
+
+
+@router.get("/{sport_id}/recommendation")
+def get_sport_recommendation(
+    sport_id: int, session: SessionDep, user: CurrentUser
+) -> SportAdvice | None:
+    """Последняя ИИ-рекомендация по виду для пользователя (или null — ещё не генерировали)."""
+    _get_or_404(session, sport_id)
+    return sport_advice_service.latest_sport_advice(session, sport_id, user_id=user.id)
+
+
+@router.post("/{sport_id}/recommendation", status_code=status.HTTP_201_CREATED)
+def generate_sport_recommendation(
+    sport_id: int, session: SessionDep, user: CurrentUser
+) -> SportAdvice:
+    """ИИ-рекомендация по виду (#1): срез данных вида (цели упражнений + план навыков) → совет.
+
+    Ошибка модели → 502 (в БД ничего не пишется). Совет upsert-ится (последний на user+sport).
+    """
+    sport = _get_or_404(session, sport_id)
+    latest = sport_advice_service.latest_sport_advice(session, sport_id, user_id=user.id)
+    enforce_cooldown(latest.created_at if latest else None, _ADVICE_COOLDOWN)
+    try:
+        return sport_advice_service.generate_sport_advice(session, sport, user_id=user.id)
+    except LLMError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Не удалось получить рекомендацию от модели: {exc}",
         ) from exc

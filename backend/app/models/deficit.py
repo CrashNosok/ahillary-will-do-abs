@@ -13,9 +13,11 @@ STATUS_INCOMPLETE = "неполный день"
 class DeficitDay(SQLModel, table=True):
     __tablename__ = "deficit_day"
 
-    date: dt.date = Field(primary_key=True)  # один расчёт на день
-    # Владелец дня (M0·B5): изоляция данных по пользователю. NOT NULL + FK на user.id.
-    user_id: int = Field(foreign_key="user.id", index=True)
+    # Владелец дня (M0·B7): составной PK (user_id, date) — один расчёт на день У КАЖДОГО
+    # пользователя. Раньше PK был только date → один дефицит на дату ГЛОБАЛЬНО, и recompute
+    # одного аккаунта перетирал день другого (межаккаунтная коллизия). user_id ещё и FK на user.
+    user_id: int = Field(foreign_key="user.id", primary_key=True, index=True)
+    date: dt.date = Field(primary_key=True)  # один расчёт на день (в пределах user_id)
     eaten_kcal: int | None = None
     burn_kcal: int | None = None
     deficit_kcal: int | None = None

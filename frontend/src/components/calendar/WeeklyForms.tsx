@@ -4,7 +4,15 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, bodyPhotoUrl, type BodyMeasurement, type BodyMeasurementInput } from '../../lib/api';
+import {
+  api,
+  bodyPhotoUrl,
+  type BodyMeasurement,
+  type BodyMeasurementInput,
+  type InbodyFields,
+  type InbodyMeasurement,
+  type InbodyPreview,
+} from '../../lib/api';
 import { inputCls, SaveButton, errText, numOrNull } from './formKit';
 import { MediaLightbox, type LightboxItem } from './MediaLightbox';
 
@@ -81,8 +89,8 @@ const M_FIELDS: { key: MKey; label: string }[] = [
   { key: 'shoulders_cm', label: 'Плечи' },
   { key: 'biceps_l_cm', label: 'Бицепс Л' },
   { key: 'biceps_r_cm', label: 'Бицепс П' },
-  { key: 'calf_l_cm', label: 'Икра Л' },
-  { key: 'calf_r_cm', label: 'Икра П' },
+  { key: 'calf_l_cm', label: 'Бедро Л' },
+  { key: 'calf_r_cm', label: 'Бедро П' },
   { key: 'height_cm', label: 'Рост' },
 ];
 
@@ -396,6 +404,193 @@ export function WeekPhotoForm({ date, onSaved }: { date: string; onSaved?: () =>
           onClose={() => setViewAt(null)}
         />
       )}
+    </form>
+  );
+}
+
+// Пять ключевых показателей InBody → подпись + единица (как на странице ингеста).
+const INBODY_FIELDS: { key: keyof InbodyFields; label: string; unit: string }[] = [
+  { key: 'weight_kg', label: 'Вес', unit: 'кг' },
+  { key: 'body_fat_pct', label: '% жира', unit: '%' },
+  { key: 'muscle_mass_kg', label: 'Мышцы', unit: 'кг' },
+  { key: 'visceral_fat', label: 'Висц. жир', unit: '' },
+  { key: 'water', label: 'Вода', unit: 'л' },
+];
+
+/** Недельная форма InBody (4-й пункт попапа недели) — как «Активность»: пять показателей всегда
+ *  редактируемы и предзаполняются замером дня. Скрин необязателен: «Распознать со скрина» (vision)
+ *  заполнит поля, дальше правишь и «Сохранить». Со скрином — `saveInbody` (хранит исходник + состав
+ *  тела), без скрина — `saveInbodyManual` (правит только 5 полей, исходник/metrics_json не трогает).
+ *  Вес обязателен — он же кормит график веса и дашборд. Пишет на дату недели (`date`). */
+export function WeekInbodyForm({ date, onSaved }: { date: string; onSaved?: () => void }) {
+  const qc = useQueryClient();
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [file, setFile] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [metricsJson, setMetricsJson] = useState<Record<string, unknown>>({});
+  const [err, setErr] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const hydrated = useRef(false);
+
+  // Предзаполнение «Изменить»: тянем замер InBody дня и кладём пять показателей в поля.
+  const existing = useQuery({
+    queryKey: ['day-inbody', date],
+    queryFn: () => api.getInbodyDay(date),
+    enabled: !!date,
+  });
+  useEffect(() => {
+    if (hydrated.current || !existing.isSuccess) return;
+    const m = existing.data;
+    if (m) {
+      const next: Record<string, string> = {};
+      for (const f of INBODY_FIELDS) next[f.key] = m[f.key] != null ? String(m[f.key]) : '';
+      setVals(next);
+    }
+    hydrated.current = true;
+  }, [existing.isSuccess, existing.data]);
+
+  // Превью картинки из локального файла — без round-trip; чистим objectURL за собой.
+  useEffect(() => {
+    if (!file) {
+      setImageUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setImageUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const fields = (): InbodyFields => ({
+    weight_kg: numOrNull(vals.weight_kg),
+    body_fat_pct: numOrNull(vals.body_fat_pct),
+    muscle_mass_kg: numOrNull(vals.muscle_mass_kg),
+    visceral_fat: numOrNull(vals.visceral_fat),
+    water: numOrNull(vals.water),
+  });
+
+  const recognize = useMutation<InbodyPreview, unknown, File>({
+    mutationFn: (f) => api.previewInbody(f, date),
+    onSuccess: (p) => {
+      const next: Record<string, string> = {};
+      for (const f of INBODY_FIELDS) next[f.key] = p[f.key] != null ? String(p[f.key]) : '';
+      setVals(next);
+      setMetricsJson(p.metrics_json ?? {});
+      setErr(null);
+    },
+  });
+
+  const save = useMutation<InbodyMeasurement, unknown, void>({
+    mutationFn: () =>
+      file
+        ? api.saveInbody(file, date, fields(), metricsJson)
+        : api.saveInbodyManual(date, fields()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['progress'] });
+      qc.invalidateQueries({ queryKey: ['day-inbody', date] });
+      qc.invalidateQueries({ queryKey: ['day-weight', date] }); // InBody несёт и вес
+      onSaved?.();
+    },
+  });
+
+  const pick = (f: File | undefined) => {
+    if (!f) return;
+    setFile(f);
+    save.reset();
+    recognize.mutate(f);
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (numOrNull(vals.weight_kg) == null) {
+      setErr('Введите вес — ключевой показатель InBody.');
+      return;
+    }
+    setErr(null);
+    save.mutate();
+  };
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-3">
+      {/* Скрин InBody необязателен: drag-and-drop ИЛИ клик → распознавание заполнит поля. */}
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          pick(e.dataTransfer.files[0]);
+        }}
+        className={`flex cursor-pointer items-center justify-center rounded-xl border border-dashed px-3 py-3 text-center text-sm transition-colors duration-[var(--duration-fast)] ${
+          dragOver ? 'border-accent bg-accent/5' : 'border-line hover:border-accent/50'
+        }`}
+      >
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="hidden"
+          onChange={(e) => pick(e.target.files?.[0])}
+        />
+        <span className="truncate text-muted">
+          {recognize.isPending
+            ? 'Распознаём скрин…'
+            : file
+              ? file.name
+              : 'Перетащите скрин InBody или заполните поля вручную'}
+        </span>
+      </label>
+
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt="Скрин InBody"
+          className="h-32 w-auto rounded-lg border border-line object-contain"
+        />
+      )}
+      {recognize.isError && (
+        <p className="text-xs font-medium text-amber">
+          {errText(recognize.error)} Заполните вручную.
+        </p>
+      )}
+
+      {/* Пять показателей — всегда редактируемы (ручной ввод или сверка распознанного). */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {INBODY_FIELDS.map(({ key, label, unit }) => {
+          const req = key === 'weight_kg';
+          return (
+            <label key={key} className="flex flex-col gap-1">
+              <span className="text-xs text-muted">
+                {unit ? `${label}, ${unit}` : label}
+                {req && <span className="text-accent"> *</span>}
+              </span>
+              <input
+                className={`${inputCls} tabular-nums`}
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                value={vals[key] ?? ''}
+                onChange={(e) => {
+                  setVals((v) => ({ ...v, [key]: e.target.value }));
+                  setErr(null);
+                  save.reset();
+                }}
+                placeholder="—"
+              />
+            </label>
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-muted">
+        <span className="text-accent">*</span> — обязательно
+      </p>
+      {err && <p className="text-xs font-medium text-amber">{err}</p>}
+      {save.isError && <p className="text-xs font-medium text-amber">{errText(save.error)}</p>}
+      {save.isSuccess && <p className="text-xs font-medium text-accent">InBody сохранён ✓</p>}
+      <SaveButton pending={save.isPending} success={save.isSuccess} />
     </form>
   );
 }

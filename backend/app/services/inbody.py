@@ -234,3 +234,30 @@ def save_inbody_values(
     return _upsert_measurement(
         image_bytes, date, session, user_id=user_id, fields=fields, metrics_json=metrics_json
     )
+
+
+def save_inbody_values_manual(
+    date: dt.date,
+    session: Session,
+    *,
+    user_id: int,
+    fields: dict[str, float | None],
+) -> InbodyMeasurement:
+    """Ручной ввод InBody без скрина: upsert пяти показателей по дню (как у активности).
+
+    Скрин и metrics_json существующей записи НЕ трогаем — ручная правка веса/жира не
+    должна стирать ранее распознанный состав тела и исходник. Vision не дёргаем.
+    """
+    existing = session.exec(
+        select(InbodyMeasurement).where(
+            InbodyMeasurement.date == date, InbodyMeasurement.user_id == user_id
+        )
+    ).first()
+    measurement = existing or InbodyMeasurement(date=date, user_id=user_id)
+    for name in KEY_FIELD_NAMES:
+        setattr(measurement, name, fields.get(name))
+    measurement.parsed_at = utcnow()
+    session.add(measurement)
+    session.commit()
+    session.refresh(measurement)
+    return measurement

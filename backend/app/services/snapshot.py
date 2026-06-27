@@ -25,10 +25,12 @@ from app.models._time import utcnow
 from app.models.activity import ActivityDay
 from app.models.body import BodyMeasurement, InbodyMeasurement
 from app.models.deficit import DeficitDay
+from app.models.exercise_target import ExerciseTarget
 from app.models.goal import GoalStatus, SmartGoal
 from app.models.nutrition import FoodEntry
 from app.models.sport import Exercise, Sport
 from app.models.workout import CardioLog, PersonalRecord, StrengthSet, WorkoutSession
+from app.services.metrics import effective_targets, resolve_metric
 from app.services.workout_metrics import METRICS, epley_1rm
 
 DEFAULT_WINDOW_DAYS = 90
@@ -75,6 +77,7 @@ def build_snapshot(
         "inbody": _build_inbody(session, start, end, user_id),
         "training": _build_training(session, start, end, user_id),
         "personal_records": _build_prs(session, user_id),
+        "exercise_targets": _build_exercise_targets(session, user_id),
     }
 
 
@@ -119,14 +122,6 @@ def _to_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
-
-
-def _resolve_body_col(key: str) -> str | None:
-    """Ключ цели (waist) → колонка body_measurement (waist_cm); None если нет."""
-    for candidate in (key, f"{key}_cm"):
-        if hasattr(BodyMeasurement, candidate):
-            return candidate
-    return None
 
 
 def _baseline_lookup(baseline_json: dict[str, Any] | None, keys: tuple[str, ...]) -> float | None:
@@ -184,56 +179,29 @@ def _metric_progress(
 
 def _build_goal(session: Session, today: dt.date, user_id: int) -> dict[str, Any] | None:
     goal = session.exec(
-        select(SmartGoal).where(SmartGoal.status == GoalStatus.active, SmartGoal.user_id == user_id)
+        select(SmartGoal)
+        .where(SmartGoal.status == GoalStatus.active, SmartGoal.user_id == user_id)
+        .order_by(SmartGoal.id)
     ).first()
     if goal is None:
         return None
 
+    # Единая карта целей по реестру метрик (с фолбэком на легаси-поля).
+    targets = effective_targets(goal)
     progress: list[dict[str, Any]] = []
-    if goal.target_weight_kg is not None:
+    for key, target in targets.items():
+        spec = resolve_metric(key)
+        if spec is None or spec.model is None:
+            continue  # дневные нормы — без траектории; отдаём в targets, прогресс не считаем
         progress.append(
             _metric_progress(
                 session,
-                model=InbodyMeasurement,
-                col="weight_kg",
-                target=goal.target_weight_kg,
-                today=today,
-                label="weight_kg",
-                baseline_keys=("weight_kg",),
-                baseline_json=goal.baseline_json,
-                start_date=goal.start_date,
-                user_id=user_id,
-            )
-        )
-    if goal.target_body_fat_pct is not None:
-        progress.append(
-            _metric_progress(
-                session,
-                model=InbodyMeasurement,
-                col="body_fat_pct",
-                target=goal.target_body_fat_pct,
-                today=today,
-                label="body_fat_pct",
-                baseline_keys=("body_fat_pct",),
-                baseline_json=goal.baseline_json,
-                start_date=goal.start_date,
-                user_id=user_id,
-            )
-        )
-    for key, raw_target in (goal.target_measurements_json or {}).items():
-        col = _resolve_body_col(key)
-        target = _to_float(raw_target)
-        if col is None or target is None:  # цель на неизмеримую колонку — пропускаем
-            continue
-        progress.append(
-            _metric_progress(
-                session,
-                model=BodyMeasurement,
-                col=col,
+                model=spec.model,
+                col=spec.column,
                 target=target,
                 today=today,
-                label=col,
-                baseline_keys=(key, col),
+                label=spec.key,
+                baseline_keys=(spec.key,),
                 baseline_json=goal.baseline_json,
                 start_date=goal.start_date,
                 user_id=user_id,
@@ -242,9 +210,7 @@ def _build_goal(session: Session, today: dt.date, user_id: int) -> dict[str, Any
 
     return {
         "id": goal.id,
-        "target_weight_kg": goal.target_weight_kg,
-        "target_body_fat_pct": goal.target_body_fat_pct,
-        "target_measurements": goal.target_measurements_json or {},
+        "targets": targets,  # карта целей по реестру метрик (тело + дневные нормы) для LLM
         "start_date": _iso(goal.start_date),
         "deadline": _iso(goal.deadline),
         "why_notes": goal.why_notes,
@@ -256,7 +222,11 @@ def _build_goal(session: Session, today: dt.date, user_id: int) -> dict[str, Any
 
 
 def _daily_food(session: Session, start: dt.date, end: dt.date, user_id: int) -> list[tuple]:
-    """Суммы за день владельца: (date, kcal, protein, fat, carb). SUM=None, если пусто."""
+    """Суммы за день владельца: (date, kcal, protein, fat, carb, fiber, sugar, satfat).
+
+    SUM по дню = None, если у всех строк метрика пуста — тогда _avg её отсеет (без ложного
+    нуля). Детальные нутриенты (клетчатка/сахар/насыщ.жиры) есть только у дней, где их нёс
+    импорт; старые дни дают None и в среднее не попадают."""
     return session.exec(
         select(
             FoodEntry.date,
@@ -264,6 +234,9 @@ def _daily_food(session: Session, start: dt.date, end: dt.date, user_id: int) ->
             func.sum(FoodEntry.protein_g),
             func.sum(FoodEntry.fat_g),
             func.sum(FoodEntry.carb_g),
+            func.sum(FoodEntry.fiber_g),
+            func.sum(FoodEntry.sugar_g),
+            func.sum(FoodEntry.saturated_fat_g),
         )
         .where(FoodEntry.date >= start, FoodEntry.date <= end, FoodEntry.user_id == user_id)
         .group_by(FoodEntry.date)
@@ -272,12 +245,27 @@ def _daily_food(session: Session, start: dt.date, end: dt.date, user_id: int) ->
 
 
 def _avg_food(rows: list[tuple]) -> dict[str, Any]:
+    avg_carb = _avg([r[4] for r in rows])
+    avg_fiber = _avg([r[5] for r in rows])
+    avg_sugar = _avg([r[6] for r in rows])
+    # Качество углеводов: сложные ≈ всего − сахар − клетчатка (зажато в 0; FatSecret округляет
+    # нутриенты по отдельности, поэтому разность может уйти чуть в минус), простые ≈ сахар.
+    complex_carb = (
+        round(max(0.0, avg_carb - (avg_sugar or 0.0) - (avg_fiber or 0.0)), 1)
+        if avg_carb is not None
+        else None
+    )
     return {
         "days": sum(1 for r in rows if r[1] is not None),
         "avg_kcal_in": _avg([r[1] for r in rows]),
         "avg_protein_g": _avg([r[2] for r in rows]),
         "avg_fat_g": _avg([r[3] for r in rows]),
-        "avg_carb_g": _avg([r[4] for r in rows]),
+        "avg_carb_g": avg_carb,
+        "avg_fiber_g": avg_fiber,
+        "avg_sugar_g": avg_sugar,
+        "avg_saturated_fat_g": _avg([r[7] for r in rows]),
+        "avg_complex_carb_g": complex_carb,
+        "avg_simple_carb_g": avg_sugar,  # простые углеводы ≈ сахар
     }
 
 
@@ -495,6 +483,23 @@ def _build_training(session: Session, start: dt.date, end: dt.date, user_id: int
 
 
 # --- персональные рекорды ----------------------------------------------------
+
+
+def _build_exercise_targets(session: Session, user_id: int) -> list[dict[str, Any]]:
+    """Личные числовые цели по упражнениям (кратко) — чтобы модель учла их в плане тренировок."""
+    names = _exercise_names(session)
+    rows = session.exec(
+        select(ExerciseTarget).where(ExerciseTarget.user_id == user_id)
+    ).all()
+    return [
+        {
+            "exercise_id": t.exercise_id,
+            "exercise_name": names.get(t.exercise_id),
+            "target_value": t.target_value,
+            "unit": t.unit,
+        }
+        for t in rows
+    ]
 
 
 def _build_prs(session: Session, user_id: int) -> list[dict[str, Any]]:
